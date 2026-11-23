@@ -4,9 +4,11 @@ import {
   faceFixedReason,
   isFixedEntry,
   maxPhoneEntries,
+  moved,
   navChoice,
   navChoiceKey,
   onNavChoiceChange,
+  rowOrder,
   readNavChoice,
   saveNavChoice,
   shownDestinations,
@@ -35,12 +37,24 @@ function useStorage(storage: unknown): void {
 const everyEntry = destinations.map((destination) => destination.id);
 
 describe("the default choice", () => {
-  test("a computer shows every destination", () => {
-    expect(defaultNavChoice.computer).toEqual(everyEntry);
+  test("a computer shows every destination: Chats, Files, Projects and Cases first, Settings last", () => {
+    expect(defaultNavChoice.computer).toEqual([
+      "chats",
+      "files",
+      "projects",
+      "cases",
+      "schedules",
+      "people",
+      "inventory",
+      "pets",
+      "periods",
+      "settings",
+    ]);
+    expect([...defaultNavChoice.computer].sort()).toEqual([...everyEntry].sort());
   });
 
-  test("a phone shows Chats, Projects, Files and Schedules", () => {
-    expect(defaultNavChoice.phone).toEqual(["chats", "projects", "files", "schedules"]);
+  test("a phone shows Chats, Files, Projects and Cases, in that order", () => {
+    expect(defaultNavChoice.phone).toEqual(["chats", "files", "projects", "cases"]);
     expect(defaultNavChoice.phone.length).toBeLessThanOrEqual(maxPhoneEntries);
   });
 });
@@ -73,13 +87,16 @@ describe("readNavChoice", () => {
     }
   });
 
-  test("drops an unknown id, keeps the fixed order and adds Settings on a computer", () => {
+  test("drops an unknown id and a repeat, keeps the stored order and puts Settings last on a computer", () => {
     useStorage(
       new FakeStorage({
-        [navChoiceKey]: JSON.stringify({ computer: ["files", "nothing", 7, "chats"], phone: ["pets", "old", "chats"] }),
+        [navChoiceKey]: JSON.stringify({
+          computer: ["settings", "files", "nothing", 7, "chats", "files"],
+          phone: ["pets", "old", "settings", "chats"],
+        }),
       }),
     );
-    expect(readNavChoice()).toEqual({ computer: ["chats", "files", "settings"], phone: ["chats", "pets"] });
+    expect(readNavChoice()).toEqual({ computer: ["files", "chats", "settings"], phone: ["pets", "settings", "chats"] });
   });
 
   test("reads the old Objects entry as Inventory (#940)", () => {
@@ -96,19 +113,30 @@ describe("readNavChoice", () => {
 
   test("keeps no more than the phone can hold", () => {
     useStorage(new FakeStorage({ [navChoiceKey]: JSON.stringify({ computer: [], phone: everyEntry }) }));
-    expect(readNavChoice().phone).toEqual(["chats", "projects", "files", "schedules"]);
+    expect(readNavChoice().phone).toEqual(everyEntry.slice(0, maxPhoneEntries));
   });
 });
 
 describe("toggled", () => {
-  test("turns an entry off, then on again in its place", () => {
+  test("turns an entry off, then on again at the end, before Settings on a computer", () => {
     const off = toggled(defaultNavChoice, "computer", "cases");
     if (!off.ok) throw new Error(off.reason);
     expect(off.choice.computer).not.toContain("cases");
     expect(off.choice.phone).toEqual(defaultNavChoice.phone);
     const on = toggled(off.choice, "computer", "cases");
     if (!on.ok) throw new Error(on.reason);
-    expect(on.choice.computer).toEqual(defaultNavChoice.computer);
+    expect(on.choice.computer).toEqual([
+      "chats",
+      "files",
+      "projects",
+      "schedules",
+      "people",
+      "inventory",
+      "pets",
+      "periods",
+      "cases",
+      "settings",
+    ]);
   });
 
   test("refuses to hide Settings on a computer, and says why", () => {
@@ -127,7 +155,7 @@ describe("toggled", () => {
     if (!off.ok) throw new Error(off.reason);
     const on = toggled(off.choice, "phone", "settings");
     if (!on.ok) throw new Error(on.reason);
-    expect(on.choice.phone).toEqual(["chats", "projects", "schedules", "settings"]);
+    expect(on.choice.phone).toEqual(["chats", "projects", "cases", "settings"]);
   });
 
   test("refuses a fifth phone entry, and says why", () => {
@@ -147,22 +175,71 @@ describe("toggled", () => {
   });
 });
 
-describe("shownDestinations", () => {
-  test("a computer shows its list in the fixed order, with Settings last", () => {
-    const choice: NavChoice = { computer: ["files", "chats", "settings"], phone: [] };
-    expect(shownDestinations(choice, false).map((destination) => destination.id)).toEqual([
+describe("moved", () => {
+  test("moves an entry up or down one place", () => {
+    expect(moved(defaultNavChoice, "phone", "projects", -1)?.phone).toEqual(["chats", "projects", "files", "cases"]);
+    expect(moved(defaultNavChoice, "phone", "chats", 1)?.phone).toEqual(["files", "chats", "projects", "cases"]);
+    expect(moved(defaultNavChoice, "phone", "chats", 1)?.computer).toEqual(defaultNavChoice.computer);
+  });
+
+  test("gives null past either end, and for an entry that is off", () => {
+    expect(moved(defaultNavChoice, "phone", "chats", -1)).toBeNull();
+    expect(moved(defaultNavChoice, "phone", "cases", 1)).toBeNull();
+    expect(moved(defaultNavChoice, "phone", "pets", 1)).toBeNull();
+  });
+
+  test("lets a phone move Settings like any entry", () => {
+    const choice: NavChoice = { computer: defaultNavChoice.computer, phone: ["chats", "settings"] };
+    expect(moved(choice, "phone", "settings", -1)?.phone).toEqual(["settings", "chats"]);
+  });
+
+  test("keeps Settings at the foot of a computer's rail", () => {
+    expect(moved(defaultNavChoice, "computer", "settings", -1)).toBeNull();
+    expect(moved(defaultNavChoice, "computer", "periods", 1)).toBeNull();
+    expect(moved(defaultNavChoice, "computer", "periods", -1)?.computer.at(-1)).toBe("settings");
+  });
+});
+
+describe("rowOrder", () => {
+  test("lists the entries that are on in their order, then the others in the default order", () => {
+    const choice: NavChoice = { computer: defaultNavChoice.computer, phone: ["cases", "chats"] };
+    expect(rowOrder(choice, "phone")).toEqual([
+      "cases",
       "chats",
       "files",
+      "projects",
+      "schedules",
+      "people",
+      "inventory",
+      "pets",
+      "periods",
       "settings",
     ]);
   });
 
-  test("a phone shows its own list", () => {
+  test("keeps Settings last on a computer", () => {
+    const choice: NavChoice = { computer: ["pets", "settings"], phone: [] };
+    expect(rowOrder(choice, "computer").at(0)).toBe("pets");
+    expect(rowOrder(choice, "computer").at(-1)).toBe("settings");
+  });
+});
+
+describe("shownDestinations", () => {
+  test("a computer shows its list in the person's order, with Settings last", () => {
+    const choice: NavChoice = { computer: ["files", "chats", "settings"], phone: [] };
+    expect(shownDestinations(choice, false).map((destination) => destination.id)).toEqual([
+      "files",
+      "chats",
+      "settings",
+    ]);
+  });
+
+  test("a phone shows its own list in its own order", () => {
     expect(shownDestinations(defaultNavChoice, true).map((destination) => destination.label)).toEqual([
       "Chats",
-      "Projects",
       "Files",
-      "Schedules",
+      "Projects",
+      "Cases",
     ]);
   });
 });
@@ -228,13 +305,13 @@ describe("two tabs of one browser (#911)", () => {
     saveNavChoice(defaultNavChoice);
     const stale = navChoice();
     // Another tab turns Files off for the phone. This tab does not hear it yet.
-    const other: NavChoice = { ...stale, phone: ["chats", "projects", "schedules"] };
+    const other: NavChoice = { ...stale, phone: ["chats", "projects", "cases"] };
     storage.setItem(navChoiceKey, JSON.stringify(other));
     const result = toggled(stale, "computer", "cases");
     if (!result.ok) throw new Error(result.reason);
     saveNavChoice(result.choice);
     const stored = JSON.parse(storage.getItem(navChoiceKey) ?? "null") as NavChoice;
-    expect(stored.phone).toEqual(["chats", "projects", "schedules"]);
+    expect(stored.phone).toEqual(["chats", "projects", "cases"]);
     expect(stored.computer).not.toContain("cases");
     expect(navChoice()).toEqual(stored);
     saveNavChoice(defaultNavChoice);

@@ -130,6 +130,20 @@ export function shownDestinations(choice: NavChoice, isPhone: boolean): NavEntry
   );
 }
 
+/**
+ * The buttons of the part that scrolls, and of the foot. A computer keeps Settings at the foot of the rail, so a low
+ * window still shows it (#911). A phone has no foot: Settings takes the place that the person chose (#1034).
+ */
+export function navParts(choice: NavChoice, isPhone: boolean): { scroll: NavEntry[]; foot: NavEntry[] } {
+  const shown = shownDestinations(choice, isPhone);
+  if (isPhone) return { scroll: shown, foot: [] };
+  const form: NavForm = "computer";
+  return {
+    scroll: shown.filter((destination) => !isFixedEntry(form, destination.id)),
+    foot: shown.filter((destination) => isFixedEntry(form, destination.id)),
+  };
+}
+
 let current: NavChoice | null = null;
 const listeners = new Set<() => void>();
 

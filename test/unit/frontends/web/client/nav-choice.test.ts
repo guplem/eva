@@ -7,6 +7,7 @@ import {
   moved,
   navChoice,
   navChoiceKey,
+  navParts,
   onNavChoiceChange,
   rowOrder,
   readNavChoice,
@@ -241,6 +242,22 @@ describe("shownDestinations", () => {
       "Projects",
       "Cases",
     ]);
+  });
+});
+
+describe("navParts", () => {
+  const ids = (entries: readonly { id: string }[]): string[] => entries.map((entry) => entry.id);
+
+  test("a computer keeps Settings at the foot, out of the part that scrolls", () => {
+    const parts = navParts({ computer: ["files", "settings", "chats"], phone: [] }, false);
+    expect(ids(parts.scroll)).toEqual(["files", "chats"]);
+    expect(ids(parts.foot)).toEqual(["settings"]);
+  });
+
+  test("a phone draws Settings where the person put it", () => {
+    const parts = navParts({ computer: defaultNavChoice.computer, phone: ["settings", "chats", "files"] }, true);
+    expect(ids(parts.scroll)).toEqual(["settings", "chats", "files"]);
+    expect(parts.foot).toEqual([]);
   });
 });
 

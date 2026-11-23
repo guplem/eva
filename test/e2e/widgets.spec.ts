@@ -130,6 +130,15 @@ test("with no widget on, the home page keeps the large visor and the suggestions
   await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
 });
 
+/**
+ * Opens Habits in full screen, and waits until the widget is ready. The widget draws its buttons again after Eva
+ * answers its `hello`, so a tap before that can hit a button that is gone, and no ask leaves.
+ */
+async function openHabitsFull(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  await expect(page.frameLocator(".widget-full iframe").locator('.widget[data-ready="true"]')).toBeVisible();
+}
+
 test("a widget asks Eva after a tap: its text goes in the message box, and a path opens its page (#696, #1006)", async ({
   page,
 }) => {
@@ -138,7 +147,7 @@ test("a widget asks Eva after a tap: its text goes in the message box, and a pat
   const box = page.getByRole("textbox", { name: "Message" });
   await box.fill("My own words");
   // The small card shows only the count, so the taps happen in full screen.
-  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  await openHabitsFull(page);
   await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Chat about my habits" }).click();
   // Full screen closes, the text comes after the person's own words, and the box names the widget.
   await expect(page.locator(".widget-full")).toHaveCount(0);
@@ -147,7 +156,7 @@ test("a widget asks Eva after a tap: its text goes in the message box, and a pat
   // Eva never sends the text: the person clears it, and the box no longer names the widget.
   await box.fill("");
   await expect(page.getByRole("list", { name: "Where the text comes from" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  await openHabitsFull(page);
   await page.frameLocator(".widget-full iframe").getByRole("button", { name: "Open the folder in Eva" }).click();
   await expect(page).toHaveURL(/#\/files\/Life\/Habits$/);
   await expect(page.locator(".widget-full")).toHaveCount(0);
@@ -491,13 +500,14 @@ test("a narrow window shrinks the header slot, then shows it as the first card o
   expect(wide.slot.y).toBeLessThan(wide.greeting.y + wide.greeting.height);
   expect(wide.slot.width).toBe(640);
   // Narrower: still beside the greeting, and smaller.
-  const middle = await placeAt(1180);
+  // The home page has no chat list beside it (#1037), so it is the window less the rail.
+  const middle = await placeAt(1000);
   expect(middle.slot.y).toBeLessThan(middle.greeting.y + middle.greeting.height);
   expect(middle.slot.width).toBeLessThan(640);
   expect(middle.slot.width).toBeGreaterThanOrEqual(320);
   // No room for both: the panel is too narrow for four columns too, so the phone layout shows the
   // widget as the first card of the grid, below the greeting, at the full width.
-  for (const width of [1100, 761, 760]) {
+  for (const width of [800, 761, 760]) {
     const below = await placeAt(width);
     expect(below.slot.y).toBeGreaterThanOrEqual(below.greeting.y + below.greeting.height);
     expect(Math.abs(below.slot.width - below.row.width)).toBeLessThan(2);
@@ -583,8 +593,8 @@ test("a narrow day panel on a computer uses the phone layout: two columns, and t
   await defaultSlot(page);
   const columns = (): Promise<number> =>
     page.locator(".widget-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
-  // The chat list takes about 300 px, so a window of 1000 px leaves a panel of about 570 px.
-  await page.setViewportSize({ width: 1000, height: 760 });
+  // The rail and the margins take about 130 px, so a window of 800 px leaves a panel under 680 px.
+  await page.setViewportSize({ width: 800, height: 760 });
   await page.goto("/#/home");
   await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
   await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(0);

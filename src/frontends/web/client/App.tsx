@@ -17,6 +17,7 @@ import {
   type SessionEvent,
   type VaultSyncState,
   type ListedSession,
+  type SessionRecord,
   type ProgressStep,
 } from "./api.ts";
 import type { HistoryEntry } from "../../../core/alerts/notification-history.ts";
@@ -47,15 +48,18 @@ import { hiddenUnreadChats, visorSignal } from "./nav-visor.ts";
 import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
 import {
   addressOf,
+  assistantChatAddressOf,
   chatsTapAgain,
   destinationOf,
   homeAddress,
+  homePage,
   linkedChatIdOf,
   notificationCenter,
   projectRouteOf,
   type Destination,
 } from "./navigation.ts";
 import { NotificationCenter } from "./NotificationCenter.tsx";
+import { HomePage } from "./HomePage.tsx";
 import { withPendingReads } from "./notification-center.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { NewDeviceDialog } from "./NewDeviceDialog.tsx";
@@ -122,8 +126,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** Counts the taps on Chats while Chats is open. Each one opens a new chat on a computer. */
   const [newChatRequest, setNewChatRequest] = useState(0);
-  /** The Chats page shows the New chat page, the home page of the visor (#761). */
-  const [homeShown, setHomeShown] = useState(false);
   const isPhone = useIsPhone();
   const shownEntries = shownDestinations(useSyncExternalStore(onNavChoiceChange, navChoice), isPhone).map(
     (destination) => destination.id,
@@ -222,9 +224,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */
   const openFromNav = (destination: Destination): void => {
-    // The home page belongs to the visor, so a tap on Chats there leaves it for the chats (#761).
     // A phone shows the list instead, which is its way to the chats.
-    if (destination !== "chats" || screen !== "chats" || (homeShown && !isPhone)) {
+    if (destination !== "chats" || screen !== "chats") {
       openDestination(destination);
       return;
     }
@@ -235,7 +236,7 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   /** A tap on the visor opens the home page from any page. A chat in progress stays in the list (#761). */
   const openHome = (): void => {
     setSidebarOpen(false);
-    goTo(homeAddress, () => setScreen("chats"));
+    goTo(homeAddress, () => setScreen(homePage));
   };
 
   const refreshProblems = useCallback(async (): Promise<void> => {
@@ -287,6 +288,16 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  /**
+   * A message from the home page made a chat: Chats opens it. The chat takes the place of the home page in the
+   * history, as it takes the place of the New chat page, so Back does not show the sent text again.
+   */
+  const openStartedChat = async (chat: SessionRecord): Promise<void> => {
+    await refreshSessions();
+    replaceAddress(assistantChatAddressOf(chat.id));
+    setScreen("chats");
+  };
 
   // Telegram can link to a chat that is newer than this page's list: read the list once more.
   // A chat that is not in it either was deleted, and the link says so.
@@ -711,7 +722,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       {/* A badge, not a banner, says what is left to set up: a short phone screen keeps its room for the chats. */}
       <MainNav
         current={screen}
-        homeShown={homeShown}
         isPhone={isPhone}
         onOpen={openFromNav}
         onHome={openHome}
@@ -745,7 +755,14 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
             approvals={chatApprovals}
             blocker={chatBlocker}
             voiceNotes={voiceNotes}
-            homeButtons={
+          />
+        )}
+        {screen === homePage && (
+          <HomePage
+            blocker={chatBlocker}
+            voiceNotes={voiceNotes}
+            isPhone={isPhone}
+            buttons={
               <HomeButtons
                 signal={bellSignal}
                 setupMissing={setupMissing}
@@ -755,7 +772,8 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
                 onSettings={() => openDestination("settings")}
               />
             }
-            onHomeShown={setHomeShown}
+            onOpen={openDestination}
+            onStarted={openStartedChat}
           />
         )}
         {screen === "projects" && (

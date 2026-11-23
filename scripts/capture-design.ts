@@ -230,10 +230,10 @@ const scenes: readonly Scene[] = [
   },
   {
     name: "new",
-    // The home page that the visor opens: the New chat page, with the bell at its top right (#761).
+    // The home page that the visor opens, with the bell at its top right (#761). It is apart from the New chat page (#1037).
     // The address, not a tap: a tap would show a random playful face on the visor.
     show: async (page) => {
-      await openAddress(page, homeAddress, "New chat");
+      await openAddress(page, homeAddress, "Home");
       await page.locator(".home-buttons").waitFor();
       await page.locator(".new-chat").waitFor();
       // The demo approved a Calendar, the habits widget, a Cases widget and a Summary in the header slot:
@@ -341,7 +341,7 @@ const scenes: readonly Scene[] = [
       );
       await page.reload();
       // The problems show in the notification center, behind the bell of the home page (#761).
-      await openAddress(page, homeAddress, "New chat");
+      await openAddress(page, homeAddress, "Home");
       await page
         .locator(".home-buttons")
         .getByRole("button", { name: /^Notifications/ })

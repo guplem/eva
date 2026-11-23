@@ -20,7 +20,7 @@ const habitsInGrid = '.widget-grid iframe[aria-label="Habits"]';
 
 /** The frame of the habits widget in the grid, once the widget has its content. */
 async function habitsFrame(page: Page): Promise<Frame> {
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const grid = page.getByRole("group", { name: "Widgets" });
   await expect(grid).toBeVisible();
   await expect(page.frameLocator(habitsInGrid).locator('.widget[data-ready="true"]')).toBeVisible();
@@ -104,7 +104,7 @@ test("on a phone two small cards share a row, and a small card with no partner t
     });
   });
   await logIn(page);
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const grid = await page.locator(".widget-grid").boundingBox();
   const box = async (name: string): Promise<{ x: number; y: number; width: number }> => {
     const found = await page.locator(`.widget-card:has(iframe[aria-label="${name}"])`).boundingBox();
@@ -123,7 +123,7 @@ test("with no widget on, the home page keeps the large visor and the suggestions
     await route.fulfill({ json: [] });
   });
   await logIn(page);
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
   await expect(page.locator(".new-chat .mk.xl")).toBeVisible();
   await expect(page.locator(".day-panel")).toHaveCount(0);
@@ -297,7 +297,7 @@ test("the tiles button of the home page scrolls Settings to the Widget layout ca
   page,
 }) => {
   await logIn(page);
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   await page.getByRole("button", { name: "Arrange the widgets" }).click();
   await expect(page).toHaveURL(/#\/settings\/personalize\/widget-layout$/);
   // The card comes after the widget list loads, so it shows after the first scroll of the page.
@@ -313,7 +313,7 @@ test("the widget layout places a widget, leaves a gap, and the home page shows t
   await logIn(page);
   const form = test.info().project.name === "phone" ? "Phone" : "Computer";
   // The tiles button of the home page opens the editor.
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   await page.getByRole("button", { name: "Arrange the widgets" }).click();
   const editor = page.getByRole("region", { name: "Widget layout" });
   await expect(editor).toBeVisible();
@@ -358,7 +358,7 @@ test("the widget layout places a widget, leaves a gap, and the home page shows t
   };
   await editor.getByRole("button", { name: "Done" }).click();
   await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const grid = page.getByRole("group", { name: "Widgets" });
   // On a phone, the widget of the header slot takes the first row of the home grid (#1007).
   await expect(grid.locator(".widget-card").first()).toBeVisible();
@@ -441,7 +441,7 @@ test("the header slot shows its widget beside the greeting on a computer, and as
 }) => {
   await logIn(page);
   await defaultSlot(page);
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const card = page.locator(summaryCard);
   await expect(card.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
   await expect(card.getByRole("button", { name: "Open Summary in full screen" })).toBeVisible();
@@ -474,7 +474,7 @@ test("a narrow window shrinks the header slot, then shows it as the first card o
   test.skip(test.info().project.name === "phone", "The break points are widths of a computer window.");
   await logIn(page);
   await defaultSlot(page);
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const card = page.locator(summaryCard);
   const row = page.locator(".day-greeting");
   const heading = row.locator("h2");
@@ -564,7 +564,7 @@ test("the layout editor moves a widget into the header slot and out of it, with 
   await preview.getByRole("group", { name: /^Habits,/ }).press("ArrowUp");
   await editor.getByRole("button", { name: "Done" }).click();
   await expect(editor.getByRole("button", { name: "Edit" })).toBeVisible();
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   const habitsCard = page.locator(".day-greeting").locator('.widget-card:has(iframe[aria-label="Habits"])');
   await expect(habitsCard.locator("iframe")).toHaveAttribute("src", /\?size=header$/);
   await expect(page.locator(".widget-grid").locator(summaryCard).locator("iframe")).toHaveAttribute(
@@ -585,7 +585,7 @@ test("a narrow day panel on a computer uses the phone layout: two columns, and t
     page.locator(".widget-grid").evaluate((grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length);
   // The chat list takes about 300 px, so a window of 1000 px leaves a panel of about 570 px.
   await page.setViewportSize({ width: 1000, height: 760 });
-  await page.goto("/#/chats/new");
+  await page.goto("/#/home");
   await expect(page.locator(".widget-grid").locator(summaryCard)).toHaveCount(1);
   await expect(page.locator(".day-greeting").locator(summaryCard)).toHaveCount(0);
   await expect(page.locator(".widget-grid").locator(summaryCard).locator("iframe")).toHaveAttribute(

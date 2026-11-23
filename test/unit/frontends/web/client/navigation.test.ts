@@ -8,6 +8,7 @@ import {
   destinations,
   destinationOf,
   homeAddress,
+  homePage,
   linkedChatIdOf,
   navBadges,
   newChatPageId,
@@ -186,30 +187,35 @@ describe("navBadges", () => {
   });
 });
 
-describe("homeAddress and currentNavButton (#761)", () => {
-  test("the visor's home page is the New chat page of Chats", () => {
-    expect(homeAddress).toBe(assistantChatAddressOf(newChatPageId));
-    expect(destinationOf(homeAddress)).toBe("chats");
+describe("homeAddress and currentNavButton (#761, #1037)", () => {
+  test("the visor's home page has its own address, apart from the New chat page", () => {
+    expect(homeAddress).toBe(addressOf(homePage));
+    expect(homeAddress).toBe("#/home");
+    expect(destinationOf(homeAddress)).toBe(homePage);
+    expect(homeAddress).not.toBe(assistantChatAddressOf(newChatPageId));
   });
 
-  test("on the home page, the visor is the current button, not Chats", () => {
-    expect(currentNavButton("chats", true)).toBe("visor");
+  test("on the home page, the visor is the current button", () => {
+    expect(currentNavButton(homePage)).toBe("visor");
+  });
+
+  test("the New chat page belongs to Chats, not to the visor", () => {
+    expect(currentNavButton("chats")).toBe("chats");
   });
 
   test("a page whose entry the navigation hides has no current button (#911)", () => {
-    expect(currentNavButton("cases", false, ["chats", "projects"])).toBeNull();
-    expect(currentNavButton("cases", false, ["chats", "cases"])).toBe("cases");
+    expect(currentNavButton("cases", ["chats", "projects"])).toBeNull();
+    expect(currentNavButton("cases", ["chats", "cases"])).toBe("cases");
     // The home page belongs to the visor, which always shows.
-    expect(currentNavButton("chats", true, [])).toBe("visor");
+    expect(currentNavButton(homePage, [])).toBe("visor");
   });
 
   test("another page keeps its own button current", () => {
-    expect(currentNavButton("chats", false)).toBe("chats");
-    expect(currentNavButton("settings", false)).toBe("settings");
+    expect(currentNavButton("settings")).toBe("settings");
   });
 
   test("the notification center has no button: the bell of the home page opens it", () => {
-    expect(currentNavButton(notificationCenter, false)).toBeNull();
+    expect(currentNavButton(notificationCenter)).toBeNull();
   });
 });
 

@@ -6,7 +6,7 @@
 import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
 import { navChoice, navParts } from "./nav-choice.ts";
-import { notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
+import { homePage, notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
 import { inUseRow, statusRow } from "./project-format.ts";
 import { lifePages } from "./life-pages.ts";
@@ -309,19 +309,7 @@ function ConversationSkeleton(): ReactElement {
             </div>
           </Fragment>
         ))}
-        <div className="composer">
-          <div className="composer-box" {...copies(".composer-box")}>
-            <span className="skeleton-composer-text">
-              <Text width="96px" />
-            </span>
-            <div className="composer-row">
-              <Ghost className="icon composer-icon" />
-              <Ghost className="composer-chip" />
-              <span className="grow" />
-              <button className="send skeleton-ghost" disabled {...copies(".composer .send")} />
-            </div>
-          </div>
-        </div>
+        <ComposerSkeleton />
       </div>
     </div>
   );
@@ -655,6 +643,25 @@ function SchedulesSkeleton(): ReactElement {
   );
 }
 
+/** The message box of a chat, and of the home page. */
+function ComposerSkeleton(): ReactElement {
+  return (
+    <div className="composer">
+      <div className="composer-box" {...copies(".composer-box")}>
+        <span className="skeleton-composer-text">
+          <Text width="96px" />
+        </span>
+        <div className="composer-row">
+          <Ghost className="icon composer-icon" />
+          <Ghost className="composer-chip" />
+          <span className="grow" />
+          <button className="send skeleton-ghost" disabled {...copies(".composer .send")} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The main navigation: the visor, a button for each destination, and Settings at the end. */
 function MainNavSkeleton({
   current,
@@ -761,6 +768,15 @@ export function AppSkeleton({
         {page === "files" && <FilesSkeleton />}
         {page === "schedules" && <SchedulesSkeleton />}
         {page === "settings" && <SettingsSkeleton />}
+        {page === homePage && (
+          // The home page is a page of its own, with no chat list (#1037): the widgets, then the message box.
+          <div className="main">
+            <div className="page-skeleton home-skeleton">
+              <CardsSkeleton />
+            </div>
+            <ComposerSkeleton />
+          </div>
+        )}
         {page === notificationCenter && (
           <div className="main">
             <div className="page-skeleton">

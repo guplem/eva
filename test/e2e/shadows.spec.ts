@@ -102,7 +102,7 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
   const pages: [string, Locator[]][] = [
     ["#/chats", [page.locator(".composer-box")]],
     // The home page with the widget grid (#691).
-    ["#/chats/new", [page.locator(".widget-grid .widget-card").first()]],
+    ["#/home", [page.locator(".widget-grid .widget-card").first()]],
     ["#/files/Notes", [page.getByRole("list", { name: "Contents of Notes" })]],
     [`#/files/${file}`, [page.getByRole("region", { name: "File text" })]],
     ["#/projects", [page.locator("button.project-card").first()]],

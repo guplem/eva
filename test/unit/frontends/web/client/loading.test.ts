@@ -92,6 +92,13 @@ describe("skeletons", () => {
     }
   });
 
+  test("the home page loads as its own page: the widgets and the message box, with no chat list (#1037)", () => {
+    const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: "home" }));
+    expect(markup).toContain("home-skeleton");
+    expect(markup).toContain("composer-box");
+    expect(markup).not.toContain("chat-list");
+  });
+
   test("Eva's visor is in the row of her answer, so the chat CSS puts it at the bottom", () => {
     const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
     expect(markup).toMatch(

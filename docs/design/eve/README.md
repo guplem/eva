@@ -269,18 +269,26 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - While the page waits, EVE changes face, so the page looks alive.
 - The token stays as a fallback, behind a quiet link.
 
-### New chat
+### Home
 
 ![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
 
-- This is the home page: a tap on the visor opens it from any page.
+- This is the home page, at `#/home`: a tap on the visor opens it from any page. It is a page of its own, with no chat list, apart from the New chat page.
+- The header has no title on screen. On a phone, a ☰ button at the top left opens a menu with every page, also the pages that the tab bar hides. The tabs come first, in the person's order. A computer's rail shows every page, so its home page has no menu.
 - A bell at the top right opens the notification center. It shows the same count and dot as the visor. On a phone, a gear beside it opens Settings.
 - With a widget on, a tiles button before the bell opens the widget layout in Settings.
 - EVE greets with happy eyes instead of a blank page.
 - With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. On a computer, the header slot at the right of that row holds one widget: 72 px high, from 320 to 640 px wide. When the row has no room for both, the slot takes its own row under the greeting, at the full width. On a phone, the widget of the slot is the first row of the grid. The widgets fill the rest of the page above the message box, in sandboxed frames, at the places of the widget layout. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
 - With no widget on, the large visor greets in the centre. Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
 - With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it. The header slot then takes its own row under the step.
-- The engine and the model show in the composer, and change there. The header shows the mode.
+- The engine and the model show in the composer, and change there.
+- A message from this box makes a new chat and opens it in Chats.
+
+### New chat
+
+- Chats > New chat opens a blank page at `#/chats/new`: the title "New chat", the engine and the mode under it, and the message box. It has no greeting, no suggestions and no widgets.
+- With no engine or no vault, the page names the missing step, as the home page does.
+- The page shares its unsent text with the home page, so a text never gets lost between them.
 
 ### A conversation at work
 

@@ -271,7 +271,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 
 ### Home
 
-![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
+![Computer](screenshots/home-computer-light.webp) ![Phone](screenshots/home-phone-light.webp)
 
 - This is the home page, at `#/home`: a tap on the visor opens it from any page. It is a page of its own, with no chat list, apart from the New chat page.
 - The header has no title on screen. On a phone, a ☰ button at the top left opens a menu with every page, also the pages that the tab bar hides. The tabs come first, in the person's order. A computer's rail shows every page, so its home page has no menu.
@@ -285,6 +285,8 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - A message from this box makes a new chat and opens it in Chats.
 
 ### New chat
+
+![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
 
 - Chats > New chat opens a blank page at `#/chats/new`: the title "New chat", the engine and the mode under it, and the message box. It has no greeting, no suggestions and no widgets.
 - With no engine or no vault, the page names the missing step, as the home page does.

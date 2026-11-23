@@ -620,7 +620,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
   - **Settings**, on a widget that is on, opens the same form with your values, such as the events that Calendar hides. **Save** keeps the installed version and its state.
   - **Turn off** hides a widget and keeps its approval. **Remove** drops its approval, its copy and the small state that it keeps of its own, such as the calendars that you hid. Your data in the vault stays.
   - **Widget layout**, below the list, chooses where each widget shows and its size. The tiles button next to the bell of the home page opens it too.
-    - Pick the **Computer** or the **Phone** tab. Each has its own layout. A window narrower than 761 px uses the phone layout, and so does a home page narrower than 680 px, such as a window of 1000 px with the chat list open. A phone with no layout of its own follows the computer's order, with no gaps.
+    - Pick the **Computer** or the **Phone** tab. Each has its own layout. A window narrower than 761 px uses the phone layout, and so does a home page narrower than 680 px. A phone with no layout of its own follows the computer's order, with no gaps.
     - The preview shows the home page at a small scale, with one box for each widget that is on. Each box shows the name of the widget and its size in columns × rows, such as 2 × 1.
     - Press **Edit** to change the layout. The free cells show as dashed outlines, with one spare row at the bottom.
     - Drag a box to move it. It snaps to the cells. A place that another box takes does nothing, but a box dropped exactly on a box of the same size swaps places with it.

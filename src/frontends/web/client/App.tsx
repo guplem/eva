@@ -48,7 +48,6 @@ import { hiddenUnreadChats, visorSignal } from "./nav-visor.ts";
 import { navChoice, onNavChoiceChange, shownDestinations } from "./nav-choice.ts";
 import {
   addressOf,
-  assistantChatAddressOf,
   chatsTapAgain,
   destinationOf,
   homeAddress,
@@ -224,7 +223,6 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
 
   /** A tap in the main navigation. A tap on Chats while Chats is open gives the person a next step. */
   const openFromNav = (destination: Destination): void => {
-    // A phone shows the list instead, which is its way to the chats.
     if (destination !== "chats" || screen !== "chats") {
       openDestination(destination);
       return;
@@ -290,13 +288,14 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
   }, [refreshSessions]);
 
   /**
-   * A message from the home page made a chat: Chats opens it. The chat takes the place of the home page in the
-   * history, as it takes the place of the New chat page, so Back does not show the sent text again.
+   * A message from the home page made a chat: Chats opens it, as it opens a linked chat. The chat then takes the
+   * place of the home page in the history, as it takes the place of the New chat page, so Back does not show the
+   * sent text again.
    */
   const openStartedChat = async (chat: SessionRecord): Promise<void> => {
     await refreshSessions();
-    replaceAddress(assistantChatAddressOf(chat.id));
-    setScreen("chats");
+    // The person may have left the home page while Eva made the chat: the chat then waits in the list.
+    if (screenRef.current === homePage) setLinkedChatId(chat.id);
   };
 
   // Telegram can link to a chat that is newer than this page's list: read the list once more.

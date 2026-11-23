@@ -97,6 +97,8 @@ describe("skeletons", () => {
     expect(markup).toContain("home-skeleton");
     expect(markup).toContain("composer-box");
     expect(markup).not.toContain("chat-list");
+    // The visor is the current button of the home page, as in the real navigation.
+    expect(markup).toMatch(/class="main-nav-visor"[^>]*aria-current="page"/);
   });
 
   test("Eva's visor is in the row of her answer, so the chat CSS puts it at the bottom", () => {

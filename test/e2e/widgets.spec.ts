@@ -168,7 +168,7 @@ test("a widget's message with no tap before it does nothing (#696)", async ({ pa
       }),
   );
   expect(answer).toEqual({ eva: "widget", id: 990, ok: false, reason: "no-tap" });
-  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(page).toHaveURL(/#\/home$/);
 });
 
 test("a tap in the habits widget in full screen marks a habit", async ({ page }) => {

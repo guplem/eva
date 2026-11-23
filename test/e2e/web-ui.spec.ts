@@ -760,7 +760,9 @@ test("a send glides the chat down to the new bubble, and the bubble lands above 
   expect((bubble?.y ?? 0) + (bubble?.height ?? 0)).toBeLessThanOrEqual((composer?.y ?? 0) + 1);
 });
 
-test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
+test("with no engine, the home page and the New chat page say what is missing, lock the box, and unlock with no reload", async ({
+  page,
+}) => {
   // The demo engine has a login, so the browser plays a machine without one.
   let blocker: string | null = "engine";
   await page.route("**/api/status", async (route) => {
@@ -769,9 +771,13 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
     await route.fulfill({ response, json: { ...status, chatBlocker: blocker } });
   });
   await logIn(page);
-  await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  // The blank New chat page shows the step too, with no widgets (#1037).
+  await clickNewChat(page);
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
+  await expect(page.getByLabel("Message").first()).toBeDisabled();
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page).toHaveURL(/#\/home$/);
   await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
   // The demo has widgets on, so the step shows in the one-line form of the day panel, above them (#972).
@@ -820,12 +826,13 @@ async function hideOldChats(page: Page): Promise<() => number> {
   return () => made;
 }
 
-test("with no chat yet, the page greets the person, and the first message makes the chat", async ({ page }) => {
+test("with no chat yet, Chats shows the blank New chat page, and the first message makes the chat", async ({
+  page,
+}) => {
   const made = await hideOldChats(page);
-  await showNoWidgets(page);
   await logIn(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "New chat", exact: true }).getByLabel("Message")).toBeVisible();
   await expect(page.getByText("No chats yet.")).toHaveCount(0);
   // An open page makes no empty chat.
   expect(made()).toBe(0);
@@ -4492,7 +4499,6 @@ test("a tap on Chats while a chat is open shows the list on a phone and a new ch
 });
 
 test("the New chat button opens the New chat page, and only the first message makes the chat", async ({ page }) => {
-  await showNoWidgets(page);
   await logIn(page);
   await newChat(page);
   let made = 0;
@@ -4503,7 +4509,8 @@ test("the New chat button opens the New chat page, and only the first message ma
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
   await clickNewChat(page);
-  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  // The page is blank, ready to type (#1037).
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
   // A second tap leaves no empty chat either.
   await clickNewChat(page);
   await page.reload();
@@ -5176,7 +5183,7 @@ async function routeProblems(
 /** Opens the home page with the visor, and returns its bell (#761). */
 async function openHomeBell(page: Page): Promise<Locator> {
   await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(page).toHaveURL(/#\/home$/);
   return page.locator(".home-buttons").getByRole("button", { name: /^Notifications/ });
 }
 

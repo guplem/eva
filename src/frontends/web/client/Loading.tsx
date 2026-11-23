@@ -569,6 +569,19 @@ function ChatHeaderSkeleton(): ReactElement {
   );
 }
 
+/** The header of the home page: no title on screen, and the bell at the right (#1037). */
+function HomeHeaderSkeleton(): ReactElement {
+  return (
+    <div className="main-header chat-header home-header" {...copies(".main-header")}>
+      <div className="home-actions">
+        <button className="icon-button" disabled {...copies(".home-bell")}>
+          <Ghost className="icon" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The details at the right of a chat, when the person keeps them shown. */
 function ChatPanelSkeleton(): ReactElement {
   return (
@@ -691,7 +704,12 @@ function MainNavSkeleton({
   );
   return (
     <div className="main-nav">
-      <button className="main-nav-visor" disabled {...copies(".main-nav-visor")}>
+      <button
+        className="main-nav-visor"
+        disabled
+        aria-current={current === homePage ? "page" : undefined}
+        {...copies(".main-nav-visor")}
+      >
         <span className="nav-icon">
           <span className="mk skeleton-visor" />
         </span>
@@ -771,6 +789,7 @@ export function AppSkeleton({
         {page === homePage && (
           // The home page is a page of its own, with no chat list (#1037): the widgets, then the message box.
           <div className="main">
+            <HomeHeaderSkeleton />
             <div className="page-skeleton home-skeleton">
               <CardsSkeleton />
             </div>

@@ -569,14 +569,24 @@ function ChatHeaderSkeleton(): ReactElement {
   );
 }
 
-/** The header of the home page: no title on screen, and the bell at the right (#1037). */
-function HomeHeaderSkeleton(): ReactElement {
+/** The header of the home page: no title on screen, and the bell at the right. A phone adds the ☰ and the gear (#1037). */
+function HomeHeaderSkeleton({ isPhone }: { readonly isPhone: boolean }): ReactElement {
   return (
     <div className="main-header chat-header home-header" {...copies(".main-header")}>
+      {isPhone && (
+        <button className="icon-button" disabled {...copies(".pages-menu-button")}>
+          <Ghost className="icon" />
+        </button>
+      )}
       <div className="home-actions">
         <button className="icon-button" disabled {...copies(".home-bell")}>
           <Ghost className="icon" />
         </button>
+        {isPhone && (
+          <button className="icon-button" disabled {...copies(".home-gear")}>
+            <Ghost className="icon" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -789,7 +799,7 @@ export function AppSkeleton({
         {page === homePage && (
           // The home page is a page of its own, with no chat list (#1037): the widgets, then the message box.
           <div className="main">
-            <HomeHeaderSkeleton />
+            <HomeHeaderSkeleton isPhone={isPhone} />
             <div className="page-skeleton home-skeleton">
               <CardsSkeleton />
             </div>

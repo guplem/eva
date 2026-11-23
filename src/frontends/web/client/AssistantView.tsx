@@ -1,5 +1,5 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { ChatBlocker, ListedSession, SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
@@ -47,10 +47,6 @@ interface AssistantViewProps {
   readonly blocker: ChatBlocker | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
-  /** The buttons of the home page: the New chat page is the home page that the visor opens (#761). */
-  readonly homeButtons: ReactNode;
-  /** Tells whether the New chat page shows, so the visor shows as the current page. */
-  readonly onHomeShown: (shown: boolean) => void;
 }
 
 export function AssistantView({
@@ -66,8 +62,6 @@ export function AssistantView({
   approvals,
   blocker,
   voiceNotes,
-  homeButtons,
-  onHomeShown,
 }: AssistantViewProps): ReactElement {
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
   const roots = rootChats(sessions.filter((session) => session.mode === "assistant"));
@@ -128,12 +122,6 @@ export function AssistantView({
       active[0] ??
       chats[0]);
   const tree = selected === undefined ? [] : chatTree(selected, sessions);
-  // The visor shows as the current page on the New chat page. Another page of Chats, or another destination, clears it.
-  // Before the paint, so Chats never shows as current for one frame.
-  useLayoutEffect(() => {
-    onHomeShown(drafting);
-    return () => onHomeShown(false);
-  }, [drafting, onHomeShown]);
   // A fork that the person picks in the list opens like a link to it.
   const [pickedBranchId, setPickedBranchId] = useState<string | null>(null);
   const branch = useShownBranch(tree, linkedChat?.id ?? pickedBranchId, live.heirs);
@@ -323,11 +311,9 @@ export function AssistantView({
         <BusyProjects.Provider value={busy}>
           {selected === undefined ? (
             <NewChatDraft
+              page={{ kind: "new-chat", onShowList, listHasUnread }}
               blocker={blocker}
               voiceNotes={voiceNotes}
-              onShowList={onShowList}
-              listHasUnread={listHasUnread}
-              homeButtons={homeButtons}
               onStarted={openNewChat}
             />
           ) : (

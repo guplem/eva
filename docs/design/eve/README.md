@@ -165,7 +165,7 @@ The visor and the looping waits keep their own timing, which [EVE's expressions]
 
 A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) and inspector (300 px). A page without a list or an inspector drops that column.
 
-- **Nav rail:** EVE's visor at the top, then the entries that the person chose in Settings > Personalize > Navigation (`client/nav-choice.ts`). By default, all of them show: Chats, Files, Projects, Cases, Schedules, People, Inventory, Pets and Periods. The person can change their order. A computer always shows Settings. It stays at the bottom, outside the part that scrolls. A low window still shows it. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page, the new chat page, and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, an unread chat whose entry is hidden, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
+- **Nav rail:** EVE's visor at the top, then the entries that the person chose in Settings > Personalize > Navigation (`client/nav-choice.ts`). By default, all of them show: Chats, Files, Projects, Cases, Schedules, People, Inventory, Pets and Periods. The person can change their order. A computer always shows Settings. It stays at the bottom, outside the part that scrolls. A low window still shows it. A count badge in `--warn` shows on Chats when an approval waits, and on Settings when setup steps are left. With no approval, a count badge in `--accent` shows the unread chats on Chats, and the unread Project chats on Projects. The visor's face shows the one main state, in this order: offline, an approval, a problem, a chat that waits for setup, or chats at work (`client/nav-visor.ts`). A tap on the visor opens the home page and plays a short playful face. A count in `--warn` on the visor shows the unread problems. The count is `--bad` when one of them is an error. Then the crossed face glows red and pulses, except while the center is open. With no count, a small accent dot shows unread news, a setup step that is left, an unread chat whose entry is hidden, or that Eva does not answer. Offline, a crossed wifi in the warn hue takes the place of the eyes, and a tap plays no playful face.
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column that fills the free width, and the composer. In a chat, an answer takes at most 86 % of the column, and a message of the person at most 72 %.
 - **Inspector:** the details of the selected item, such as the chat details.
@@ -269,18 +269,28 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - While the page waits, EVE changes face, so the page looks alive.
 - The token stays as a fallback, behind a quiet link.
 
-### New chat
+### Home
 
-![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
+![Computer](screenshots/home-computer-light.webp) ![Phone](screenshots/home-phone-light.webp)
 
-- This is the home page: a tap on the visor opens it from any page.
+- This is the home page, at `#/home`: a tap on the visor opens it from any page. It is a page of its own, with no chat list, apart from the New chat page.
+- The header has no title on screen. On a phone, a ☰ button at the top left opens a menu with every page, also the pages that the tab bar hides. The tabs come first, in the person's order. A computer's rail shows every page, so its home page has no menu.
 - A bell at the top right opens the notification center. It shows the same count and dot as the visor. On a phone, a gear beside it opens Settings.
 - With a widget on, a tiles button before the bell opens the widget layout in Settings.
 - EVE greets with happy eyes instead of a blank page.
 - With a widget on, the page is the day panel. The 56 px visor, the greeting and its line take one row at the top left. On a computer, the header slot at the right of that row holds one widget: 72 px high, from 320 to 640 px wide. When the row has no room for both, the slot takes its own row under the greeting, at the full width. On a phone, the widget of the slot is the first row of the grid. The widgets fill the rest of the page above the message box, in sandboxed frames, at the places of the widget layout. A corner button opens one in full screen. The panel shows no suggestions. [docs/widgets.md](../../widgets.md#sizes) gives the place of each size on a computer and on a phone.
 - With no widget on, the large visor greets in the centre. Suggestions show what Eva does well: notes, calendar, projects and reminders. The calendar shows only when Google is set up.
 - With no engine or no vault, EVE sleeps instead. She names the missing step, with a button to it, and the message box locks. With a widget on, the step takes the row of the greeting, and the widgets stay below it. The header slot then takes its own row under the step.
-- The engine and the model show in the composer, and change there. The header shows the mode.
+- The engine and the model show in the composer, and change there.
+- A message from this box makes a new chat and opens it in Chats.
+
+### New chat
+
+![Computer](screenshots/new-computer-light.webp) ![Phone](screenshots/new-phone-light.webp)
+
+- Chats > New chat opens a blank page at `#/chats/new`: the title "New chat", the engine and the mode under it, and the message box. It has no greeting, no suggestions and no widgets.
+- With no engine or no vault, the page names the missing step, as the home page does.
+- The page shares its unsent text with the home page, so a text never gets lost between them.
 
 ### A conversation at work
 

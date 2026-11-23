@@ -32,8 +32,6 @@ import { stateFaces, type Face } from "./visor-faces.ts";
 
 interface MainNavProps extends NavVisorInput {
   readonly current: Destination;
-  /** The home page, the New chat page of Chats, shows: the visor is the current button (#761). */
-  readonly homeShown: boolean;
   readonly isPhone: boolean;
   readonly onOpen: (destination: Destination) => void;
   /** A tap on the visor opens the home page (#761). */
@@ -56,7 +54,6 @@ export function MainNav(props: MainNavProps): ReactElement {
   const parts = navParts(useSyncExternalStore(onNavChoiceChange, navChoice), props.isPhone);
   const shownButton = currentNavButton(
     current,
-    props.homeShown,
     [...parts.scroll, ...parts.foot].map((destination) => destination.id),
   );
   const visor = navVisorState(props);

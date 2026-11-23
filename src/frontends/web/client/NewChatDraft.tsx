@@ -1,6 +1,7 @@
 /**
- * The Chats page before a chat exists: the greeting, or the missing setup step, and a message box.
- * The first message makes the chat, so an open page leaves no empty chat behind.
+ * A page before a chat exists, with a message box. The first message makes the chat, so an open page leaves no empty
+ * chat behind. Two pages use it (#1037): the home page, with the greeting and the widgets, and the blank New chat page
+ * of Chats.
  */
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import type { EffortLevel, EngineName, ModelAlias } from "../../../shared/engine-port.ts";
@@ -16,7 +17,7 @@ import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { goTo } from "./back-layers.ts";
 import { withFixRequest, withProjectMention } from "./mentions.ts";
 import { fillNewChat, newChatTextKey } from "./new-chat-text.ts";
-import { useWidgetFrames } from "./WidgetGrid.tsx";
+import type { WidgetFrames } from "./WidgetGrid.tsx";
 import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
 
@@ -40,26 +41,34 @@ interface ChatDefaults {
   readonly effort: EffortLevel;
 }
 
+/** The page that holds the message box. */
+export type DraftPage =
+  | {
+      /** The home page that the visor opens (#761): the greeting and the widgets. */
+      readonly kind: "home";
+      readonly widgets: WidgetFrames;
+      /** The ☰ menu with every page, or nothing on a computer (#1037). */
+      readonly menu: ReactNode;
+      /** The bell and, on a phone, the gear. */
+      readonly buttons: ReactNode;
+    }
+  | {
+      /** The blank New chat page of Chats (#1037). */
+      readonly kind: "new-chat";
+      readonly onShowList: () => void;
+      /** True when a chat in the list has an answer that the person has not read. */
+      readonly listHasUnread: boolean;
+    };
+
 interface NewChatDraftProps {
+  readonly page: DraftPage;
   readonly blocker: ChatBlocker | null;
   readonly voiceNotes: boolean;
-  readonly onShowList: () => void;
-  /** True when a chat in the list has an answer that the person has not read. */
-  readonly listHasUnread: boolean;
-  /** The bell and, on a phone, the gear: this page is the home page that the visor opens (#761). */
-  readonly homeButtons: ReactNode;
   /** Opens the chat that the first message made. */
   readonly onStarted: (chat: SessionRecord) => Promise<void>;
 }
 
-export function NewChatDraft({
-  blocker,
-  voiceNotes,
-  onShowList,
-  listHasUnread,
-  homeButtons,
-  onStarted,
-}: NewChatDraftProps): ReactElement {
+export function NewChatDraft({ page, blocker, voiceNotes, onStarted }: NewChatDraftProps): ReactElement {
   // Null until the settings answer: the chip must not name an engine, a model or an effort that Eva does not use.
   const [defaults, setDefaults] = useState<ChatDefaults | null>(null);
   // The person's own picks. Null: the one from the settings.
@@ -74,8 +83,6 @@ export function NewChatDraft({
   // The chat of a first message that failed to send. A retry sends into it, so no empty chat stays behind.
   const made = useRef<SessionRecord | null>(null);
   const showError = useShowError();
-  // The setup step and the greeting both show the widgets, so the page asks for them once.
-  const widgets = useWidgetFrames();
 
   useEffect(() => {
     let current = true;
@@ -161,33 +168,46 @@ export function NewChatDraft({
 
   return (
     <>
-      <div className="main-header chat-header">
-        <ShowListButton onClick={onShowList} unread={listHasUnread} />
-        <div className="header-text">
-          <h1>New chat</h1>
-          {draft !== null && <div className="sub">{chatSubtitle(draft, false)}</div>}
+      {page.kind === "home" ? (
+        <div className="main-header chat-header home-header">
+          {page.menu}
+          {/* The greeting below says hello. The page's name is for a screen reader only. */}
+          <h1 className="visually-hidden">Home</h1>
+          <div className="home-actions">
+            {page.widgets.frames.length > 0 && (
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Arrange the widgets"
+                data-tooltip="Arrange the widgets"
+                onClick={() => goTo(settingsHash({ section: "personalize", item: "widget-layout" }))}
+              >
+                <Icon name="tiles" />
+              </button>
+            )}
+            {page.buttons}
+          </div>
         </div>
-        <div className="home-actions">
-          {widgets.frames.length > 0 && (
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Arrange the widgets"
-              data-tooltip="Arrange the widgets"
-              onClick={() => goTo(settingsHash({ section: "personalize", item: "widget-layout" }))}
-            >
-              <Icon name="tiles" />
-            </button>
-          )}
-          {homeButtons}
+      ) : (
+        <div className="main-header chat-header">
+          <ShowListButton onClick={page.onShowList} unread={page.listHasUnread} />
+          <div className="header-text">
+            <h1>New chat</h1>
+            {draft !== null && <div className="sub">{chatSubtitle(draft, false)}</div>}
+          </div>
         </div>
-      </div>
+      )}
       <div className="branches">
-        <section className="branch" aria-label="New chat">
-          {blocker !== null ? (
-            <NewChatSetup blocker={blocker} widgets={widgets} />
+        <section className="branch" aria-label={page.kind === "home" ? "Home" : "New chat"}>
+          {page.kind === "home" ? (
+            blocker !== null ? (
+              <NewChatSetup blocker={blocker} widgets={page.widgets} />
+            ) : (
+              !sending && <NewChatGreeting onPick={(text) => void send(text)} widgets={page.widgets} />
+            )
           ) : (
-            !sending && <NewChatGreeting onPick={(text) => void send(text)} widgets={widgets} />
+            // The New chat page stays blank, ready to type. Only a missing setup step, which stops every chat, shows.
+            blocker !== null && <NewChatSetup blocker={blocker} />
           )}
           {sentText !== null && <UserMessage text={sentText} />}
           {draft !== null && (

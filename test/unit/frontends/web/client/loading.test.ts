@@ -92,6 +92,19 @@ describe("skeletons", () => {
     }
   });
 
+  test("the home page loads as its own page: the widgets and the message box, with no chat list (#1037)", () => {
+    const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: "home" }));
+    expect(markup).toContain("home-skeleton");
+    expect(markup).toContain("composer-box");
+    expect(markup).not.toContain("chat-list");
+    // The visor is the current button of the home page, as in the real navigation.
+    expect(markup).toMatch(/class="main-nav-visor"[^>]*aria-current="page"/);
+    // A phone's header also holds the ☰ menu and the gear, so the page does not shift when it loads.
+    const phone = renderToStaticMarkup(createElement(AppSkeleton, { page: "home", isPhone: true }));
+    expect(phone.match(/class="icon-button"/g)?.length).toBe(3);
+    expect(markup.match(/class="icon-button"/g)?.length).toBe(1);
+  });
+
   test("Eva's visor is in the row of her answer, so the chat CSS puts it at the bottom", () => {
     const markup = renderToStaticMarkup(createElement(AppSkeleton, { page: "chats" }));
     expect(markup).toMatch(

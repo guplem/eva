@@ -6,7 +6,7 @@
 import { Fragment, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Icon } from "./icons.tsx";
 import { navChoice, navParts } from "./nav-choice.ts";
-import { notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
+import { homePage, notificationCenter, type Destination, type NavEntry } from "./navigation.ts";
 import { settingsSections } from "./settings-routes.ts";
 import { inUseRow, statusRow } from "./project-format.ts";
 import { lifePages } from "./life-pages.ts";
@@ -309,19 +309,7 @@ function ConversationSkeleton(): ReactElement {
             </div>
           </Fragment>
         ))}
-        <div className="composer">
-          <div className="composer-box" {...copies(".composer-box")}>
-            <span className="skeleton-composer-text">
-              <Text width="96px" />
-            </span>
-            <div className="composer-row">
-              <Ghost className="icon composer-icon" />
-              <Ghost className="composer-chip" />
-              <span className="grow" />
-              <button className="send skeleton-ghost" disabled {...copies(".composer .send")} />
-            </div>
-          </div>
-        </div>
+        <ComposerSkeleton />
       </div>
     </div>
   );
@@ -581,6 +569,29 @@ function ChatHeaderSkeleton(): ReactElement {
   );
 }
 
+/** The header of the home page: no title on screen, and the bell at the right. A phone adds the ☰ and the gear (#1037). */
+function HomeHeaderSkeleton({ isPhone }: { readonly isPhone: boolean }): ReactElement {
+  return (
+    <div className="main-header chat-header home-header" {...copies(".main-header")}>
+      {isPhone && (
+        <button className="icon-button" disabled {...copies(".pages-menu-button")}>
+          <Ghost className="icon" />
+        </button>
+      )}
+      <div className="home-actions">
+        <button className="icon-button" disabled {...copies(".home-bell")}>
+          <Ghost className="icon" />
+        </button>
+        {isPhone && (
+          <button className="icon-button" disabled {...copies(".home-gear")}>
+            <Ghost className="icon" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** The details at the right of a chat, when the person keeps them shown. */
 function ChatPanelSkeleton(): ReactElement {
   return (
@@ -655,6 +666,25 @@ function SchedulesSkeleton(): ReactElement {
   );
 }
 
+/** The message box of a chat, and of the home page. */
+function ComposerSkeleton(): ReactElement {
+  return (
+    <div className="composer">
+      <div className="composer-box" {...copies(".composer-box")}>
+        <span className="skeleton-composer-text">
+          <Text width="96px" />
+        </span>
+        <div className="composer-row">
+          <Ghost className="icon composer-icon" />
+          <Ghost className="composer-chip" />
+          <span className="grow" />
+          <button className="send skeleton-ghost" disabled {...copies(".composer .send")} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The main navigation: the visor, a button for each destination, and Settings at the end. */
 function MainNavSkeleton({
   current,
@@ -684,7 +714,12 @@ function MainNavSkeleton({
   );
   return (
     <div className="main-nav">
-      <button className="main-nav-visor" disabled {...copies(".main-nav-visor")}>
+      <button
+        className="main-nav-visor"
+        disabled
+        aria-current={current === homePage ? "page" : undefined}
+        {...copies(".main-nav-visor")}
+      >
         <span className="nav-icon">
           <span className="mk skeleton-visor" />
         </span>
@@ -761,6 +796,16 @@ export function AppSkeleton({
         {page === "files" && <FilesSkeleton />}
         {page === "schedules" && <SchedulesSkeleton />}
         {page === "settings" && <SettingsSkeleton />}
+        {page === homePage && (
+          // The home page is a page of its own, with no chat list (#1037): the widgets, then the message box.
+          <div className="main">
+            <HomeHeaderSkeleton isPhone={isPhone} />
+            <div className="page-skeleton home-skeleton">
+              <CardsSkeleton />
+            </div>
+            <ComposerSkeleton />
+          </div>
+        )}
         {page === notificationCenter && (
           <div className="main">
             <div className="page-skeleton">

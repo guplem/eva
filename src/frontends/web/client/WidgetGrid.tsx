@@ -26,6 +26,7 @@ import { settingsHash } from "./settings-routes.ts";
 import { contractColours, frameAddress, onReconnect, pageScheme, refreshDue } from "./widget-frames.ts";
 import { layoutWidgetsOfFrames } from "./widget-layout-draft.ts";
 import { fillNewChat } from "./new-chat-text.ts";
+import { homeAddress } from "./navigation.ts";
 import {
   askRequestOf,
   checkAsk,
@@ -289,7 +290,8 @@ async function answerAsk(
   if (request.ask === "chat") {
     closeFull();
     const text = request.text as string;
-    fillNewChat((typed) => textAfterTyped(typed, text), frame.name);
+    // The widget shows on the home page, so its text waits in the box of that page.
+    fillNewChat((typed) => textAfterTyped(typed, text), frame.name, homeAddress);
     return { ok: true };
   }
   if (request.ask === "open") {

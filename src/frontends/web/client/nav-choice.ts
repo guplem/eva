@@ -131,6 +131,14 @@ export function shownDestinations(choice: NavChoice, isPhone: boolean): NavEntry
 }
 
 /**
+ * The pages of the ☰ menu of a phone's home page (#1037): every page, so a page that the tab bar hides still opens.
+ * The tabs come first, in the person's order, then the other pages in the default order.
+ */
+export function menuDestinations(choice: NavChoice): NavEntry[] {
+  return rowOrder(choice, "phone").flatMap((id) => destinations.filter((destination) => destination.id === id));
+}
+
+/**
  * The buttons of the part that scrolls, and of the foot. A computer keeps Settings at the foot of the rail, so a low
  * window still shows it (#911). A phone has no foot: Settings takes the place that the person chose (#1034).
  */

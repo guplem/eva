@@ -30,7 +30,13 @@ export type NavEntryId = NavEntry["id"];
  */
 export const notificationCenter = "notifications";
 
-export type Destination = NavEntryId | typeof notificationCenter;
+/**
+ * The home page has an address but no button in the main navigation: Eva's face opens it (#761). It is a page of its
+ * own, apart from the New chat page of Chats (#1037).
+ */
+export const homePage = "home";
+
+export type Destination = NavEntryId | typeof notificationCenter | typeof homePage;
 
 /** A badge of the main navigation. The visible part is only the number: the hidden words say what it counts. */
 export interface NavBadge {
@@ -85,6 +91,7 @@ export function destinationOf(hash: string): Destination | null {
   const found = /^#\/([^/]+)(\/|$)/.exec(hash)?.[1];
   const name = found === undefined ? undefined : currentLifeKindName(found);
   if (name === notificationCenter) return notificationCenter;
+  if (name === homePage) return homePage;
   return destinations.find((destination) => destination.id === name)?.id ?? "chats";
 }
 
@@ -109,20 +116,19 @@ export function assistantChatAddressOf(chatId: string | null): string {
   return chatId === null ? addressOf("chats") : `${addressOf("chats")}/${encodeURIComponent(chatId)}`;
 }
 
-/** The home page that the visor opens: the New chat page, with Eva and her widgets (#761). */
-export const homeAddress = assistantChatAddressOf(newChatPageId);
+/** The home page that the visor opens, with Eva's greeting and her widgets (#761). */
+export const homeAddress = addressOf(homePage);
 
 /**
  * The button of the main navigation that shows as the current page. The home page belongs to the
- * visor, not to Chats. The notification center has no button.
+ * visor. The notification center has no button.
  */
 export function currentNavButton(
   current: Destination,
-  homeShown: boolean,
   shown: readonly NavEntryId[] = destinations.map((destination) => destination.id),
 ): NavEntryId | "visor" | null {
   if (current === notificationCenter) return null;
-  if (current === "chats" && homeShown) return "visor";
+  if (current === homePage) return "visor";
   // A page that the person hid from the navigation still opens from a link, with no button to mark.
   return shown.includes(current) ? current : null;
 }

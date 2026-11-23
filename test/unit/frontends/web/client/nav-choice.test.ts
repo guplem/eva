@@ -4,6 +4,7 @@ import {
   faceFixedReason,
   isFixedEntry,
   maxPhoneEntries,
+  menuDestinations,
   moved,
   navChoice,
   navChoiceKey,
@@ -349,5 +350,20 @@ describe("two tabs of one browser (#911)", () => {
     expect(navChoice()).toEqual(other);
     stop();
     saveNavChoice(defaultNavChoice);
+  });
+});
+
+describe("menuDestinations (#1037)", () => {
+  test("the menu of the home page lists every page, also the pages that the tab bar hides", () => {
+    const ids = menuDestinations(defaultNavChoice).map((destination) => destination.id);
+    expect([...ids].sort()).toEqual(destinations.map((destination) => destination.id).sort());
+    expect(ids).toContain("schedules");
+  });
+
+  test("the tabs come first, in the person's order, then the other pages", () => {
+    const choice = { ...defaultNavChoice, phone: ["schedules", "chats"] as const };
+    const ids = menuDestinations(choice).map((destination) => destination.id);
+    expect(ids.slice(0, 2)).toEqual(["schedules", "chats"]);
+    expect(ids).toHaveLength(destinations.length);
   });
 });

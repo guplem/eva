@@ -766,7 +766,9 @@ test("a send glides the chat down to the new bubble, and the bubble lands above 
   expect((bubble?.y ?? 0) + (bubble?.height ?? 0)).toBeLessThanOrEqual((composer?.y ?? 0) + 1);
 });
 
-test("a new chat with no engine says what is missing, locks the box, and unlocks with no reload", async ({ page }) => {
+test("with no engine, the home page and the New chat page say what is missing, lock the box, and unlock with no reload", async ({
+  page,
+}) => {
   // The demo engine has a login, so the browser plays a machine without one.
   let blocker: string | null = "engine";
   await page.route("**/api/status", async (route) => {
@@ -775,9 +777,13 @@ test("a new chat with no engine says what is missing, locks the box, and unlocks
     await route.fulfill({ response, json: { ...status, chatBlocker: blocker } });
   });
   await logIn(page);
-  await openList(page);
-  await page.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  // The blank New chat page shows the step too, with no widgets (#1037).
+  await clickNewChat(page);
+  await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
+  await expect(page.getByLabel("Message").first()).toBeDisabled();
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page).toHaveURL(/#\/home$/);
   await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
   // The demo has widgets on, so the step shows in the one-line form of the day panel, above them (#972).
@@ -826,12 +832,13 @@ async function hideOldChats(page: Page): Promise<() => number> {
   return () => made;
 }
 
-test("with no chat yet, the page greets the person, and the first message makes the chat", async ({ page }) => {
+test("with no chat yet, Chats shows the blank New chat page, and the first message makes the chat", async ({
+  page,
+}) => {
   const made = await hideOldChats(page);
-  await showNoWidgets(page);
   await logIn(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
-  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "New chat", exact: true }).getByLabel("Message")).toBeVisible();
   await expect(page.getByText("No chats yet.")).toHaveCount(0);
   // An open page makes no empty chat.
   expect(made()).toBe(0);
@@ -3049,7 +3056,7 @@ test("Settings: the back arrow returns to the page before, so Back then leaves S
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Settings");
   await page.goBack();
   // On a phone, Settings opens from the home page, so Back returns there (#761).
-  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/chats/new`);
+  expect(page.url()).toBe(test.info().project.name === "desktop" ? before : `${before}#/home`);
 });
 
 test("on a short phone, a long project list scrolls, and no card cuts its text", async ({ page }) => {
@@ -4126,24 +4133,21 @@ test("the main navigation opens each destination at its own address, and the bac
     ["Projects", "#/projects"],
     ["Cases", "#/cases"],
     ["Chats", "#/chats"],
-    // The visor opens the home page, the New chat page of Chats (#761).
-    ["Eva: ", "#/chats/new"],
+    // The visor opens the home page, a page of its own (#761, #1037).
+    ["Eva: ", "#/home"],
   ] as const) {
     await nav.getByRole("button", { name }).click();
     await expect(nav.getByRole("button", { name })).toHaveAttribute("aria-current", "page");
     await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
     expect(new URL(page.url()).hash).toBe(address);
   }
-  // On the home page, Chats is not the current button. A computer leaves for the chats. A phone
-  // shows the chat list, as a tap on Chats does in Chats. Back then returns to the home page.
+  // The home page is not a page of Chats, so a tap on Chats leaves it for the chats. Back then returns to it.
   await nav.getByRole("button", { name: "Chats" }).click();
-  if (test.info().project.name === "desktop") {
-    await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
-    expect(new URL(page.url()).hash).toBe("#/chats");
-  } else await expect(page.getByRole("navigation", { name: "Chats" })).toBeVisible();
+  await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
+  expect(new URL(page.url()).hash).toBe("#/chats");
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Eva: " })).toHaveAttribute("aria-current", "page");
-  expect(new URL(page.url()).hash).toBe("#/chats/new");
+  expect(new URL(page.url()).hash).toBe("#/home");
   await page.goBack();
   await expect(nav.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
   await page.goBack();
@@ -4290,7 +4294,7 @@ test("the nav visor names the approval that waits, and a tap opens the home page
   await visorButton.hover();
   await expect(page.getByRole("tooltip")).toHaveText("1 approval waits for you");
   await visorButton.click();
-  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(page).toHaveURL(/#\/home$/);
   await expect(visorButton).toHaveAttribute("aria-current", "page");
   // The tap also plays a playful face for a moment, then the face of the main state comes back.
   await expect(visor).not.toHaveClass(/e-firm/);
@@ -4307,8 +4311,11 @@ test("the visor opens the home page from a chat, and the home page has a bell an
   await expect(page).toHaveURL(/#\/chats\/[0-9a-f-]{36}$/);
   const title = page.getByRole("heading", { level: 1 });
   await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
-  await expect(page).toHaveURL(/#\/chats\/new$/);
-  await expect(title).toHaveText("New chat");
+  await expect(page).toHaveURL(/#\/home$/);
+  // The home page is not the New chat page (#1037): its header has no title on screen and no engine line.
+  await expect(title).toHaveText("Home");
+  await expect(title).toHaveClass(/visually-hidden/);
+  await expect(page.locator(".main-header .sub")).toHaveCount(0);
   const buttons = page.locator(".home-buttons");
   const bell = buttons.getByRole("button", { name: /^Notifications/ });
   await expect(bell).toBeVisible();
@@ -4325,10 +4332,80 @@ test("the visor opens the home page from a chat, and the home page has a bell an
       page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Settings/ }),
     ).toBeVisible();
   } else await expect(gear).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: /^Chats/ })
+    .click();
   await openList(page);
   await expect(
     page.getByRole("navigation", { name: "Chats" }).getByRole("button", { name: chat }).first(),
   ).toBeVisible();
+});
+
+test("a message from the home page starts a chat and opens it in Chats (#1037)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page).toHaveURL(/#\/home$/);
+  const home = page.getByRole("region", { name: "Home", exact: true });
+  const composer = home.getByRole("textbox", { name: "Message" });
+  const text = "A short question from the home page";
+  await composer.fill(text);
+  await composer.press("Enter");
+  await expect(page).toHaveURL(/#\/chats\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Chats/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.locator(".message.user").first()).toContainText(text);
+});
+
+test("the New chat page is blank: no greeting and no widgets, only the message box (#1037)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  const region = page.getByRole("region", { name: "New chat", exact: true });
+  await expect(region.getByRole("textbox", { name: "Message" })).toBeVisible();
+  await expect(region.locator(".widget-grid, .new-chat, .suggestions")).toHaveCount(0);
+  // The New chat page belongs to Chats, not to Eva's face.
+  const nav = page.getByRole("navigation", { name: "Main" });
+  await expect(nav.locator(".main-nav-visor")).not.toHaveAttribute("aria-current", "page");
+});
+
+test("on a phone, the ☰ of the home page lists every page, and a tap opens one (#1037)", async ({ page }) => {
+  await logIn(page);
+  await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
+  await expect(page).toHaveURL(/#\/home$/);
+  const menuButton = page.getByRole("button", { name: "All pages" });
+  if (test.info().project.name === "desktop") {
+    // A computer's rail shows every page, so its home page has no menu.
+    await expect(menuButton).toHaveCount(0);
+    return;
+  }
+  await menuButton.click();
+  const menu = page.getByRole("menu", { name: "Pages" });
+  for (const name of [
+    "Chats",
+    "Projects",
+    "Files",
+    "Schedules",
+    "Cases",
+    "People",
+    "Inventory",
+    "Pets",
+    "Periods",
+    "Settings",
+  ])
+    await expect(menu.getByRole("menuitem", { name, exact: true })).toBeVisible();
+  // Schedules has no tab on a phone by default, so the menu is its way in.
+  await menu.getByRole("menuitem", { name: "Schedules", exact: true }).click();
+  await expect(page).toHaveURL(/#\/schedules$/);
+  // In Chats, the ☰ still shows the chat list.
+  await page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("button", { name: /^Chats/ })
+    .click();
+  await expect(page.getByRole("button", { name: "All pages" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Show the list/ })).toBeVisible();
 });
 
 test("the nav visor wears the Project eyes in Projects on a phone only, even on a special day", async ({ page }) => {
@@ -4427,7 +4504,6 @@ test("a tap on Chats while a chat is open shows the list on a phone and a new ch
 });
 
 test("the New chat button opens the New chat page, and only the first message makes the chat", async ({ page }) => {
-  await showNoWidgets(page);
   await logIn(page);
   await newChat(page);
   let made = 0;
@@ -4438,7 +4514,8 @@ test("the New chat button opens the New chat page, and only the first message ma
   const chats = page.locator(".sidebar .list-item");
   const before = await chats.count();
   await clickNewChat(page);
-  await expect(page.getByRole("group", { name: "Suggestions" })).toBeVisible();
+  // The page is blank, ready to type (#1037).
+  await expect(page.getByRole("group", { name: "Suggestions" })).toHaveCount(0);
   // A second tap leaves no empty chat either.
   await clickNewChat(page);
   await page.reload();
@@ -5111,7 +5188,7 @@ async function routeProblems(
 /** Opens the home page with the visor, and returns its bell (#761). */
 async function openHomeBell(page: Page): Promise<Locator> {
   await page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor").click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+  await expect(page).toHaveURL(/#\/home$/);
   return page.locator(".home-buttons").getByRole("button", { name: /^Notifications/ });
 }
 

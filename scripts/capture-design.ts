@@ -229,11 +229,11 @@ const scenes: readonly Scene[] = [
     },
   },
   {
-    name: "new",
-    // The home page that the visor opens: the New chat page, with the bell at its top right (#761).
+    name: "home",
+    // The home page that the visor opens, with the bell at its top right (#761). It is apart from the New chat page (#1037).
     // The address, not a tap: a tap would show a random playful face on the visor.
     show: async (page) => {
-      await openAddress(page, homeAddress, "New chat");
+      await openAddress(page, homeAddress, "Home");
       await page.locator(".home-buttons").waitFor();
       await page.locator(".new-chat").waitFor();
       // The demo approved a Calendar, the habits widget, a Cases widget and a Summary in the header slot:
@@ -243,6 +243,14 @@ const scenes: readonly Scene[] = [
         .frameLocator('.widget-grid iframe[aria-label="Habits"]')
         .locator('.widget[data-ready="true"]')
         .waitFor();
+    },
+  },
+  {
+    name: "new",
+    // The blank New chat page of Chats (#1037): the title, the engine line and the message box.
+    show: async (page) => {
+      await openAddress(page, "#/chats/new", "New chat");
+      await page.locator(".composer-box").waitFor();
     },
   },
   { name: "chat", show: (page, _view, demo) => openChat(page, demo.weekChat) },
@@ -341,7 +349,7 @@ const scenes: readonly Scene[] = [
       );
       await page.reload();
       // The problems show in the notification center, behind the bell of the home page (#761).
-      await openAddress(page, homeAddress, "New chat");
+      await openAddress(page, homeAddress, "Home");
       await page
         .locator(".home-buttons")
         .getByRole("button", { name: /^Notifications/ })

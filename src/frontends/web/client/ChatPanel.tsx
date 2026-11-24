@@ -12,7 +12,7 @@ import { BranchChoiceDialog, useFinishBranch, type BranchRequest } from "./Branc
 import { CopyButton } from "./CopyButton.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { ListSkeleton } from "./Loading.tsx";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ChatFacts, type SessionRecord } from "./api.ts";
 import {
   contextFigure,
   contextSections,
@@ -76,7 +76,7 @@ export interface ChatProps {
   /** The branch that the page shows. "Fork this chat" forks it. */
   readonly shownId?: string | null;
   /** Every chat, so the details can link the chats that one continues from a summary. */
-  readonly sessions: readonly SessionRecord[];
+  readonly sessions: readonly ChatFacts[];
   /** The type of the chat's project, so a chat in a project folder gets its name (#768). */
   readonly projectType?: ProjectType;
 }
@@ -234,7 +234,7 @@ function ChatContext({ sessionId, answers }: { readonly sessionId: string; reado
 }
 
 /** The address of a chat opens it in its own view, whatever its mode. */
-function ChatLink({ chat }: { readonly chat: SessionRecord }): ReactElement {
+function ChatLink({ chat }: { readonly chat: Pick<SessionRecord, "id" | "title"> }): ReactElement {
   return <a href={`#/chat/${encodeURIComponent(chat.id)}`}>{chat.title}</a>;
 }
 

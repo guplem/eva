@@ -53,7 +53,7 @@ import type { ScheduleList, ScheduleView } from "../../../core/schedules/schedul
 import type { PendingApproval, TaskSnapshot, TurnSnapshot } from "../../../core/sessions/session-manager.ts";
 import type { SessionRecord } from "../../../core/sessions/session-store.ts";
 import type { UnsentTextAnswer, UnsentTextEvent, UnsentTexts } from "../../../core/sessions/unsent-texts.ts";
-import type { ListedSession } from "../../api/session-list.ts";
+import type { ListedSession, OpenedSession } from "../../api/session-list.ts";
 import type { EngineUpdateStatus } from "../../../core/updates/engine-update.ts";
 import type { ChangelogEntry } from "../../../core/updates/release-policy.ts";
 import type { UpdateStatus } from "../../../core/updates/updater.ts";
@@ -88,6 +88,8 @@ export type { EventSubscription };
 
 /** A template part of the vault, such as a text action, and how it compares with this Eva's version. */
 export type TemplatePartView = TemplatePart;
+/** The facts of a chat with no turns: a chat of the list or an open chat (#1046). */
+export type ChatFacts = Omit<SessionRecord, "turns">;
 export type { ComposerMenuItems, SavedPrompt, TextAction };
 
 export type { PersonalFactsView, VaultStructureView };
@@ -143,6 +145,7 @@ export type {
   ProgressStep,
   SessionEvent,
   ListedSession,
+  OpenedSession,
   SessionRecord,
   SetupItem,
   SetupReport,
@@ -226,6 +229,9 @@ export const api = {
     request("POST", `/api/devices/requests/${encodeURIComponent(id)}`, { answer }),
   status: (): Promise<EvaStatus> => request("GET", "/api/status", undefined, { limit: quickRead }),
   sessions: (): Promise<ListedSession[]> => request("GET", "/api/sessions", undefined, { limit: quickRead }),
+  /** One chat with its turns. A long chat is large, so the read has no quick limit (#1046). */
+  session: (sessionId: string): Promise<OpenedSession> =>
+    request("GET", `/api/sessions/${encodeURIComponent(sessionId)}`),
   /** Each part of the chat's context that the agent reads before the conversation, such as its prompt. */
   chatContext: (sessionId: string): Promise<ContextPart[]> =>
     request("GET", `/api/sessions/${encodeURIComponent(sessionId)}/context`),

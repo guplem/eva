@@ -4,7 +4,7 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ChatFacts, type OpenedSession, type SessionRecord } from "./api.ts";
 import {
   branchMap,
   branchNames,
@@ -42,7 +42,7 @@ export interface ShownBranch {
  * A deleted branch gives its place to the fork in `heirs` (issue 647), also when it was the first branch.
  */
 export function useShownBranch(
-  tree: readonly SessionRecord[],
+  tree: readonly OpenedSession[],
   linkedId: string | null = null,
   heirs: LiveState["heirs"] = {},
 ): ShownBranch {
@@ -99,7 +99,7 @@ export function useShownBranch(
  * person did not see. The shown branch is never unread: the page shows its answers.
  */
 export function useBranchStates(
-  tree: readonly SessionRecord[],
+  tree: readonly OpenedSession[],
   shownId: string | null,
   approvals: readonly { readonly sessionId: string }[],
   live: LiveState,
@@ -242,7 +242,7 @@ function scrollToEnd(row: HTMLElement): void {
  * With no fork, the element keeps the browser's menu, as it has no Eva action.
  */
 export function useForkMenu(
-  fork: SessionRecord | undefined,
+  fork: ChatFacts | undefined,
   forkName: string,
   onOpen?: () => void,
   turnItems?: readonly MenuItem[],

@@ -799,8 +799,8 @@ describe("routes", () => {
     expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "text", "turn_finished"]);
     // The page knows its own message in the turn by the id that it sent (#804).
     expect(events.find((event) => event.kind === "turn_started")).toMatchObject({ message: { clientIds: ["page-1"] } });
-    const listed = await json<{ id: string; turns: unknown[] }[]>(await call("/api/sessions"));
-    expect(listed.find((entry) => entry.id === session.id)?.turns).toHaveLength(1);
+    const listed = await json<{ id: string; turnCount: number }[]>(await call("/api/sessions"));
+    expect(listed.find((entry) => entry.id === session.id)?.turnCount).toBe(1);
     // A page that lost the answer sends the message again: Eva says that she has it, and runs nothing (#945).
     const again = await call(`/api/sessions/${session.id}/messages`, {
       method: "POST",
@@ -902,15 +902,22 @@ describe("routes", () => {
     expect(await runningOf()).toBe(false);
   });
 
-  test("the session list sends the steps of the recent turns only, and the store keeps them all", async () => {
+  test("one chat sends the steps of its recent turns only, and the store keeps them all", async () => {
     const session = await json<{ id: string }>(
       await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
     );
     for (let count = 0; count <= recentTurnsWithSteps; count += 1) await eva.sessions.send(session.id, "go");
-    const listed = (await json<{ id: string; turns: { steps: unknown[] }[] }[]>(await call("/api/sessions"))).find(
-      (entry) => entry.id === session.id,
+    const opened = await json<{ id: string; turns: { steps: unknown[] }[]; turnsKey: string }>(
+      await call(`/api/sessions/${session.id}`),
     );
-    expect(listed?.turns.map((turn) => turn.steps.length)).toEqual([0, ...Array<number>(recentTurnsWithSteps).fill(1)]);
+    expect(opened.turns.map((turn) => turn.steps.length)).toEqual([0, ...Array<number>(recentTurnsWithSteps).fill(1)]);
+    // The list sends no turns, so a long history keeps it small (#1046). Its key tells the page to read the chat again.
+    const listed = (await json<Record<string, unknown>[]>(await call("/api/sessions"))).find(
+      (entry) => entry["id"] === session.id,
+    );
+    expect(listed).not.toHaveProperty("turns");
+    expect(listed?.["turnsKey"]).toBe(opened.turnsKey);
+    expect((await call("/api/sessions/no-such-chat")).status).toBe(404);
     expect(eva.sessions.get(session.id).turns[0]?.steps).toHaveLength(1);
   });
 

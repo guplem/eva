@@ -5,7 +5,7 @@
  * column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
-import { api, type SessionRecord } from "./api.ts";
+import { api, type ChatFacts } from "./api.ts";
 import { chatStateLabels, type ChatState } from "./chat-list.ts";
 import { ChatInfoSheet, chatPanelId, type ChatProps } from "./ChatPanel.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -73,7 +73,7 @@ export function chatListItems(
  * "Archive" for a chat in the list, "Unarchive" for an archived one. `onDone` gets the changed chat.
  * A failure shows as a toast.
  */
-export function useArchiveItem(onDone: (chat: SessionRecord) => Promise<void>): (chat: SessionRecord) => MenuItem {
+export function useArchiveItem(onDone: (chat: ChatFacts) => Promise<void>): (chat: ChatFacts) => MenuItem {
   const showError = useShowError();
   return (chat) => ({
     label: chat.archived ? "Unarchive" : "Archive",
@@ -107,7 +107,7 @@ export function useIsPhone(): boolean {
 }
 
 interface ChatHeaderProps {
-  readonly chat: SessionRecord;
+  readonly chat: ChatFacts;
   /** What the details sheet shows. */
   readonly details: ChatProps;
   readonly subtitle: ReactNode;
@@ -125,7 +125,7 @@ interface ChatHeaderProps {
   /** An action that the header starts with, asked from the chat's context menu in a list. */
   readonly startWith?: ChatAction | null;
   /** Given when the chat's list keeps archived chats apart: the menu then has Archive, and this runs after it. */
-  readonly onArchived?: (chat: SessionRecord) => Promise<void>;
+  readonly onArchived?: (chat: ChatFacts) => Promise<void>;
 }
 
 export function ChatHeader({
@@ -389,7 +389,7 @@ export function DeleteQuestion({
   onKeep,
   onChanged,
 }: {
-  readonly chat: SessionRecord;
+  readonly chat: ChatFacts;
   /** The question names a branch, such as "Fork 1", and not the whole chat. */
   readonly fork?: string | false;
   readonly onKeep: () => void;

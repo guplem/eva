@@ -139,7 +139,7 @@ export function branchForkPoint(
  * chat that continues one of the branches. Only the new chat stores the link.
  */
 export function chatLinks<Chat extends Pick<SessionRecord, "id" | "continuedFrom">>(
-  tree: readonly Chat[],
+  tree: readonly Pick<SessionRecord, "id" | "continuedFrom">[],
   sessions: readonly Chat[],
 ): { from: Chat | null; next: Chat[] } {
   const fromId = tree[0]?.continuedFrom ?? null;

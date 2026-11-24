@@ -36,21 +36,41 @@ jobs:
       - id: diff
         run: bun run scripts/ci-changes.ts
 
-  checks:
+  # Ubuntu always runs in full: the format and public-content checks read the docs too.
+  checks-ubuntu:
+    name: checks (ubuntu-latest)
+    runs-on: ubuntu-latest
+    # A test file that blocks its worker stops no timer, so the 30-second test timeout does not end it
+    # (#574, #742). `test/support/file-watchdog.ts` ends such a worker after 10 minutes and names its
+    # file. This limit stops anything else, instead of 6 hours.
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      # One umbrella script: format, lint, types, architecture, dead code, public content, the tests
+      # with coverage, and their time limit. Lefthook runs all but the tests (`check:static`) before each push.
+      - run: bun run check
+
+  # The static checks and the coverage give the same result on every system, so Windows runs only the
+  # tests: those are what can behave differently there (lessons 76 to 83). Git is slow on a Windows
+  # runner, and one job took 9 to 12 minutes, so 3 jobs share the test files (#1043).
+  windows-tests:
     needs: changes
     if: ${{ !cancelled() }}
+    name: windows tests (${{ matrix.shard }}/3)
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    # A full run takes about 14 to 20 minutes. A test file that blocks its worker stops no timer, so the
-    # 30-second test timeout does not end it (#574, #742). `test/support/file-watchdog.ts` ends such a
-    # worker after 10 minutes and names its file. This limit stops anything else, instead of 6 hours.
+        shard: [1, 2, 3]
+    runs-on: windows-latest
     timeout-minutes: 35
     env:
-      # Ubuntu always runs in full: the format and public-content checks read the docs too.
-      RUN_CODE_CHECKS: ${{ matrix.os == 'ubuntu-latest' || needs.changes.outputs.code_changed != 'false' }}
+      RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: actions/checkout@v4
@@ -62,22 +82,38 @@ jobs:
           bun-version: 1.4.4
       - if: env.RUN_CODE_CHECKS == 'true'
         run: bun install --frozen-lockfile
-      # One umbrella script: format, lint, types, architecture, dead code, public content, and the
-      # tests with coverage. Lefthook runs all but the tests (`check:static`) before each push.
-      - if: runner.os == 'Linux'
-        run: bun run check
-      # The static checks and the coverage give the same result on every system, so Windows runs
-      # only the tests: those are what can behave differently there (lessons 76 to 83).
-      - if: runner.os == 'Windows' && env.RUN_CODE_CHECKS == 'true'
-        run: bun run test
+      # `test/windows-timings.json` balances the shards by the time of each file on Windows.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        run: bun run test:windows-shard --shard=${{ matrix.shard }}/3
 
-  web-ui:
+  # The ruleset requires `checks (windows-latest)`, the job that once ran every Windows test. It now
+  # reports the result of the shards. A skipped or failed shard fails it.
+  checks-windows:
+    name: checks (windows-latest)
+    needs: windows-tests
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULT: ${{ needs.windows-tests.result }}
+        run: |
+          if [ "$RESULT" != success ]; then echo "A Windows test job ended with: $RESULT"; exit 1; fi
+
+  # Browser tests of the web UI, at desktop size and at 375 px. In one job they took about 19 minutes,
+  # so 4 jobs share them (#1043). Each job starts its own demo server.
+  e2e:
     needs: changes
     if: ${{ !cancelled() }}
+    name: e2e (${{ matrix.shard }}/4)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     runs-on: ubuntu-latest
     # Each slow step has its own limit. The browser install takes about 10 minutes on some runners, and
     # it must not use up the time of the tests. This limit only stops a runner that hangs for 6 hours.
-    timeout-minutes: 50
+    timeout-minutes: 40
     env:
       RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
     steps:
@@ -108,22 +144,44 @@ jobs:
         if: env.RUN_CODE_CHECKS == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         timeout-minutes: 20
         run: bunx playwright install-deps chromium
-      # The widget template runs its own check, against the contract of this commit (#688). So a change
-      # that breaks a new widget fails here first. `--ignore-scripts`: its `prepare` would install its git
-      # hooks in place of Eva's.
+      # A stuck page must not hold the runner.
+      - if: env.RUN_CODE_CHECKS == 'true'
+        timeout-minutes: 20
+        run: bun run test:e2e --shard=${{ matrix.shard }}/4
+      # A failure that only CI shows needs the browser trace of the failed test to be understood.
+      - if: failure() && env.RUN_CODE_CHECKS == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-traces-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+
+  # The widget template runs its own check, against the contract of this commit (#688). So a change
+  # that breaks a new widget fails here first.
+  widget-template:
+    needs: changes
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      RUN_CODE_CHECKS: ${{ needs.changes.outputs.code_changed != 'false' }}
+    steps:
+      - if: env.RUN_CODE_CHECKS == 'true'
+        uses: actions/checkout@v4
       # The Node.js of the template's own CI, whose test runner reads a glob.
       - if: env.RUN_CODE_CHECKS == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      # `--ignore-scripts`: its `prepare` would install its git hooks in place of Eva's.
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         run: npm ci --ignore-scripts
-      # The template can pin another Playwright version than Eva. Then it needs its own browser build.
+      # The template can pin another Playwright version than Eva, so it installs its own browser build.
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         timeout-minutes: 20
-        run: npx playwright install chromium
+        run: npx playwright install --with-deps chromium
       - if: env.RUN_CODE_CHECKS == 'true'
         working-directory: templates/widget
         timeout-minutes: 10
@@ -137,18 +195,21 @@ jobs:
         working-directory: templates/widget
         timeout-minutes: 5
         run: uv run .pskill/pskill.py validate
-      # Browser tests of the web UI, at desktop size and at 375 px. They take about 14 minutes.
-      # A stuck page must not hold the runner.
-      - if: env.RUN_CODE_CHECKS == 'true'
-        timeout-minutes: 25
-        run: bun run test:e2e
-      # A failure that only CI shows needs the browser trace of the failed test to be understood.
-      - if: failure() && env.RUN_CODE_CHECKS == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-traces
-          path: test-results/
-          retention-days: 7
+
+  # The ruleset requires `web-ui`, the job that once ran all of the above. It now reports their result.
+  # A skipped or failed job fails it, so a required check never passes with nothing run.
+  web-ui:
+    needs: [e2e, widget-template]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ needs.e2e.result }} ${{ needs.widget-template.result }}
+        run: |
+          for result in $RESULTS; do
+            if [ "$result" != success ]; then echo "A job of the web UI ended with: $result"; exit 1; fi
+          done
 
   # The single executable, started the way a new person starts it.
   package:

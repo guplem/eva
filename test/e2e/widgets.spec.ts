@@ -481,6 +481,8 @@ test("a narrow window shrinks the header slot, then shows it as the first card o
   page,
 }) => {
   test.skip(test.info().project.name === "phone", "The break points are widths of a computer window.");
+  // An ordinary day: a special day, such as a full moon, has a longer greeting that takes two lines.
+  await page.clock.setFixedTime(new Date("2026-07-15T12:00:00"));
   await logIn(page);
   await defaultSlot(page);
   await page.goto("/#/home");

@@ -105,7 +105,7 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 
 ## The front ends
 
-**The local API** listens on `127.0.0.1` only, on port 7420 by default. It serves HTTP for commands, a WebSocket for the events, and the web app. Each request must have the right `Host` and `Origin`. The terminal commands, such as `eva chat` and `eva status`, use this API too.
+**The local API** listens on `127.0.0.1` only, on port 7420 by default. It serves HTTP for commands, a WebSocket for the events, and the web app. It sends the files of the web app compressed with gzip. The browser keeps each file with a hash in its name until an update, so a slow network loads the app fast after the first visit. Each request must have the right `Host` and `Origin`. The terminal commands, such as `eva chat` and `eva status`, use this API too.
 
 **The web page** reaches the local API through `tailscale serve`. Tailscale makes the address work only on your own devices. Eva never uses a public tunnel. A new browser logs in with the token from `secrets.json`, or with a device login that you allow in Telegram, the terminal or another logged-in page. See [Logging in to the web page](reference.md#logging-in-to-the-web-page).
 

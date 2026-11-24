@@ -39,6 +39,7 @@ import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import { serviceWorkerScript } from "../web/service-worker-script.ts";
+import { bundledWebRoutes } from "./web-bundle-routes.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { currentLifeKindName, isLifeKind } from "../../shared/life-kinds.ts";
@@ -446,13 +447,15 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       if (deviceToken !== null && !options.eva.deviceLogins.isValidToken(deviceToken)) socket.close();
     }
   });
+  const webRoutes = bundledWebRoutes(webPage);
   const server: Server<SocketData> = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
     // The page, its bundled files and the icons hold no data, so they load before the login. The
     // bundle gives the manifest a hashed path but leaves its icon paths as written, so those get fixed routes.
+    // The built executable serves the page's files from its own routes, compressed and cached (#1042).
     routes: {
-      "/": webPage,
+      ...(webRoutes ?? { "/": webPage }),
       "/icon.svg": staticFile(iconSvg, "image/svg+xml"),
       "/icon-192.png": staticFile(icon192, "image/png"),
       "/icon-512.png": staticFile(icon512, "image/png"),

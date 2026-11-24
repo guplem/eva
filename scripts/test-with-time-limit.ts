@@ -15,11 +15,12 @@ interface SlowFile {
 }
 
 /**
- * The slowest file on Linux took 31 s, and on a Windows runner 334 s, where each git process is
- * slow. A Windows file can take 40% longer on a slow runner, so its limit leaves that much room.
+ * The slowest file took 31 s on a Linux runner, and 334 s on a Windows runner, where each git
+ * process is slow. Each limit leaves room for a slower runner or laptop, so the check does not
+ * fail by chance.
  */
 export function fileLimitMs(platform: NodeJS.Platform): number {
-  return platform === "win32" ? 450_000 : 40_000;
+  return platform === "win32" ? 450_000 : 60_000;
 }
 
 export function filesOverLimit(timings: FileTimings, limitMs: number): SlowFile[] {

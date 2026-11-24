@@ -16,14 +16,14 @@
     "test/unit/core/composer-menu/composer-menu.test.ts": 93,
     "test/unit/core/engine-install/engine-install.test.ts": 309,
     "test/unit/core/engine-install/voice-install.test.ts": 110,
-    "test/unit/core/eva-alerts.test.ts": 45000,
-    "test/unit/core/eva-background-and-updates.test.ts": 45000,
-    "test/unit/core/eva-forks-and-continuations.test.ts": 70000,
-    "test/unit/core/eva-machine-reports.test.ts": 120000,
-    "test/unit/core/eva-place.test.ts": 20000,
-    "test/unit/core/eva-project-chats.test.ts": 65000,
-    "test/unit/core/eva-vault-start.test.ts": 50000,
-    "test/unit/core/eva.test.ts": 110000,
+    "test/unit/core/eva-alerts.test.ts": 51834,
+    "test/unit/core/eva-background-and-updates.test.ts": 34623,
+    "test/unit/core/eva-forks-and-continuations.test.ts": 67669,
+    "test/unit/core/eva-machine-reports.test.ts": 120688,
+    "test/unit/core/eva-place.test.ts": 11609,
+    "test/unit/core/eva-project-chats.test.ts": 73516,
+    "test/unit/core/eva-vault-start.test.ts": 47406,
+    "test/unit/core/eva.test.ts": 117756,
     "test/unit/core/files/bounded-reading.test.ts": 38,
     "test/unit/core/files/file-browser.test.ts": 1040,
     "test/unit/core/files/file-download.test.ts": 130,
@@ -343,6 +343,7 @@
     "test/unit/shared/turn-steps.test.ts": 13,
     "test/unit/shared/usage-limit.test.ts": 2,
     "test/unit/shared/vault-unlock.test.ts": 2,
-    "test/unit/sync-skills.test.ts": 36
+    "test/unit/sync-skills.test.ts": 36,
+    "test/unit/test-with-time-limit.test.ts": 1
   }
 }

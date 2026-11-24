@@ -3,8 +3,9 @@
  * folder, a clock, and a helper that starts one Eva. The tests of Eva were one file, and it took
  * 400 s on a Windows runner, so they are now several files that run in parallel (#1043).
  *
- * Each file calls `useEvaTestbed()` once. The tests read `vault`, `home`, `sandbox` and `clock`
- * directly: these are live bindings, so each test sees the values of its own `beforeEach`.
+ * Each file calls `useEvaTestbed()` once. The tests read `vault`, `home`, `sandbox`, `clock` and `eva`
+ * directly: these are live bindings, so each test sees the values of its own `beforeEach`. A test
+ * changes `eva` and `clock` only through `setEva` and `setClock`.
  */
 import { afterEach, beforeEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";

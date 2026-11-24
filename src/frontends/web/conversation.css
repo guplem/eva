@@ -706,8 +706,9 @@ button.ghost .icon {
 }
 
 .day-greeting-text {
-  flex: 1;
-  /* The greeting keeps this room: the header slot shrinks, then drops below it (#1007). */
+  /* The greeting takes its whole line first: the header slot shrinks, then drops below it (#1007).
+     A basis of 0 gave a long greeting, such as "Good afternoon.", only the minimum, so it wrapped. */
+  flex: 1 1 auto;
   min-width: 16rem;
 }
 

@@ -112,7 +112,7 @@ async function openNewChat(page: Page, text: string): Promise<string> {
   if (await newChat.isVisible()) await newChat.click();
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText("Echo");
   return new URL(page.url()).hash;
 }

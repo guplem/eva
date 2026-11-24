@@ -25,7 +25,6 @@ import {
   deliveryWords,
   heldSteps,
   sendsOnEnter,
-  enterKeyHint,
   sentTurnCount,
   undoQuestion,
   stepIcon,
@@ -496,32 +495,26 @@ describe("snapsToBottom", () => {
   });
 });
 
-describe("enterKeyHint", () => {
-  test("names a new line on a touch screen, where Enter does not send", () => {
-    expect(enterKeyHint(true)).toBe("enter");
-  });
-
-  test("names a send with a keyboard, where Enter sends", () => {
-    expect(enterKeyHint(false)).toBe("send");
-  });
-});
-
 describe("sendsOnEnter", () => {
-  const key = { key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 };
+  const key = { key: "Enter", ctrlKey: false, metaKey: false, isComposing: false, keyCode: 13 };
 
-  test("sends on Enter with a keyboard", () => {
-    expect(sendsOnEnter(key, false)).toBe(true);
+  test("sends on Ctrl+Enter, and on Cmd+Enter for a Mac", () => {
+    expect(sendsOnEnter({ ...key, ctrlKey: true })).toBe(true);
+    expect(sendsOnEnter({ ...key, metaKey: true })).toBe(true);
   });
 
-  test("keeps Shift+Enter and any Enter on a touch screen for a new line", () => {
-    expect(sendsOnEnter({ ...key, shiftKey: true }, false)).toBe(false);
-    expect(sendsOnEnter(key, true)).toBe(false);
+  test("keeps a plain Enter for a new line", () => {
+    expect(sendsOnEnter(key)).toBe(false);
+  });
+
+  test("sends on no other key with Ctrl", () => {
+    expect(sendsOnEnter({ ...key, key: "a", ctrlKey: true })).toBe(false);
   });
 
   test("leaves an Enter that ends an IME composition to the input method", () => {
-    expect(sendsOnEnter({ ...key, isComposing: true }, false)).toBe(false);
+    expect(sendsOnEnter({ ...key, ctrlKey: true, isComposing: true })).toBe(false);
     // Safari ends the composition before its keydown, and marks that key with the code 229.
-    expect(sendsOnEnter({ ...key, keyCode: 229 }, false)).toBe(false);
+    expect(sendsOnEnter({ ...key, ctrlKey: true, keyCode: 229 })).toBe(false);
   });
 });
 

@@ -38,7 +38,6 @@ import {
   effortLabel,
   effortName,
   engineLabel,
-  enterKeyHint,
   modelLabel,
   modelNote,
   restoredText,
@@ -564,7 +563,6 @@ export function Composer({
             className={height.share === null ? undefined : "resized"}
             style={textStyle}
             aria-label="Message"
-            enterKeyHint={enterKeyHint(isTouchScreen())}
             aria-describedby={block === null ? undefined : lineId}
             placeholder={block === null ? placeholder : "Eva cannot answer yet"}
             rows={1}
@@ -606,12 +604,13 @@ export function Composer({
               }
               const press = {
                 key: event.key,
-                shiftKey: event.shiftKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
                 isComposing: event.nativeEvent.isComposing,
                 // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
                 keyCode: event.keyCode,
               };
-              if (sendsOnEnter(press, isTouchScreen())) {
+              if (sendsOnEnter(press)) {
                 event.preventDefault();
                 void send();
               }

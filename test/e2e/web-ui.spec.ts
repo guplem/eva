@@ -6999,7 +6999,7 @@ test.describe("on a touch screen", () => {
     expect(await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches)).toBe(true);
     const composer = page.getByLabel("Message").first();
     await composer.fill("first line");
-    await composer.press("Control+Enter");
+    await composer.press("Enter");
     await composer.pressSequentially("second line");
     await expect(composer).toHaveValue("first line\nsecond line");
     await expect(page.locator(".message.user")).toHaveCount(0);

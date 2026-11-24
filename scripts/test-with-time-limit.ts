@@ -48,7 +48,9 @@ export function parseTimings(text: string): FileTimings {
 async function runTests(bunTestArguments: readonly string[]): Promise<number> {
   const folder = mkdtempSync(join(tmpdir(), "eva-test-timings-"));
   try {
-    // Bun writes the measured times to the first `--timings` file. A fresh file holds only this run.
+    // Bun writes the measured times to the first `--timings` file. With `--shard`, it writes only the
+    // files of this shard. Without `--shard`, it also copies the entries of any other `--timings` file,
+    // so a run without `--shard` must pass no other one.
     const measured = join(folder, "timings.json");
     writeFileSync(measured, JSON.stringify({ version: 1, files: {} }));
     const tests = Bun.spawn(
@@ -67,7 +69,13 @@ async function runTests(bunTestArguments: readonly string[]): Promise<number> {
     const exitCode = await tests.exited;
     if (exitCode !== 0) return exitCode;
     const limitMs = fileLimitMs(process.platform);
-    const slowFiles = filesOverLimit(parseTimings(readFileSync(measured, "utf8")), limitMs);
+    const timings = parseTimings(readFileSync(measured, "utf8"));
+    // An empty file means that Bun measured nothing, and the check would pass with nothing checked.
+    if (Object.keys(timings).length === 0) {
+      process.stderr.write("Bun wrote no test times, so the time limit cannot be checked.\n");
+      return 1;
+    }
+    const slowFiles = filesOverLimit(timings, limitMs);
     if (slowFiles.length === 0) return 0;
     process.stderr.write(`\nThese test files take more than ${String(limitMs / 1000)} s each:\n`);
     for (const slow of slowFiles) process.stderr.write(`  ${slow.file}: ${(slow.ms / 1000).toFixed(1)} s\n`);

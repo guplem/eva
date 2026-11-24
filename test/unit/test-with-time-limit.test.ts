@@ -33,7 +33,7 @@ describe("parseTimings", () => {
     });
   });
 
-  test("a file that Bun did not write gives no timings, so the check cannot pass by mistake", () => {
+  test("a file in another format is an error, so the check cannot pass by mistake", () => {
     expect(() => parseTimings("not json")).toThrow();
     expect(() => parseTimings('{ "version": 1 }')).toThrow();
     expect(() => parseTimings('{ "version": 1, "files": { "a": "slow" } }')).toThrow();

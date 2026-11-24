@@ -9,5 +9,7 @@
 - A call that blocks the thread, such as `Bun.spawnSync`, stops every timer, the test timeout too. With `--parallel`, `test/support/file-watchdog.ts` ends such a worker after 10 minutes and names its file (#742).
 - Turn the vault sync off in a test that runs Assistant turns but does not check the sync: each turn runs git, which is slow on Windows.
 - Coverage is per file (90% lines, 80% functions). A unit test that imports a React page file, such as `ProjectDetailsEditor.tsx`, adds that whole file to the report and can fail the threshold. Put the logic under test in a `.ts` module instead. Set class fields in the constructor, not in field initializers. When no test runs a call to `AbortSignal.timeout`, the coverage of its whole file can drop to 0%. Add a base-URL seam, as `src/core/checks.ts` does, so a test runs the call against a fake server.
+- `test/windows-timings.json` balances the Windows CI shards by the time of each file. When you add or split a slow file, add its time on a Windows runner.
+- The CI splits the e2e tests into shards by single test, and each shard has its own demo server. So a test must not need data that an earlier test made.
 - To run `bun run test:e2e` in two checkouts at once, set `EVA_E2E_PORT=auto` and `EVA_E2E_GALLERY_PORT=auto` in each.
 - The e2e tests share one demo server, and each chat title shows as a button in the list. `getByRole` matches part of a name, with any case. So a message such as "send the file" makes a later `{ name: "Send" }` find two buttons. Give a new demo message words that no button name holds.

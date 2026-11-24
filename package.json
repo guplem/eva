@@ -38,6 +38,7 @@
     "stored-names": "bun run scripts/check-stored-names.ts",
     "test": "bun test --timeout 30000 --parallel",
     "test:coverage": "bun run scripts/test-with-time-limit.ts --coverage",
+    "test:windows-shard": "bun run scripts/test-with-time-limit.ts --timings=test/windows-timings.json",
     "test:e2e": "playwright test",
     "smoke:live": "bun run scripts/smoke-live.ts",
     "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"

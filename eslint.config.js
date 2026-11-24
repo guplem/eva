@@ -46,13 +46,13 @@ export default tseslint.config(
       "@typescript-eslint/no-non-null-assertion": "off",
       "@typescript-eslint/no-confusing-void-expression": "off",
       // A forgotten `.only` runs that test alone, and the checks pass with every other test skipped.
-      "no-restricted-properties": [
+      // The selector also catches Playwright's `test.describe.only`.
+      "no-restricted-syntax": [
         "error",
-        ...["test", "it", "describe"].map((object) => ({
-          object,
-          property: "only",
+        {
+          selector: "MemberExpression[property.name='only']",
           message: "Remove `.only` before you commit: it skips every other test.",
-        })),
+        },
       ],
     },
   },

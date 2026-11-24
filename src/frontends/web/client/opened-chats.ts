@@ -6,10 +6,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, type ListedSession, type OpenedSession, type SessionRecord } from "./api.ts";
 
-/** The turns of one chat, with the key that the list gave them. */
+/** The turns of one chat, with the key of the read and the list key that started the read. */
 export interface KeptTurns {
   readonly key: string;
+  /**
+   * The list's key when the read started. The core can change a chat after the list, so a read can
+   * bring a newer key than the list. The page then waits for the next list, and does not read again.
+   */
+  readonly readFor: string;
   readonly turns: SessionRecord["turns"];
+}
+
+/** A chat to read, with the list's key for it. */
+export interface ChatToRead {
+  readonly id: string;
+  readonly listKey: string;
 }
 
 /** After a failed read, the page tries again after this wait. */
@@ -24,6 +35,12 @@ const keptTurns = new Map<string, KeptTurns>();
 const reading = new Set<string>();
 /** Each open tree hears each finished read, also one that another view started. */
 const listeners = new Set<() => void>();
+/** The one planned try after a failed read. Module-wide, so no view's change can drop it. */
+let retry: ReturnType<typeof setTimeout> | null = null;
+
+function tellListeners(): void {
+  for (const hear of listeners) hear();
+}
 
 /**
  * The tree with the facts of the list and the kept turns. Null until each chat has turns, so
@@ -44,16 +61,27 @@ export function openedTree(
 }
 
 /** The chats of the tree with no kept turns, or with turns that changed since the page read them. */
-export function chatsToRead(tree: readonly ListedSession[], kept: ReadonlyMap<string, KeptTurns>): string[] {
+export function chatsToRead(tree: readonly ListedSession[], kept: ReadonlyMap<string, KeptTurns>): ChatToRead[] {
   return tree
-    .filter((session) => session.turnCount > 0 && kept.get(session.id)?.key !== session.turnsKey)
-    .map((session) => session.id);
+    .filter((session) => {
+      const known = kept.get(session.id);
+      if (session.turnCount === 0) return false;
+      return known === undefined || (known.key !== session.turnsKey && known.readFor !== session.turnsKey);
+    })
+    .map((session) => ({ id: session.id, listKey: session.turnsKey }));
+}
+
+/**
+ * The chats of the tree that have no turn and nothing kept. The page keeps an empty entry for
+ * each, so its first answer replaces no shown chat with a skeleton while the page reads it.
+ */
+export function emptyChats(tree: readonly ListedSession[], kept: ReadonlyMap<string, KeptTurns>): ListedSession[] {
+  return tree.filter((session) => session.turnCount === 0 && !kept.has(session.id));
 }
 
 /** The open tree with its turns, or null while they load. */
 export function useOpenedTree(tree: readonly ListedSession[]): OpenedSession[] | null {
   const [kept, setKept] = useState<ReadonlyMap<string, KeptTurns>>(() => new Map(keptTurns));
-  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const hear = (): void => setKept(new Map(keptTurns));
     listeners.add(hear);
@@ -61,33 +89,38 @@ export function useOpenedTree(tree: readonly ListedSession[]): OpenedSession[] |
       listeners.delete(hear);
     };
   }, []);
-  // A string, so a render starts no read. A read that lands with an old key changes `kept`, and the next read starts.
-  const wanted = chatsToRead(tree, kept).join(" ");
+  // Strings, so a render starts no read. A read that lands changes `kept`, and the next read starts.
+  const empty = JSON.stringify(emptyChats(tree, kept).map((session) => [session.id, session.turnsKey]));
+  const wanted = JSON.stringify(chatsToRead(tree, kept));
   useEffect(() => {
-    if (wanted === "") return undefined;
-    let current = true;
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    for (const sessionId of wanted.split(" ")) {
+    const chats = JSON.parse(empty) as [string, string][];
+    if (chats.length === 0) return;
+    for (const [sessionId, key] of chats) {
+      if (!keptTurns.has(sessionId)) keptTurns.set(sessionId, { key, readFor: key, turns: [] });
+    }
+    tellListeners();
+  }, [empty]);
+  useEffect(() => {
+    for (const { id: sessionId, listKey } of JSON.parse(wanted) as ChatToRead[]) {
       if (reading.has(sessionId)) continue;
       reading.add(sessionId);
       api
         .session(sessionId)
         .then(
           (opened) => {
-            keptTurns.set(sessionId, { key: opened.turnsKey, turns: opened.turns });
-            for (const hear of listeners) hear();
+            keptTurns.set(sessionId, { key: opened.turnsKey, readFor: listKey, turns: opened.turns });
+            tellListeners();
           },
           () => {
             // A deleted chat leaves the list, and then the tree. Any other failure tries again.
-            if (current && retry === undefined) retry = setTimeout(() => setAttempt((count) => count + 1), retryMs);
+            retry ??= setTimeout(() => {
+              retry = null;
+              tellListeners();
+            }, retryMs);
           },
         )
         .finally(() => reading.delete(sessionId));
     }
-    return () => {
-      current = false;
-      clearTimeout(retry);
-    };
-  }, [wanted, kept, attempt]);
+  }, [wanted, kept]);
   return useMemo(() => openedTree(tree, kept), [tree, kept]);
 }

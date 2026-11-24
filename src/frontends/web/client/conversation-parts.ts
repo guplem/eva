@@ -427,7 +427,8 @@ export function snapsToBottom(following: boolean, fingerDown: boolean): boolean 
 /** The parts of a key press in the message box that decide a send. */
 export interface ComposerKey {
   readonly key: string;
-  readonly shiftKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
   readonly isComposing: boolean;
   readonly keyCode: number;
 }
@@ -436,17 +437,13 @@ export interface ComposerKey {
 const inputMethodKeyCode = 229;
 
 /**
- * True when a key press sends the message. On a touch screen, Enter starts a new line and the Send
- * button sends. An Enter that picks the word of an input method, such as for Japanese, must not send.
+ * True when a key press sends the message: Ctrl+Enter, or Cmd+Enter on a Mac. A plain Enter starts a
+ * new line, so a stray Enter never sends half a message. An Enter that picks the word of an input
+ * method, such as for Japanese, must not send.
  */
-export function sendsOnEnter(press: ComposerKey, touchScreen: boolean): boolean {
-  if (press.key !== "Enter" || press.shiftKey || touchScreen) return false;
+export function sendsOnEnter(press: ComposerKey): boolean {
+  if (press.key !== "Enter" || !(press.ctrlKey || press.metaKey)) return false;
   return !press.isComposing && press.keyCode !== inputMethodKeyCode;
-}
-
-/** The label of the Enter key on a phone keyboard. It names what Enter does, as `sendsOnEnter` decides. */
-export function enterKeyHint(touchScreen: boolean): "enter" | "send" {
-  return touchScreen ? "enter" : "send";
 }
 
 /**

@@ -68,7 +68,7 @@ async function sendFirstMessage(page: Page, text: string): Promise<void> {
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
 }
 
 /**
@@ -312,7 +312,7 @@ test("Assistant mode: the task dialog of an answer opens the Project chat of its
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Please give work to the example app");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
   const askingChat = page.url();
   await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
@@ -342,7 +342,7 @@ test("Assistant mode: the result of project work comes back as a card of the Pro
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Please give work to the example app, and report back");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
   const assistantChat = page.url();
   // The Project chat runs the work. Its first chat in a new clone can ask to trust the repository.
@@ -386,7 +386,7 @@ test("Assistant mode: a chat, its answer, a retry branch and the background task
   await expect(page.locator(".main-header .sub")).toHaveText("Claude Code · Assistant");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
     "data-tooltip",
@@ -474,7 +474,7 @@ test("a fork continues under its answer, in the same column, and the switcher go
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("A question for the fork");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").nth(1)).toContainText("A question for the fork");
   // The fork shows the shared answer once, then its own turn: one column, one composer.
   await expect(page.locator(".message.user")).toHaveCount(2);
@@ -516,7 +516,7 @@ test("a right click on any row of the branch map gives the actions of its turn a
   await waitUntilIdle(page, chatId);
   const composer = page.getByLabel("Message").first();
   await composer.fill("A second question");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").nth(1)).toContainText("A second question");
   await waitUntilIdle(page, chatId);
   await page.getByRole("button", { name: "Fork", exact: true }).first().click();
@@ -687,9 +687,24 @@ test("a text too long for the box opens a large editor, and Send from it sends (
   await page.keyboard.press("Escape");
   await expect(editor).toBeVisible();
   await editor.click();
-  await box.press("Enter");
+  await box.press("Control+Enter");
   await expect(page.locator(".message.user").first()).toContainText("Row 30 of a long note");
   await expect(page.getByRole("button", { name: "Close the large editor" })).toHaveCount(0);
+});
+
+test("Enter and Shift+Enter start a new line, and only Ctrl+Enter sends (#1040)", async ({ page }) => {
+  await logIn(page);
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("First line");
+  await box.press("Enter");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("Third line");
+  await expect(box).toHaveValue("First line\n\nThird line");
+  await expect(page.locator(".message.user")).toHaveCount(0);
+  await box.press("Control+Enter");
+  await expect(page.locator(".message.user").first()).toContainText("Third line");
+  await expect(box).toHaveValue("");
 });
 
 test("a send turns the box into the new bubble, and reduced motion plays no morph (#943)", async ({ page }) => {
@@ -711,7 +726,7 @@ test("a send turns the box into the new bubble, and reduced motion plays no morp
   const box = page.getByRole("textbox", { name: "Message" });
   await watchMorphs();
   await box.fill("A morph to watch");
-  await box.press("Enter");
+  await box.press("Control+Enter");
   await expect.poll(morphsSeen).toBe(1);
   // The copy leaves the bubble whole when it lands.
   await expect(page.locator(".send-morph")).toHaveCount(0);
@@ -722,7 +737,7 @@ test("a send turns the box into the new bubble, and reduced motion plays no morp
   await page.emulateMedia({ reducedMotion: "reduce" });
   await watchMorphs();
   await box.fill("A calm second message");
-  await box.press("Enter");
+  await box.press("Control+Enter");
   await expect(page.locator(".message.user").last()).toContainText("A calm second message");
   // Past the time of a whole morph, none has come.
   await page.waitForTimeout(800);
@@ -738,7 +753,7 @@ test("a send glides the chat down to the new bubble, and the bubble lands above 
   // Two tall messages make the chat taller than the screen, so a send must scroll.
   for (const text of [tall, tall]) {
     await box.fill(text);
-    await box.press("Enter");
+    await box.press("Control+Enter");
     await expect(page.locator(".message.user").last()).toContainText("Glide row 12");
     await page.waitForTimeout(800);
   }
@@ -754,7 +769,7 @@ test("a send glides the chat down to the new bubble, and the bubble lands above 
     requestAnimationFrame(sample);
   });
   await box.fill(tall);
-  await box.press("Enter");
+  await box.press("Control+Enter");
   await page.waitForTimeout(900);
   const tops = await page.evaluate(() => (window as unknown as { glideTops: number[] }).glideTops);
   // The chat moves over many frames, and never back up.
@@ -846,7 +861,7 @@ test("with no chat yet, Chats shows the blank New chat page, and the first messa
   const text = `The first message (${test.info().project.name})`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(text);
   expect(made()).toBe(1);
   await openList(page);
@@ -862,7 +877,7 @@ test("with no chat yet, the first message shows while Eva works on it", async ({
   const text = `The first message, please approve (${test.info().project.name})`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   // The approval holds the turn, so the page shows the chat before it has a stored turn.
   const dialog = page.getByRole("region", { name: "Eva asks for permission" });
   await expect(dialog).toContainText("gh issue create");
@@ -905,7 +920,7 @@ test("the answer stays after the turn ends, until the stored turn takes its plac
   });
   const composer = page.getByLabel("Message").first();
   await composer.fill("A second message");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await waitUntilIdle(page, chatId);
   await expect(page.locator(".working")).toHaveCount(0);
   await expect(page.locator(".message.answer")).toHaveCount(2);
@@ -937,7 +952,7 @@ test("Delete chat asks first, then removes the chat from the list", async ({ pag
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(title);
   // The list keeps its items when it is closed on a phone, so the count needs no open list.
   const listed = page.locator(".sidebar .list-item", { hasText: title });
@@ -1196,7 +1211,7 @@ async function newAnsweredChat(page: Page, text: string): Promise<string> {
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(title);
   return title;
 }
@@ -1215,7 +1230,7 @@ test("a message sent with no network stays in the chat, says so, and goes when t
   const text = `Sent with no network (${test.info().project.name})`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   // The text leaves the box at once, and the bubble says what happens to it.
   await expect(composer).toHaveValue("");
   const bubble = page.locator(".msg.me", { hasText: text });
@@ -1244,7 +1259,7 @@ test("a message whose answer got lost runs once, though the page sends it again 
   const text = `An answer that got lost (${test.info().project.name})`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
   await waitUntilIdle(page, chatId);
   const sessions = (await (await page.request.get("/api/sessions")).json()) as {
@@ -1267,7 +1282,7 @@ test("a refused message says why, and Edit puts its text back in the box (#945)"
   const text = `A refused message (${test.info().project.name})`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const bubble = page.locator(".msg.me", { hasText: text });
   await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is closed.");
   await bubble.getByRole("button", { name: "Edit" }).click();
@@ -1535,7 +1550,7 @@ test("the address #/chat/<id> opens a Project chat in its clone", async ({ page 
   await newProjectChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
 
@@ -1605,7 +1620,7 @@ test("a chat that answers while another chat is open shows as unread until the p
   const message = `a slow answer on the ${test.info().project.name}`;
   const composer = page.getByLabel("Message").first();
   await composer.fill(message);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
   await clickNewChat(page);
   // A phone hides the list behind its button, so the button tells that a chat waits.
@@ -1635,7 +1650,7 @@ test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) =
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("show me a list");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".message.answer").first();
   await expect(answer.locator("li")).toHaveText(["first", "second"]);
   await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
@@ -1646,7 +1661,7 @@ test("a file that an answer sends shows as a download button, not as a marker (#
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("hand me the parcel");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".message.answer").first();
   await expect(answer.locator(".answer-body")).toHaveText("Here are the trips.");
   const button = answer.getByRole("button", { name: "Download 2027-trips.md" });
@@ -1661,7 +1676,7 @@ test("an answer links a vault path that exists, and leaves a missing one as code
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("point at the journal");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const body = page.locator(".message.answer").first().locator(".answer-body");
   await expect(body.locator("code")).toHaveText(["2027-trips.md", "Paperwork/"]);
   await expect(body.locator("a.vault-link")).toHaveText(["2027-trips.md"]);
@@ -1674,7 +1689,7 @@ test("a usage warning shows under the chat after its answer (issue #67)", async 
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("near the limit");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText("near the limit");
   await expect(page.getByRole("status").filter({ hasText: "usage limit" })).toContainText(
     /You used 86% of your 5-hour usage limit\. It resets (at|on) /,
@@ -1688,7 +1703,7 @@ test("a notice stays on its turn after the turn ends and after a reload, apart f
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("what is on my calendar");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".message.answer").first();
   await expect(answer).toContainText("No calendar today.");
   const note = page.locator(".turn-note").filter({ hasText: 'MCP server "google"' });
@@ -1704,7 +1719,7 @@ test("the answer shows its words while the engine writes them, then the whole te
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("stream it");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".msg:has(.working)");
   await expect(answer).toContainText("Streaming the words of this answer");
   await expect(answer).not.toContainText("to end it.");
@@ -1721,7 +1736,7 @@ test("an approval shows as a card in its chat, and Allow once answers the turn",
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const dialog = page.getByRole("region", { name: "Eva asks for permission" });
   await expect(dialog).toContainText("gh issue create");
   // While the turn waits, its running task shows under the conversation, also on a phone.
@@ -1776,7 +1791,7 @@ test.describe("Do not ask again (#914)", () => {
     await clickNewChat(page);
     const composer = page.getByLabel("Message").first();
     await composer.fill("please approve this");
-    await composer.press("Enter");
+    await composer.press("Control+Enter");
     const card = page.getByRole("region", { name: "Eva asks for permission" });
     await expect(card).toContainText("gh issue create");
     await card.getByRole("button", { name: "Do not ask again" }).click();
@@ -1812,7 +1827,7 @@ test.describe("Do not ask again (#914)", () => {
     await clickNewChat(page);
     const composer = page.getByLabel("Message").first();
     await composer.fill("please approve this");
-    await composer.press("Enter");
+    await composer.press("Control+Enter");
     const card = page.getByRole("region", { name: "Eva asks for permission" });
     await card.getByRole("button", { name: "Do not ask again" }).click();
     const dialog = page.getByRole("dialog", { name: "Do not ask again" });
@@ -1831,7 +1846,7 @@ test.describe("Do not ask again (#914)", () => {
     await clickNewChat(page);
     const composer = page.getByLabel("Message").first();
     await composer.fill("please approve this");
-    await composer.press("Enter");
+    await composer.press("Control+Enter");
     const card = page.getByRole("region", { name: "Eva asks for permission" });
     await card.getByRole("button", { name: "Do not ask again" }).click();
     const dialog = page.getByRole("dialog", { name: "Do not ask again" });
@@ -1857,7 +1872,7 @@ test("the model's questions show as a form in the chat, and Send answers gives t
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("please ask me");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const card = page.getByRole("region", { name: "Eva asks you a question" });
   await expect(card.getByRole("heading")).toHaveText("Eva has 2 questions");
   await expect(card).toContainText("Which format should the review take?");
@@ -1892,7 +1907,7 @@ test("a request of another chat gets a notice that opens it, and an answer from 
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve this");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const card = page.getByRole("region", { name: "Eva asks for permission" });
   await expect(card).toContainText(title);
 
@@ -1945,7 +1960,7 @@ test("a message sent outside the page shows while its turn runs, once, also afte
   // The page's own message comes back from the core too, and still shows once.
   const composer = page.getByLabel("Message").first();
   await composer.fill("please approve the page words");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(card).toBeVisible();
   await expect(words.filter({ hasText: "please approve the page words" })).toHaveCount(1);
   await card.getByRole("button", { name: "Deny" }).click();
@@ -2054,7 +2069,7 @@ test("a code block of an answer gets its Copy button when the turn ends, and cop
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("a code block");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   // A live answer changes with each token, so its block has no button yet.
   const live = page.locator(".msg:has(.working)");
   await expect(live.locator(".code-box pre")).toContainText("echo one");
@@ -2113,7 +2128,7 @@ test("the composer's chip picks the engine before the first message, and the mod
 
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   // The chip names the model that answered (#419).
   await expect(picker).toContainText("Balanced · Sonnet 5.5");
@@ -2157,7 +2172,7 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   await newChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   const picker = page.locator(".chip-picker > .chip");
   await picker.click();
@@ -2213,7 +2228,7 @@ test("a new chat starts with the settings' model and effort, and names the model
   await expect(picker.locator(".chip-effort")).toHaveText("· Medium effort");
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   await expect(picker).toContainText("Smart · Opus 5.5");
 });
@@ -2282,7 +2297,7 @@ test("Project mode: search, a new clone with each repository and its branch, and
   await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Fix the bug");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await answerInNewClone(page, "Fix the bug");
   // Project mode shows the same activity as Assistant mode.
   await expect(page.getByRole("button", { name: "Show 3 steps" }).first()).toHaveAttribute(
@@ -2468,7 +2483,7 @@ test("New project: a specialist opens its first chat, and its page lists its cha
   await expect(page.getByRole("button", { name: "Attach a file" })).toBeVisible();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Plan my training week");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText("Plan my training week");
   await page.getByRole("button", { name: name, exact: true }).first().click();
   const main = page.locator("main");
@@ -2601,7 +2616,7 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   await newProjectChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
@@ -2636,7 +2651,7 @@ test("a fork of a project chat in a new clone opens there, and names the chat it
   await newProjectChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
@@ -2670,7 +2685,7 @@ test("the address of a fork opens that fork, even when another branch is newer",
   await start.getByRole("button", { name: "Previous branch" }).click();
   const composer = page.getByLabel("Message").first();
   await composer.fill("Newer on the main line");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").nth(1)).toContainText("Newer on the main line");
   await waitUntilIdle(page, chatId);
 
@@ -3471,7 +3486,7 @@ test("Settings: the eyes beside a Project chat's answers take their own colour",
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(assistantTitle);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(besideAnswer(assistantTitle)).toBeVisible();
   await expect(besideAnswer(assistantTitle)).not.toHaveClass(/project-eyes/);
 
@@ -3487,7 +3502,7 @@ test("Settings: the eyes beside a Project chat's answers take their own colour",
   await openExampleApp(page);
   await newProjectChat(page);
   await composer.fill(projectTitle);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await answerInNewClone(page, projectTitle);
   const visor = besideAnswer(projectTitle);
   await expect(visor).toHaveClass(/project-eyes/);
@@ -4350,7 +4365,7 @@ test("a message from the home page starts a chat and opens it in Chats (#1037)",
   const composer = home.getByRole("textbox", { name: "Message" });
   const text = "A short question from the home page";
   await composer.fill(text);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page).toHaveURL(/#\/chats\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: /^Chats/ })).toHaveAttribute(
     "aria-current",
@@ -4525,7 +4540,7 @@ test("the New chat button opens the New chat page, and only the first message ma
 
   const composer = page.getByLabel("Message").first();
   await composer.fill(`The first message of a new chat (${test.info().project.name})`);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(chats).toHaveCount(before + 1);
   await expect(chats.first()).toHaveAttribute("aria-current", "true");
   expect(made).toBe(1);
@@ -4547,7 +4562,7 @@ test("the chat list shows each chat's time and last answer, and the search filte
   await newChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill(title);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(title);
   await openList(page);
   const today = page.getByRole("region", { name: "Today" });
@@ -4613,7 +4628,7 @@ test("a new chat shows at the top of a scrolled chat list", async ({ page }) => 
   // The first message makes the chat. Each size names its own chat, on the shared demo server.
   const composer = page.getByLabel("Message").first();
   await composer.fill(`A chat at the top (${test.info().project.name})`);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   // Wait until the new chat is first and selected: the list scrolls and the phone drawer closes then.
   await expect(chats).toHaveCount(before + 1);
   await expect(chats.first()).toHaveAttribute("aria-current", "true");
@@ -4721,7 +4736,7 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await newChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".message.answer").first();
   // The live answer shows its steps open until the turn ends, so wait for the stored one and its Retry button.
   await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
@@ -4749,7 +4764,7 @@ test("a tap on a stored step opens its whole input and output, each in a fold", 
   await newChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   const answer = page.locator(".message.answer").first();
   await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
   await answer.getByRole("button", { name: "Show 3 steps" }).click();
@@ -4798,7 +4813,7 @@ test("the chat panel shows the context ring, the engine and the model, and a pho
   await newChat(page);
   const composer = page.getByLabel("Message").first();
   await composer.fill("Hello Eva");
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
   if (test.info().project.name === "desktop") {
     // The title and its subtitle share one row, so the header stays low.
@@ -6984,7 +6999,7 @@ test.describe("on a touch screen", () => {
     expect(await page.evaluate(() => window.matchMedia("(pointer: coarse)").matches)).toBe(true);
     const composer = page.getByLabel("Message").first();
     await composer.fill("first line");
-    await composer.press("Enter");
+    await composer.press("Control+Enter");
     await composer.pressSequentially("second line");
     await expect(composer).toHaveValue("first line\nsecond line");
     await expect(page.locator(".message.user")).toHaveCount(0);

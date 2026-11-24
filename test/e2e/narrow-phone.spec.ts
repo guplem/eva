@@ -115,7 +115,7 @@ test("a chat and its details do not scroll sideways on a narrow phone", async ({
   const words = "quarterly-reporting-backend-notifications@northwind-holdings.example.com";
   const composer = page.getByLabel("Message").first();
   await composer.fill(words);
-  await composer.press("Enter");
+  await composer.press("Control+Enter");
   await expectNoSideScroll(page, "the chat", page.locator(".message.answer").filter({ hasText: words }));
 
   await page.getByRole("heading", { level: 1 }).getByRole("button").click();

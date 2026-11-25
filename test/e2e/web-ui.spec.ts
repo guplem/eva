@@ -7421,7 +7421,7 @@ test("Settings: an old link to the Access page opens the card at its new place (
 
 test("Settings: a first location that fails ends the wait and says why (issue 1072)", async ({ page }) => {
   await page.addInitScript(() => {
-    const holder = window as unknown as { findsPoint?: boolean; askedWith?: PositionOptions };
+    const holder = window as unknown as { findsPoint?: boolean; askedWith?: PositionOptions | undefined };
     navigator.geolocation.getCurrentPosition = (found, failed, options) => {
       holder.askedWith = options;
       if (holder.findsPoint === true) {

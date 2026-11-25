@@ -119,7 +119,7 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
     };
     const failed = (event: Event): void => {
       setWaiting(false);
-      notify(String((event as CustomEvent<string>).detail));
+      notify((event as CustomEvent<string>).detail);
     };
     window.addEventListener(locationSent, sent);
     window.addEventListener(locationBlocked, blocked);

@@ -12,9 +12,17 @@ import { Card, errorText, Steps, type SettingsContext } from "./SettingsParts.ts
 const choiceChanged = "eva-share-location-changed";
 const locationSent = "eva-location-sent";
 const locationBlocked = "eva-location-blocked";
+/** Carries the reason as its `detail`. */
+const locationFailed = "eva-location-failed";
 
 /** A point may come from the phone's cache when it is this young, so the GPS wakes up less often. */
 const cachedPointMs = 2 * 60_000;
+/** Without a limit, a browser that finds no point never answers, and the card waits for ever. */
+const findPointMs = 60_000;
+
+function sayFailed(reason: string): void {
+  window.dispatchEvent(new CustomEvent(locationFailed, { detail: reason }));
+}
 
 function browserStorage(): Storage | null {
   try {
@@ -65,14 +73,17 @@ export function useLocationSharing(loggedIn: boolean): void {
           api
             .sendLocation(latitude, longitude, accuracy, position.timestamp)
             .then(() => window.dispatchEvent(new Event(locationSent)))
-            .catch(() => undefined);
+            .catch((error: unknown) => sayFailed(`Eva could not save this device's location. ${errorText(error)}`));
         },
         (error) => {
-          if (error.code !== error.PERMISSION_DENIED) return;
+          if (error.code !== error.PERMISSION_DENIED) {
+            sayFailed("This browser could not find its location. Eva tries again in 15 minutes.");
+            return;
+          }
           saveChoice(false);
           window.dispatchEvent(new Event(locationBlocked));
         },
-        { maximumAge: cachedPointMs },
+        { maximumAge: cachedPointMs, timeout: findPointMs },
       );
     };
     ask();
@@ -106,11 +117,17 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
       setWaiting(false);
       notify("This browser blocks its location. Allow it in the browser's settings for this site, then try again.");
     };
+    const failed = (event: Event): void => {
+      setWaiting(false);
+      notify(String((event as CustomEvent<string>).detail));
+    };
     window.addEventListener(locationSent, sent);
     window.addEventListener(locationBlocked, blocked);
+    window.addEventListener(locationFailed, failed);
     return () => {
       window.removeEventListener(locationSent, sent);
       window.removeEventListener(locationBlocked, blocked);
+      window.removeEventListener(locationFailed, failed);
     };
   }, [load, notify]);
 

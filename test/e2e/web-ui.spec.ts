@@ -7419,6 +7419,43 @@ test("Settings: an old link to the Access page opens the card at its new place (
   await expect(page.getByRole("region", { name: "Your location" })).toBeVisible();
 });
 
+test("Settings: a first location that fails ends the wait and says why (issue 1072)", async ({ page }) => {
+  await page.addInitScript(() => {
+    const holder = window as unknown as { findsPoint?: boolean; askedWith?: PositionOptions };
+    navigator.geolocation.getCurrentPosition = (found, failed, options) => {
+      holder.askedWith = options;
+      if (holder.findsPoint === true) {
+        found({ coords: { latitude: 1, longitude: 2, accuracy: 10 }, timestamp: Date.now() } as GeolocationPosition);
+      } else
+        failed?.({ code: 3, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError);
+    };
+  });
+  await page.route("**/api/location", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status: 500, json: { error: "Disk broke." } })
+      : route.fallback(),
+  );
+  await logIn(page);
+  await page.evaluate(() => (window.location.hash = "#/settings/access/location"));
+  const card = page.getByRole("region", { name: "Your location" });
+  const send = card.getByRole("button", { name: "Send this device's location while Eva is open" });
+
+  await send.click();
+  await expect(page.getByRole("status").filter({ hasText: "could not find its location" })).toBeVisible();
+  await expect(card.getByText("Waiting for the first location")).toHaveCount(0);
+  // A browser that never answers still ends the wait.
+  expect(await page.evaluate(() => (window as unknown as { askedWith: PositionOptions }).askedWith.timeout)).toBe(
+    60_000,
+  );
+
+  await card.getByRole("button", { name: "Stop sending from this device" }).click();
+  await page.evaluate(() => ((window as unknown as { findsPoint: boolean }).findsPoint = true));
+  await send.click();
+  await expect(page.getByRole("status").filter({ hasText: "Disk broke." })).toBeVisible();
+  await expect(card.getByText("Waiting for the first location")).toHaveCount(0);
+  await card.getByRole("button", { name: "Stop sending from this device" }).click();
+});
+
 test("Settings: the device list names each device from its browser, marks this device, and Remove logs out another one", async ({
   page,
 }) => {

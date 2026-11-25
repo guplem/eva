@@ -54,6 +54,11 @@ describe("the summary of a report", () => {
     expect(reportSummary(report(["green", "green"]))).toBe("All 2 items done.");
   });
 
+  test("says one item in the singular", () => {
+    expect(reportSummary(report(["green"]))).toBe("The one item is done.");
+    expect(reportSummary(report(["red", "grey"]))).toBe("0 of 1 item done. 1 not checked.");
+  });
+
   test("is empty for a report with no items", () => {
     expect(reportSummary(report([]))).toBe("");
   });

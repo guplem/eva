@@ -1,5 +1,6 @@
 /** The words and marks of a repository setup report, in the marks that Settings uses. */
 import type { SetupItem, SetupReport } from "./api.ts";
+import { countOf } from "./project-format.ts";
 import type { StepMark } from "./setup-summary.ts";
 import { repositoryTypeInfo, type RepositoryTypeInfo } from "../../../core/projects/repository-catalog.ts";
 
@@ -28,9 +29,9 @@ export function reportSummary(report: SetupReport): string {
   const done = lights.filter((light) => light === "green").length;
   const words: string[] = [];
   if (checked > 0) {
-    words.push(
-      done === checked ? `All ${String(checked)} items done.` : `${String(done)} of ${String(checked)} items done.`,
-    );
+    // "All 1 item done" reads wrong, so one item gets its own sentence.
+    const all = checked === 1 ? "The one item is done." : `All ${countOf(checked, "item")} done.`;
+    words.push(done === checked ? all : `${String(done)} of ${countOf(checked, "item")} done.`);
   }
   if (unchecked > 0) words.push(`${String(unchecked)} not checked.`);
   return words.join(" ");

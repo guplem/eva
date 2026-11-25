@@ -38,12 +38,16 @@ export function describeDevice(label: string): DeviceWords {
   const comma = label.indexOf(", ");
   const account = comma === -1 ? null : label.slice(0, comma);
   const agent = comma === -1 ? label : label.slice(comma + 2);
+  return { ...describeAgent(agent), account };
+}
+
+/** A bare user agent, such as this browser's own. It holds ", " too, so it must not go through `describeDevice`. */
+export function describeAgent(agent: string): Omit<DeviceWords, "account"> {
   const system = systems.find(([pattern]) => pattern.test(agent));
   const browser = browsers.find(([pattern]) => pattern.test(agent));
   return {
     name: system?.[1] ?? "Device",
     browser: browser?.[1] ?? agent,
-    account,
     icon: system?.[2] ?? "laptop",
   };
 }

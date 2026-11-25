@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import type { NotificationKind } from "../../../core/alerts/chat-notifications.ts";
 import { api } from "./api.ts";
-import { describeDevice } from "./device-words.ts";
+import { describeAgent } from "./device-words.ts";
 import { ProgressBar } from "./Loading.tsx";
 import type { PresencePage } from "./push-presence.ts";
 import { keyBytes, pushSupport, type PushSupport } from "./push-support.ts";
@@ -99,7 +99,7 @@ async function workerRegistration(): Promise<ServiceWorkerRegistration> {
 }
 
 function deviceLabel(): string {
-  const words = describeDevice(navigator.userAgent);
+  const words = describeAgent(navigator.userAgent);
   return `${words.name}, ${words.browser}`;
 }
 

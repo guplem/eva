@@ -56,9 +56,9 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 | A list read on the phone many times a week, such as shopping | The notes app |
 | Someone else's phone, email, address or birthday | The contacts app |
 | A big file, or a group of files that holds one, such as a book, a long PDF, a video or the files of one video project | The cloud drive |
-| A document or a card needed in a hurry on a device without Eva, such as a scan of an ID, an insurance card or a membership card | The cloud drive |
-| Quick data that is not secret, needed on a device without Eva, such as an IBAN to fill a form | One text document in the cloud drive. The note of each fact links that document and never copies the data. A secret never goes in it. |
-| A file shared with other people | The cloud drive |
+| A scan of a document or a card needed in a hurry on a device without Eva, such as an ID, an insurance card or a membership card | The cloud drive |
+| Quick data that is not secret, needed on a device without Eva, such as an IBAN to fill a form | One text document in the cloud drive. The note that the data belongs to, such as the bank account's `Item.md`, links that document and never copies the data. A secret never goes in it. |
+| A file that other people open or edit in a shared place, such as a shared folder or a document edited together | The cloud drive |
 | A photo of daily life | The photos app |
 | Code with its own repository | GitHub |
 | A place to visit some day, such as a restaurant to try or a city to see | The maps app |
@@ -174,10 +174,10 @@ The project's notes sit loose beside its `AGENTS.md`. Create a subfolder, such a
 - **Before you write, search** by name and by alias. If the same fact exists, say where and write nothing. If it conflicts, show old against new and propose the change. If it is incomplete, add to it. Then tell the person where you put it.
 - **One fact lives in one file.** Other files link to it, never copy it.
 - **Prefer fewer, larger notes.** Propose to split one that grows too long to scan. In a knowledge folder, group by topic, and create a topic folder when none fits.
-- **Small files can live in the vault,** beside what they belong to: a contract, a receipt, a scan, a short PDF, a photo of evidence. Anything over about 10 MB goes to the cloud drive, with its link in the note it belongs to.
-- **Decide by group, not by file.** A folder, or a group of files of one kind, stays together, such as progress captures, logo variants, the files of one video or a set of photos. When such a group holds a file over about 10 MB, the whole group goes to the cloud drive. The note links that folder and says what it holds. A small file outside such a group, such as a document, a spreadsheet or a note, still goes to the vault.
+- **Small files can live in the vault,** beside what they belong to: a contract, a receipt, a scan, a short PDF, a photo of evidence. Anything over about 10 MB goes to the cloud drive, with its link in the note it belongs to. The rule "Some files go to the cloud drive at any size" sends a few small files there too.
+- **Decide by group, not by file.** A folder, or a group of files of one kind, stays together, such as progress captures, logo variants, the files of one video or a set of photos. When such a group holds a file over about 10 MB, the whole group goes to the cloud drive. The note links that folder and says what it holds. A small file outside such a group, such as a document, a spreadsheet or a note, still goes to the vault, unless the rule "Some files go to the cloud drive at any size" sends it there.
 - **Keep a small file, even when the web has a copy.** Sites close, free kits disappear and versions change. Fonts always stay with their design. A copy on the web never sends a file to the cloud drive. A link to the source can go beside the file, but it never replaces the file.
-- **Some files go to the cloud drive at any size,** with their link in the note they belong to. A document or a card needed in a hurry on a device without Eva goes there, such as a scan of an ID. A file shared with other people goes there too. Eva is not reachable from every device, and nobody else can open her notes.
+- **Some files go to the cloud drive at any size,** with their link in the note they belong to. A scan of a document or a card needed in a hurry on a device without Eva goes there, such as an ID. A file that other people open or edit in a shared place goes there too. A copy that the person only sent to someone, such as a contract emailed to a landlord, stays in the vault. Eva is not reachable from every device, and nobody else can open her notes.
 - **Secrets** live only in encrypted secret files, such as `Wi-Fi.secrets` or `.env.local`. Never copy a secret into a note, a chat or any service, except the person's password manager.
 - **`.eva/` is Eva's configuration, not notes.** `.eva/AGENTS.md` says what each part holds.
 - **This file is the map of the vault. Keep it true.** When a folder in the root or in `Life/` is created, renamed or removed, update _What is where_ in the same turn.

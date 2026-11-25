@@ -367,19 +367,19 @@ The root `AGENTS.md` says "Judge the rigor of a source before you file it as a f
 - **Version:** 14
 - **Date:** 2026-11-25
 - **Pull request:** pending
-- **Summary:** Files you need in a hurry on a device without Eva, such as a scan of an ID or an insurance card, go to your cloud drive. So do files you share with other people. Quick data that is not secret, such as an IBAN, lives in one text document there, and your notes link it.
+- **Summary:** Files you need in a hurry on a device without Eva, such as a scan of an ID or an insurance card, go to your cloud drive. So do files that other people open in a shared folder. Quick data that is not secret, such as an IBAN, lives in one text document there, and your notes link it.
 - **Migrations first:**
 
 ### What changes, and why
 
-1. **The root `AGENTS.md` sends more files to the cloud drive.** Replace the cloud drive row of the table of _Outside the vault_ with the four cloud drive rows of `template/`: big files, a document or a card needed in a hurry, quick data that is not secret, and a file shared with other people. Add the rule "Some files go to the cloud drive at any size" of `template/` after the rule "Keep a small file, even when the web has a copy". In that rule, replace "Only the size rule sends a file to the cloud drive." with the exact sentence of `template/`. Leave the rest of the file as it is. Why: Eva is not reachable from every device, because the web app needs Tailscale and a setup on each one. A person on a borrowed computer or a phone without Eva could not open a scan kept in the vault. And nobody else can open Eva's notes, so a file shared with others had no rule.
+1. **The root `AGENTS.md` sends more files to the cloud drive.** Replace the cloud drive row of the table of _Outside the vault_ with the four cloud drive rows of `template/`: big files, a scan needed in a hurry, quick data that is not secret, and a file in a shared place. Add the rule "Some files go to the cloud drive at any size" of `template/` after the rule "Keep a small file, even when the web has a copy". Replace these three sentences with the exact text of `template/`: "Only the size rule sends a file to the cloud drive.", the last sentence of "Small files can live in the vault" and the last sentence of "Decide by group, not by file". Leave the rest of the file as it is. Why: Eva is not reachable from every device, because the web app needs Tailscale and a setup on each one. A person on a borrowed computer or a phone without Eva could not open a scan kept in the vault. And nobody else can open Eva's notes, so a file shared with others had no rule.
 2. **`Life/Inventory/AGENTS.md` points to the rule.** Add the line "What is needed in a hurry on a device without Eva lives in the cloud drive" from `template/` before the line "A card gets its own item". Leave the rest of the file as it is. Why: an agent that reads only the folder rules must see it too, or it keeps the scan of a passport beside `Item.md`.
-3. **Existing files can follow the rule,** after the person approves. Eva cannot move a file to the cloud drive herself. So list each scan of an ID, a passport, an insurance card or a membership card in the vault, and each quick data that the person wants on a device without Eva, such as an IBAN in an `Item.md`. The person moves each file or value to the cloud drive and gives its link. Then replace the file or the value with that link in its note, and delete the file from the vault. Leave a file in the vault when the person gives no link.
+3. **Existing files can follow the rule,** after the person approves. Eva cannot move a file to the cloud drive herself. So list each scan of an ID, a passport, an insurance card or a membership card in the vault. Also list each quick data value that the person wants on a device without Eva, such as an IBAN in an `Item.md`. The person moves each file or value to the cloud drive and gives its link. Then replace the file or the value with that link in its note, and delete the file from the vault. Leave a file in the vault when the person gives no link.
 4. **Nothing else moves.** Each other file stays as it is.
 
 ### How to detect a vault that has it
 
-The root `AGENTS.md` says "Some files go to the cloud drive at any size" and "A file shared with other people". `Life/Inventory/AGENTS.md` says "needed in a hurry on a device without Eva". Then the upgrade only records the version.
+The root `AGENTS.md` says "Some files go to the cloud drive at any size" and "A file that other people open or edit in a shared place". `Life/Inventory/AGENTS.md` says "needed in a hurry on a device without Eva". Then the upgrade only records the version.
 
 ### What to ask, all in the one message up front
 

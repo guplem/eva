@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <!-- A frame of this page loads only from Eva herself. The client narrows it to the widget paths (#691). -->
-    <meta http-equiv="Content-Security-Policy" content="frame-src 'self'" />
+    <!-- A PDF of the Files page shows in a blob: frame (#1064). -->
+    <meta http-equiv="Content-Security-Policy" content="frame-src 'self' blob:" />
     <title>Eva</title>
     <meta name="theme-color" content="#f1f6fb" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#060e15" media="(prefers-color-scheme: dark)" />

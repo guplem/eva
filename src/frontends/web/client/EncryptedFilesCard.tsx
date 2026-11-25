@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { api, type VaultSecretsStatus } from "./api.ts";
 import { hasEncryptedDraft } from "./file-drafts.ts";
 import { ListSkeleton } from "./Loading.tsx";
+import { countOf } from "./project-format.ts";
 import { SaveButton } from "./SaveButton.tsx";
 import { Card, errorText } from "./SettingsParts.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
@@ -54,7 +55,10 @@ export function EncryptedFilesCard(): ReactElement {
       decrypted = (await api.confirmSecretRemovals(status?.waiting ?? [], status?.waitingFiles ?? [])).decrypted.length;
       return api.vaultSecrets();
     }, null);
-    if (done) setNote(`Eva decrypted ${String(decrypted)} files. The vault sync sends them as they are now.`);
+    if (done) {
+      const sync = decrypted === 1 ? "sends it as it is now" : "sends them as they are now";
+      setNote(`Eva decrypted ${countOf(decrypted, "file")}. The vault sync ${sync}.`);
+    }
     return done;
   };
 

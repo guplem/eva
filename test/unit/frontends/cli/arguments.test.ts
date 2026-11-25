@@ -22,6 +22,19 @@ describe("vault-upgrade", () => {
   });
 });
 
+describe("help and version flags", () => {
+  test.each([["--help"], ["-h"]])("%s shows the help, like the word help (#1067)", (flag) => {
+    expect(parseArguments([flag])).toEqual({ command: "help", instance: undefined });
+    expect(parseArguments(["chat", flag])).toEqual({ command: "help", instance: undefined });
+    expect(parseArguments(["--instance", "work", flag])).toEqual({ command: "help", instance: "work" });
+  });
+
+  test.each([["--version"], ["-v"]])("%s shows the version, like the word version (#1067)", (flag) => {
+    expect(parseArguments([flag])).toEqual({ command: "version", instance: undefined });
+    expect(parseArguments([flag, "--instance", "work"])).toEqual({ command: "version", instance: "work" });
+  });
+});
+
 describe("cliCommands", () => {
   test("lists each command of the usage text, and no other", () => {
     expect([...cliCommands].sort()).toEqual(usagePhrases());

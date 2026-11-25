@@ -114,13 +114,13 @@ const forkSchema = z.object({
   atMessageId: z.string().min(1),
   files: z.enum(["snapshot-clone", "clean-clone", "same-clone"]).optional(),
 });
-/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
 /** A step to explain (#963). The page sends it, because a live step is not stored yet. */
 const explainStepSchema = z.object({
   kind: z.enum(["command", "tool"]),
   input: z.string().max(200_000),
   output: z.string().max(200_000).optional(),
 });
+/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
 const retrySchema = z.object({
   turnIndex: z.number().int().min(0),
   undo: z.boolean().default(false),
@@ -466,8 +466,8 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       }),
     },
     development: false,
-    // Bun closes a request after 10 idle seconds by default. Some routes run git or gh for longer,
-    // such as a new clone or a setup report, so allow Bun's maximum.
+    // Bun closes a request after 10 idle seconds by default. Most routes run git or gh for a short
+    // time, such as a setup report, so allow Bun's maximum. Longer routes turn the limit off below.
     idleTimeout: options.idleTimeoutSeconds ?? 255,
     fetch: async (request, bunServer) => {
       const url = new URL(request.url);
@@ -499,7 +499,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
-      // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
+      // Bun closes a request after the idle time above. An engine check waits for a whole real turn,
       // a vault sync or pick waits for git's network steps, the Google login waits for Google, the
       // GitHub login waits until the person confirms the code, and an update waits for the download
       // of the new version, as a tool install waits for its download. Each ends at its own timeout.
@@ -519,7 +519,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         (url.pathname === "/api/projects" && request.method === "POST") ||
         url.pathname.endsWith("/setup/fix") ||
         // A fork or a retry of a Project chat may wait for a new clone and a summary (issue 523).
-        (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname))
+        (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname)) ||
+        // A new Project chat and a project's work may wait for a new clone, and a clone may take
+        // 10 minutes. Every other POST to a project's clones runs git's network steps (#1076).
+        (request.method === "POST" &&
+          (url.pathname === "/api/sessions" || /^\/api\/projects\/[^/]+\/(work|clones(\/.*)?)$/.test(url.pathname)))
       )
         bunServer.timeout(request, 0);
       try {
@@ -1584,11 +1588,10 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
 }
 
 /**
- * The Tailscale account that `tailscale serve` names for a request to a remote host name, when
- * the allowlist holds it, or null. It decides only who may ask for a device login: a local program
- * can forge the header, so it never authenticates a request alone.
+ * The account that may ask for a device login: an allowed Tailscale account, or this computer
+ * itself, or null. A local program can forge the Tailscale header, so the account never
+ * authenticates a request alone.
  */
-/** The account that may ask for a device login: an allowed Tailscale account, or this computer itself. */
 function deviceLoginAccount(request: Request, options: LocalApiOptions): string | null {
   // Any program here can reach this address, but only a person at Eva's terminal can allow its code.
   if (isLocalRequest(request)) return localAccount;

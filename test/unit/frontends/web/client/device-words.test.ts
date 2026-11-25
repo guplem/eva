@@ -1,8 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { allowedWords, computerDetail, describeDevice } from "../../../../../src/frontends/web/client/device-words.ts";
+import {
+  allowedWords,
+  computerDetail,
+  describeAgent,
+  describeDevice,
+} from "../../../../../src/frontends/web/client/device-words.ts";
 
 // The local API keeps the first 120 characters of the user agent.
 const label = (agent: string): string => `owner@example.com, ${agent.slice(0, 120)}`;
+
+describe("describeAgent", () => {
+  // A whole user agent holds "(KHTML, like Gecko)", so a cut at its first ", " would lose the system.
+  test("names the system of a bare user agent", () => {
+    expect(
+      describeAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      ),
+    ).toEqual({ name: "Windows computer", browser: "Chrome", icon: "laptop" });
+    expect(
+      describeAgent(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      ),
+    ).toEqual({ name: "iPhone", browser: "Safari", icon: "phone" });
+  });
+});
 
 describe("describeDevice", () => {
   test("a computer gets its system, its browser and the laptop icon", () => {

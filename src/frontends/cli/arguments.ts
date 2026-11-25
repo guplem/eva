@@ -138,6 +138,8 @@ export const valueOptions: readonly string[] = ["--instance", "--project", "--cl
 /** The flags that every command line tool knows. A person tries them first, anywhere on the line. */
 const helpFlags: readonly string[] = ["--help", "-h"];
 const versionFlags: readonly string[] = ["--version", "-v"];
+/** Commands that end in free text, such as a request. There, `-h` and `-v` are words of that text (#1079). */
+const freeTextCommands: readonly string[] = ["work", "projects", "settings"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];
@@ -145,7 +147,9 @@ export function parseArguments(argv: readonly string[]): CliCommand {
   const switchesSeen = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const word = argv[index] ?? "";
-    if (helpFlags.includes(word) || versionFlags.includes(word) || switches.includes(word)) {
+    if (/^-[hv]$/.test(word) && freeTextCommands.includes(words[0] ?? "")) {
+      words.push(word);
+    } else if (helpFlags.includes(word) || versionFlags.includes(word) || switches.includes(word)) {
       switchesSeen.add(word);
     } else if (word.startsWith("--")) {
       if (!valueOptions.includes(word)) return usageError(`Unknown option ${word}.`);

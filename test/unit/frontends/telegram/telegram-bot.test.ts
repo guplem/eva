@@ -2354,6 +2354,17 @@ describe("alerts, logs and restart", () => {
     expect(telegram.sentTexts().find((text) => text.startsWith("1 problem\n"))).toContain(`• ${problem.message}`);
   });
 
+  test("/status names /link, not a terminal command, when phone access is not ready (#1073)", async () => {
+    createEva(undefined, systemProcessRunner, {
+      remoteAccess: fixedRemoteAccess({ url: null, problem: "Turn on HTTPS." }),
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/status");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toContain("Phone access: not ready. Turn on HTTPS. Send /link for every step.");
+    expect(telegram.sentTexts()[0]).not.toContain("eva link");
+  });
+
   test("/logs shows the last warnings and errors, 20 by default, and /logs 2 only two", async () => {
     const folder = homePaths(home).logsFolder;
     mkdirSync(folder, { recursive: true });

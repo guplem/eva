@@ -620,7 +620,10 @@ export class TelegramBot {
         // A tool can take seconds to give its version, so the other messages do not wait for it.
         this.inBackground(chatId, topicId, async () => {
           const tools = (await this.options.eva.versions()).tools;
-          const lines = [...describeStatusLines(this.options.eva.status()), describeToolVersions(tools)];
+          const lines = [
+            ...describeStatusLines(this.options.eva.status(), null, "Send /link for every step."),
+            describeToolVersions(tools),
+          ];
           await this.send(chatId, topicId, lines.join("\n"));
         });
         return;

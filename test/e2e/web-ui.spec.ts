@@ -679,6 +679,26 @@ test("Enter and Shift+Enter start a new line, and only Ctrl+Enter sends (#1040)"
   await expect(box).toHaveValue("");
 });
 
+test("Settings makes Enter send, and Shift+Enter then starts a new line (#1061)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/settings/personalize/send-key");
+  const card = page.getByRole("region", { name: "Send key", exact: true });
+  const choices = card.getByRole("group", { name: "Send with" });
+  await expect(choices.getByRole("button", { name: "Ctrl+Enter" })).toHaveAttribute("aria-pressed", "true");
+  await choices.getByRole("button", { name: "Enter", exact: true }).click();
+  await expect(choices.getByRole("button", { name: "Enter", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("First line");
+  await box.press("Shift+Enter");
+  await box.pressSequentially("Second line");
+  await expect(box).toHaveValue("First line\nSecond line");
+  await expect(page.locator(".message.user")).toHaveCount(0);
+  await box.press("Enter");
+  await expect(page.locator(".message.user").first()).toContainText("Second line");
+  await expect(box).toHaveValue("");
+});
+
 test("a send turns the box into the new bubble, and reduced motion plays no morph (#943)", async ({ page }) => {
   await logIn(page);
   await newChat(page);

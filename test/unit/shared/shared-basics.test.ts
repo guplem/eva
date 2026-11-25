@@ -67,13 +67,25 @@ describe("outwardActionsOf", () => {
       "git -c a=b push origin",
       "git --no-pager push",
       "git --git-dir=x -C y push",
+      "git --work-tree . push",
+      "git --git-dir repo/.git push",
+      "git --namespace n --config-env a=B push",
+      "git.exe push origin main",
+      "GIT.EXE -C x push",
     ]) {
       expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({
         command,
         categories: ["pushCode"],
       });
     }
-    for (const command of ["git status", "git -C x status", "git -c a=b log"]) {
+    for (const command of [
+      "git status",
+      "git -C x status",
+      "git -c a=b log",
+      "git --no-pager log --grep push",
+      "git --work-tree push-docs status",
+      "echo git status; echo push",
+    ]) {
       expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({ command, categories: [] });
     }
   });
@@ -83,6 +95,8 @@ describe("outwardActionsOf", () => {
     expect(outwardActionsOf("Bash", { command: "git -c a=b ".repeat(2000) })).toEqual([]);
     expect(outwardActionsOf("Bash", { command: "git ".repeat(5000) })).toEqual([]);
     expect(outwardActionsOf("Bash", { command: `${"git -c a=b ".repeat(2000)}push` })).toEqual(["pushCode"]);
+    expect(outwardActionsOf("Bash", { command: "git --work-tree x ".repeat(2000) })).toEqual([]);
+    expect(outwardActionsOf("Bash", { command: "git --git-dir=x --work-tree=y ".repeat(2000) })).toEqual([]);
     expect(performance.now() - start).toBeLessThan(500);
   });
 

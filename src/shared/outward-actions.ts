@@ -9,8 +9,13 @@
 export type ToolCategory = "command" | "tool";
 
 /** Shell commands that push code. */
-// Git's global options (`-C dir`, `-c a=b`, `--no-pager`) may stand before `push`. Each option has one way to match.
-const pushCodePattern = /\bgit(?:\s+(?:-[Cc]\s+\S+|--[\w-]+(?:=\S+)?))*\s+push\b/i;
+// Git's global options (`-C dir`, `-c a=b`, `--no-pager`, `--work-tree dir`) may stand before
+// `push`. Some long options take their value after a space. Each option has one way to match.
+const gitSpacedValueOption = "--(?:git-dir|work-tree|namespace|super-prefix|config-env)(?=[\\s=])";
+const pushCodePattern = new RegExp(
+  String.raw`\bgit(?:\.exe)?(?:\s+(?:-[Cc]\s+\S+|${gitSpacedValueOption}(?:=|\s+)\S+|(?!${gitSpacedValueOption})--[\w-]+(?:=\S+)?))*\s+push\b`,
+  "i",
+);
 /** Shell commands that publish on GitHub. */
 const githubPattern = /\bgh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)/i;
 /**

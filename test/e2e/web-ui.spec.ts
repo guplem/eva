@@ -5080,11 +5080,14 @@ test("in a chat in a clone, an @ gives a vault file as a copy, with no vault pat
   await openExampleApp(page);
   await newProjectChat(page);
   const box = page.getByRole("textbox", { name: "Message" });
-  const search = page.getByRole("listbox", { name: "Mention a project or a file" });
+  // A project's folder would name the vault, so a chat in a clone mentions files only.
+  const search = page.getByRole("listbox", { name: "Mention a file", exact: true });
   await box.pressSequentially("Read @trips");
   await expect(search.getByRole("option", { name: /2027-trips\.md/ })).toBeVisible();
-  // A project's folder would name the vault, so a chat in a clone mentions files only.
   await expect(search.getByRole("option", { name: /Example app/ })).toHaveCount(0);
+  // A clone chat never lists the projects, so a project wait would never end.
+  await expect(search.getByText("Projects", { exact: true })).toHaveCount(0);
+  await expect(search.getByRole("progressbar", { name: "Eva lists the projects" })).toHaveCount(0);
   await search.getByRole("option", { name: /2027-trips\.md/ }).click();
   await page.getByRole("button", { name: "Send", exact: true }).click();
   // The demo engine echoes the last line of the message: the note of the copy, in the clone.

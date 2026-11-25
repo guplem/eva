@@ -222,21 +222,29 @@ export function useMentionPicker(
   );
 
   const menu = open ? (
-    <div className="menu mention-menu" id={listId} role="listbox" aria-label="Mention a project or a file">
-      <div className="mention-group">
-        <span className="mention-group-name" aria-hidden="true">
-          Projects
-        </span>
-        {projects === null ? (
-          <ProgressBar label="Eva lists the projects" />
-        ) : projectOptions.length === 0 ? (
-          <span className="mention-empty">No project matches.</span>
-        ) : (
-          <div className="mention-group" role="group" aria-label="Projects">
-            {projectOptions.map((option, index) => item(option, index))}
-          </div>
-        )}
-      </div>
+    <div
+      className="menu mention-menu"
+      id={listId}
+      role="listbox"
+      aria-label={inClone ? "Mention a file" : "Mention a project or a file"}
+    >
+      {/* A clone chat never reads the projects, so their wait would never end. */}
+      {!inClone && (
+        <div className="mention-group">
+          <span className="mention-group-name" aria-hidden="true">
+            Projects
+          </span>
+          {projects === null ? (
+            <ProgressBar label="Eva lists the projects" />
+          ) : projectOptions.length === 0 ? (
+            <span className="mention-empty">No project matches.</span>
+          ) : (
+            <div className="mention-group" role="group" aria-label="Projects">
+              {projectOptions.map((option, index) => item(option, index))}
+            </div>
+          )}
+        </div>
+      )}
       <div className="mention-group">
         <span className="mention-group-name" aria-hidden="true">
           Files

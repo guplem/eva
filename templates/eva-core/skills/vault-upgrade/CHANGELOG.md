@@ -366,7 +366,7 @@ The root `AGENTS.md` says "Judge the rigor of a source before you file it as a f
 
 - **Version:** 14
 - **Date:** 2026-11-25
-- **Pull request:** pending
+- **Pull request:** https://github.com/guplem/eva/pull/1078
 - **Summary:** Files you need in a hurry on a device without Eva, such as a scan of an ID or an insurance card, go to your cloud drive. So do files that other people open in a shared folder. Quick data that is not secret, such as an IBAN, lives in one text document there, and your notes link it.
 - **Migrations first:**
 

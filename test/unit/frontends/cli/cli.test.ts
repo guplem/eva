@@ -42,6 +42,7 @@ import {
   restartMethod,
   serviceName,
   servicePath,
+  systemdQuoted,
   systemdUnit,
   windowsOldTaskCommands,
   windowsRunKeyCommand,
@@ -1629,16 +1630,38 @@ describe("service", () => {
       path: "/usr/bin:/bin",
       configFolder: undefined,
     });
-    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --instance ana");
+    expect(unit).toContain('ExecStart="/usr/bin/bun" "/opt/eva/src/main.ts" "--instance" "ana"');
     expect(unit).toContain("Restart=on-failure");
     expect(unit).toContain("RestartPreventExitStatus=2 3");
-    expect(unit).toContain("Environment=PATH=/usr/bin:/bin");
+    expect(unit).toContain('Environment="PATH=/usr/bin:/bin"');
     expect(unit).not.toContain("XDG_CONFIG_HOME");
   });
 
   test("the systemd unit keeps the install's XDG_CONFIG_HOME, so the service finds the same Evas", () => {
     const unit = systemdUnit({ executable: ["eva"], instance: "ana", path: "/usr/bin", configFolder: "/srv/config" });
-    expect(unit).toContain("Environment=XDG_CONFIG_HOME=/srv/config");
+    expect(unit).toContain('Environment="XDG_CONFIG_HOME=/srv/config"');
+  });
+
+  test("the systemd unit keeps each value with a space whole, such as a WSL PATH", () => {
+    const unit = systemdUnit({
+      executable: ["/home/a b/.bun/bin/bun", "/home/a b/eva/src/main.ts"],
+      instance: "ana",
+      path: "/usr/bin:/mnt/c/Program Files/Git/cmd",
+      configFolder: "/home/a b/.config",
+    });
+    expect(unit).toContain('ExecStart="/home/a b/.bun/bin/bun" "/home/a b/eva/src/main.ts" "--instance" "ana"');
+    expect(unit).toContain('Environment="PATH=/usr/bin:/mnt/c/Program Files/Git/cmd"');
+    expect(unit).toContain('Environment="XDG_CONFIG_HOME=/home/a b/.config"');
+  });
+
+  test("a systemd value escapes what systemd reads as a quote, an escape, a specifier or a variable", () => {
+    expect(systemdQuoted("a b", "environment")).toBe('"a b"');
+    expect(systemdQuoted('say "hi"', "environment")).toBe('"say \\"hi\\""');
+    expect(systemdQuoted("C:\\tools", "environment")).toBe('"C:\\\\tools"');
+    expect(systemdQuoted("100%", "environment")).toBe('"100%%"');
+    expect(systemdQuoted("$HOME", "environment")).toBe('"$HOME"');
+    expect(systemdQuoted("100%", "command")).toBe('"100%%"');
+    expect(systemdQuoted("$HOME", "command")).toBe('"$$HOME"');
   });
 
   test("the service PATH drops the folders that only one `bun run` has", () => {

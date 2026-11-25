@@ -174,7 +174,7 @@ A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) an
 
 From top to bottom: the header (back or menu button, title and subtitle, more button), the content, the composer, and a bottom tab bar with the entries that the person chose, and Eva. By default, the entries are Chats, Files, Projects and Cases. The person picks up to four and their order, and Settings can be one of them. The bar spreads one to five tabs over its width. The Eva tab is the nav visor, with the label "Eva". It always shows, and it opens the home page, which has a bell and a button to Settings. List pages use a large 30 px title.
 
-Dialogs are centred boxes on a computer and bottom sheets on a phone. Their buttons stack at full width in a sheet. `phoneDialogForm` in `client/Dialog.tsx` picks the phone form of every dialog.
+Dialogs are centred boxes on a computer and bottom sheets on a phone. Their buttons stack at full width in a sheet. `phoneDialogForm` in `client/Dialog.tsx` picks the phone form of every dialog. A sheet follows a drag down. A long drag or a fast flick closes it as the Back button does, and a short drag springs it back (`client/sheet-drag.ts`). Every sheet already opens at the height of its content, so a drag up only stretches it a little.
 
 ## Components
 

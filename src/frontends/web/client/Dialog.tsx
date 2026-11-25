@@ -72,7 +72,15 @@ export function Dialog({
       // A tap on the scrim closes the dialog; a tap inside it does not.
       onClick={scrimCloses ? (event) => event.target === event.currentTarget && onClose() : undefined}
     >
-      <div ref={box} className={wide ? "dialog wide" : "dialog"} role="dialog" aria-modal="true" aria-label={label}>
+      <div
+        ref={box}
+        className={wide ? "dialog wide" : "dialog"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        // A drag closes a sheet through Back, which would reach the layer below a dialog with no layer.
+        data-sheet-drag={back ? undefined : "off"}
+      >
         {children}
         <div className="message-actions">
           <button ref={close} onClick={onClose} disabled={closeDisabled}>

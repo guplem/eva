@@ -1516,6 +1516,15 @@ textarea {
     align-self: center;
   }
 
+  /* A sheet follows the finger at once, then glides to its place or away (`sheet-drag-watch.ts`). */
+  .dialog-backdrop.phone-sheet > [role="dialog"].sheet-dragging {
+    user-select: none;
+  }
+
+  .dialog-backdrop.phone-sheet > [role="dialog"].sheet-settling {
+    transition: transform var(--dur-fast) var(--ease-out);
+  }
+
   /* The buttons of a sheet stack at full width. */
   .phone-sheet .message-actions {
     margin-top: 0;
@@ -1540,6 +1549,10 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .dialog-backdrop.phone-sheet > [role="dialog"] {
     animation: none;
+  }
+
+  .dialog-backdrop.phone-sheet > [role="dialog"].sheet-settling {
+    transition: none;
   }
 }
 

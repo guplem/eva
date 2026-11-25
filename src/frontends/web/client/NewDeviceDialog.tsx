@@ -19,8 +19,9 @@ export function NewDeviceDialog(props: {
 }): ReactElement {
   const { request, allowed } = props;
   return (
+    // It has no back layer, so a drag would close the layer below it.
     <div className={dialogBackdropClass("device-backdrop")}>
-      <div className="device-sheet" role="dialog" aria-modal="true" aria-label="New device">
+      <div className="device-sheet" role="dialog" aria-modal="true" aria-label="New device" data-sheet-drag="off">
         <Visor size={28} face={allowed ? stateFaces.thanked : stateFaces.searching} />
         <h2>{allowed ? "Allowed. The new device opens Eva now." : "A new device wants to get in. Allow it?"}</h2>
         <div className="device-code">{request.code}</div>

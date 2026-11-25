@@ -7,6 +7,7 @@ import { watchLeaving } from "./leave-guard.ts";
 import { watchLayers } from "./back-layers.ts";
 import { logInWithLink, loginLinkOf } from "./login-link.ts";
 import { sameSettingsPage } from "./settings-routes.ts";
+import { watchSheetDrags } from "./sheet-drag-watch.ts";
 import { framePolicy } from "./widget-frames.ts";
 
 // Before the first render, so the page never flashes the other theme.
@@ -25,6 +26,7 @@ if (link !== null) window.history.replaceState(null, "", link.address);
 // so its listener runs before the listeners of the views.
 watchLeaving(window, (oldURL, newURL) => sameSettingsPage(new URL(oldURL).hash, new URL(newURL).hash));
 watchLayers(window);
+watchSheetDrags(window);
 const loginNotice =
   link === null
     ? Promise.resolve(null)

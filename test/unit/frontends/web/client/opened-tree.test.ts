@@ -6,7 +6,7 @@ import {
   emptyChats,
   openedTree,
   type KeptTurns,
-} from "../../../../../src/frontends/web/client/opened-chats.ts";
+} from "../../../../../src/frontends/web/client/opened-tree.ts";
 
 type Turn = SessionRecord["turns"][number];
 

@@ -390,7 +390,7 @@ The root `AGENTS.md` says "Some files go to the cloud drive at any size" and "A 
 
 - **Version:** 15
 - **Date:** 2026-11-25
-- **Pull request:**
+- **Pull request:** https://github.com/guplem/eva/pull/1094
 - **Summary:** A project can link its own list in your task app, and the things still to do for it go there. When you ask what to do now, Eva checks your free time in the calendar, then asks your task app for the next thing, and prefers your active projects.
 - **Migrations first:**
 

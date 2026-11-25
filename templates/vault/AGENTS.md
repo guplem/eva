@@ -67,6 +67,8 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 
 With no tool for that service, tell the person where to put it. Never store it in the vault instead.
 
+**When the person asks what to do now,** find in the calendar the free time before their next event. Ask the person how much time they have only when the calendar leaves it unclear. Then, when the task app can choose the next thing to do, ask it for one that fits that time. When it cannot choose, list the things of the task app that fit that time. In both cases, prefer the things of `active` projects to the things of `paused` ones.
+
 ## Where things go
 
 Go down this list in order. Stop at the first yes. _What is where_ says what each folder holds.
@@ -141,6 +143,7 @@ summary: A web app that plans the meals of the week. # one line
 repos:
   - https://github.com/example/example-app
 result: https://example.com/meal-planner # optional: where to use the result
+task-app: https://example.com/lists/example-app # optional: the project's list in the task app
 ---
 ```
 
@@ -152,6 +155,7 @@ result: https://example.com/meal-planner # optional: where to use the result
 - **`deadline`** has the same shape and meaning as in `Life/Cases/AGENTS.md`: a date that someone else set, where missing it costs something. Leave it out when nothing is lost by waiting.
 - **`repos`** lists the address of each repository that `git clone` accepts, such as `https://github.com/example/example-app`. Never list a link to a folder or a branch, such as `.../tree/main/web`: Eva cannot clone it. When the code is one folder of a shared repository, list the repository, and name the folder in the text.
 - **`result`** is the one address where the person uses the result: a website, a download or a page in an app store. Leave it out when the result has no address. Put other addresses in the _Links_ section.
+- **`task-app`** is the web link to the project's own list in the task app, such as a list or a group. Leave it out when the project has none.
 
 The text under the front matter starts with a paragraph that describes the project. Two sections can follow it, each only when it has content:
 
@@ -165,6 +169,8 @@ The project types:
 - **Specialist:** a chat with its own rules and memory, such as a gym coach. The text under the front matter holds its rules.
 
 The project's notes sit loose beside its `AGENTS.md`. Create a subfolder, such as `Meetings/`, only when many notes of one kind exist. `repos/` holds clones of its repositories. Git ignores them. Never edit a clone as part of note work.
+
+**Things still to do for a project,** such as a task, a habit, a reminder or an idea, go to its list in the task app when `task-app` names one. Otherwise, they go where the rest of this file sends them. The work on a repository's code goes where that repository's own `AGENTS.md` says, such as its GitHub issues.
 
 ## Rules
 

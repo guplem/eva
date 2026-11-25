@@ -347,6 +347,21 @@ describe("the vault template", () => {
     );
   });
 
+  test("a project links its list in the task app, and the task app picks what to do now (#1093)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    // The key names the role, not the kind of item: a list can hold habits or ideas too.
+    expect(map).toContain("task-app: https://example.com/lists/example-app # optional");
+    expect(map).toContain("- **`task-app`** is the web link to the project's own list in the task app");
+    expect(map).toContain("**Things still to do for a project,**");
+    // A repository keeps its own place for code work, such as its GitHub issues.
+    expect(map).toContain("The work on a repository's code goes where that repository's own `AGENTS.md` says");
+    expect(map).toContain("**When the person asks what to do now,**");
+    expect(map).toContain("In both cases, prefer the things of `active` projects to the things of `paused` ones.");
+    // The cases rule stays: only a deadline gets a task.
+    expect(files["Life/Cases/AGENTS.md"]).toContain("Only a `deadline` gets a task. A step never does.");
+  });
+
   test("a period files its records by topic and keeps the work of a short job (#949)", () => {
     const periods = vaultTemplateFiles(answers)["Life/Periods/AGENTS.md"] ?? "";
     expect(periods).toContain("`Documents/<topic>/`");

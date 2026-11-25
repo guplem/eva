@@ -105,6 +105,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(14);
   });
 
+  test("v15 offers the task app link of a project and the rule for what to do now, and moves nothing (#1093)", () => {
+    const v15 = structureChanges.find((change) => change.version === 15);
+    expect(v15?.summary).toStartWith("A project can link its own list in your task app");
+    expect(v15?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(15);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

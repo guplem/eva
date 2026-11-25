@@ -114,13 +114,13 @@ const forkSchema = z.object({
   atMessageId: z.string().min(1),
   files: z.enum(["snapshot-clone", "clean-clone", "same-clone"]).optional(),
 });
-/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
 /** A step to explain (#963). The page sends it, because a live step is not stored yet. */
 const explainStepSchema = z.object({
   kind: z.enum(["command", "tool"]),
   input: z.string().max(200_000),
   output: z.string().max(200_000).optional(),
 });
+/** `undo` restores the vault files of an Assistant chat (#525). `files` chooses the clone files of a Project chat (#523). */
 const retrySchema = z.object({
   turnIndex: z.number().int().min(0),
   undo: z.boolean().default(false),
@@ -1588,11 +1588,10 @@ function errorResponse(error: unknown, request: Request, options: LocalApiOption
 }
 
 /**
- * The Tailscale account that `tailscale serve` names for a request to a remote host name, when
- * the allowlist holds it, or null. It decides only who may ask for a device login: a local program
- * can forge the header, so it never authenticates a request alone.
+ * The account that may ask for a device login: an allowed Tailscale account, or this computer
+ * itself, or null. A local program can forge the Tailscale header, so the account never
+ * authenticates a request alone.
  */
-/** The account that may ask for a device login: an allowed Tailscale account, or this computer itself. */
 function deviceLoginAccount(request: Request, options: LocalApiOptions): string | null {
   // Any program here can reach this address, but only a person at Eva's terminal can allow its code.
   if (isLocalRequest(request)) return localAccount;

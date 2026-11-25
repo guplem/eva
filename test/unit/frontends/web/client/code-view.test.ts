@@ -14,6 +14,7 @@ describe("viewOf: how the Files page shows a file (issue 308)", () => {
     expect(viewOf("data/list.JSON")).toBe("json");
     expect(viewOf("main.py")).toBe("code");
     expect(viewOf("page.html")).toBe("code");
+    expect(viewOf("Media/logo.SVG")).toBe("image");
     expect(viewOf("notes.txt")).toBe("plain");
     expect(viewOf("Makefile")).toBe("plain");
   });

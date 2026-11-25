@@ -86,14 +86,15 @@ export function nameEnds(name: string): { readonly head: string; readonly tail: 
 }
 
 export interface Media {
-  readonly kind: "image" | "audio" | "video";
+  readonly kind: "image" | "audio" | "video" | "pdf";
   /** The MIME type that the browser needs to show the bytes. */
   readonly type: string;
 }
 
 /**
- * The formats that every current browser shows by itself. A PDF stays out: most phone browsers do
- * not show one inside a page. An SVG stays out too: Eva shows it as text.
+ * The formats that every current browser shows by itself. A PDF shows in the browser's own viewer;
+ * a phone browser without one gets an Open button (#1064). An SVG stays out: it shows from its text,
+ * and a `blob:` address of it would run its scripts as Eva once the person opens the image in a tab.
  */
 const media: Readonly<Record<string, Media>> = {
   png: { kind: "image", type: "image/png" },
@@ -115,6 +116,7 @@ const media: Readonly<Record<string, Media>> = {
   m4v: { kind: "video", type: "video/mp4" },
   webm: { kind: "video", type: "video/webm" },
   mov: { kind: "video", type: "video/quicktime" },
+  pdf: { kind: "pdf", type: "application/pdf" },
 };
 
 /** The media of a file that the page can show, or null for any other file. */
@@ -124,4 +126,26 @@ export function mediaOf(name: string): Media | null {
   // A dot at the start of the name, as in ".png", is no extension.
   if (dot <= start) return null;
   return media[name.slice(dot + 1).toLowerCase()] ?? null;
+}
+
+/** The browser holds the whole file in memory, so a larger file keeps its Download button only. */
+export const maxMediaBytes = 50 * 1024 * 1024;
+
+/** The parts of an open path, as the core answers it, that decide its preview. */
+export interface ShownPath {
+  readonly kind: string;
+  readonly size?: number;
+  readonly downloadable?: boolean;
+}
+
+/**
+ * The media of an open file that the page shows, or null when it shows the answer of the core.
+ * A file that the download route may not send, such as a secrets file, never shows.
+ */
+export function shownMediaOf(path: string, shown: ShownPath): Media | null {
+  const media = mediaOf(path);
+  if (media === null || shown.size === undefined || shown.size > maxMediaBytes) return null;
+  if (shown.kind === "unreadable") return shown.downloadable === true ? media : null;
+  // A PDF can hold only plain letters, so the core reads it as text. Its text means nothing to a person.
+  return shown.kind === "file" && media.kind === "pdf" ? media : null;
 }

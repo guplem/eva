@@ -19,6 +19,7 @@ import {
 } from "node:fs";
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
+import { isInside } from "../../shared/path-area.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { scratchFolder } from "./scratch-folders.ts";
 import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
@@ -60,7 +61,8 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
     return { ok: false, reason: `${requested} does not exist.`, missing: true };
   }
   const relativePath = relative(root, resolved);
-  if (relativePath.startsWith("..") || isAbsolute(relativePath))
+  // A name such as `..draft.md` is inside the vault: only a `..` part leaves it (#1069).
+  if (!isInside(root, resolved))
     return { ok: false, reason: `${requested} is outside the vault, so Eva does not send it.` };
   const parts = relativePath.split(sep);
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.

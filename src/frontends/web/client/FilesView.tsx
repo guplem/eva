@@ -6,7 +6,16 @@
  * and save it in the vault, and rename a file or a folder (issue 343). A search finds a file or a
  * folder by its name, or by the text inside a file.
  */
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   api,
   ApiError,
@@ -36,8 +45,8 @@ import {
   sizeWords,
   splitFrontMatter,
 } from "./file-paths.ts";
-import { fileBadgeOf, mediaOf, nameEnds } from "./file-kinds.ts";
-import { maxMediaBytes, MediaPreview } from "./FileMedia.tsx";
+import { fileBadgeOf, nameEnds, shownMediaOf } from "./file-kinds.ts";
+import { MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ListSkeleton } from "./Loading.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
@@ -605,8 +614,8 @@ function Column({
     );
   if (!isLast) return null;
   // A file that Eva may not download, such as a secrets file, never shows either.
-  const media = shown.kind === "unreadable" && shown.downloadable ? mediaOf(path) : null;
-  if (shown.kind === "unreadable" && media !== null && shown.size <= maxMediaBytes)
+  const media = shownMediaOf(path, shown);
+  if (media !== null && (shown.kind === "unreadable" || shown.kind === "file"))
     // The size is in the key, so a file that changes on disk shows its new bytes.
     return (
       <MediaPreview
@@ -1122,8 +1131,9 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source, smar
 
   const download = useDownload(file.path, files.download);
   const items: MenuItem[] = [];
-  if (draft === null && (view === "markdown" || view === "json")) {
-    items.push({ label: plain ? "Show formatted" : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
+  if (draft === null && (view === "markdown" || view === "json" || view === "image")) {
+    const formatted = view === "image" ? "Show image" : "Show formatted";
+    items.push({ label: plain ? formatted : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
   }
   // A text area wraps by itself, so the editor needs no wrap item.
   if (draft === null) {
@@ -1269,6 +1279,12 @@ function FileText({
 }): ReactElement {
   const view = viewOf(path);
   const textClass = wrap ? "files-text wrap" : "files-text";
+  if (view === "image")
+    return plain ? (
+      <CodeText path={path} text={text} className={textClass} />
+    ) : (
+      <SvgImage key={text} path={path} text={text} />
+    );
   if (plain || view === "plain") return <pre className={textClass}>{text}</pre>;
   if (view === "markdown") {
     const { frontMatter, body } = splitFrontMatter(text);
@@ -1283,6 +1299,27 @@ function FileText({
     );
   }
   return <CodeText path={path} text={view === "json" ? (prettyJson(text) ?? text) : text} className={textClass} />;
+}
+
+/**
+ * An SVG file drawn from the text that the page holds (#1064). An `<img>` runs no script of the
+ * SVG, so a file of the vault cannot run code in Eva's page.
+ */
+function SvgImage({ path, text }: { readonly path: string; readonly text: string }): ReactElement {
+  const [broken, setBroken] = useState(false);
+  const address = useMemo(() => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`, [text]);
+  const name = path.split("/").pop() ?? path;
+  if (broken)
+    return (
+      <div role="status" className="callout warning files-problem">
+        The browser cannot draw this SVG. Choose Show plain text to read it.
+      </div>
+    );
+  return (
+    <div className="files-media">
+      <img src={address} alt={name} onError={() => setBroken(true)} />
+    </div>
+  );
 }
 
 function CodeText({

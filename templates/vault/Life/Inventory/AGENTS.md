@@ -58,6 +58,7 @@ summary: Streaming service, shared with Life/People/Sam Example. Cancel in the a
 - **One tool is one item, however the person pays for it.** A software plan paid each month is an item with `kind: subscription`. When the person changes from a licence to a plan, keep the folder and change `kind`.
 - **A key, a password or a PIN goes in a `.secrets` file beside `Item.md`,** which Eva encrypts. Use `Licence.secrets` for a software key, `Wi-Fi.secrets` in the home folder, and `Card.secrets` for a full card number or a PIN. Never write one in `Item.md`. An online-banking login goes in the password manager.
 - **Software links where its installer lives,** such as the download page or the file in the cloud drive. With the key beside it, the folder holds all that a reinstall needs.
+- **What is needed in a hurry on a device without Eva lives in the cloud drive,** as _Outside the vault_ in the root `AGENTS.md` says. This covers the scan of a passport or an insurance card, and quick data such as an IBAN. `Item.md` links it and never copies it.
 - **A card gets its own item.** Its text links the account that it draws from by its path, such as `Life/Inventory/Bank account - Example Bank - 1234`.
 - **A goal of an account, such as a sum to keep,** is a line in its `Item.md`.
 - **Nest only what stays when the person moves.** A home holds `Fixtures.md` for the landlord's appliances. A thing that the person would take along, such as a printer, gets its own folder in `Life/Inventory/`.

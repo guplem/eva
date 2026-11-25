@@ -326,6 +326,21 @@ describe("the vault template", () => {
     expect(files["Life/Diary/AGENTS.md"]).toContain("Judge the rigor of a source");
   });
 
+  test("a file needed away from Eva or shared with others goes to the cloud drive, and quick data has one text document (#1065)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    // Eva is not reachable from every device, so a card needed in a hurry must open without her.
+    expect(map).toContain("A document or a card needed in a hurry on a device without Eva, such as a scan of an ID");
+    // Quick data keeps one place: the cloud drive document, linked from the vault note.
+    expect(map).toContain("Quick data that is not secret, needed on a device without Eva, such as an IBAN");
+    expect(map).toContain("never copies the data");
+    // Eva's notes cannot be shared, so a shared file lives where others can open it.
+    expect(map).toContain("| A file shared with other people | The cloud drive |");
+    expect(map).toContain("**Some files go to the cloud drive at any size,**");
+    // An agent that reads only the Inventory rules still finds where a passport scan goes.
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("needed in a hurry");
+  });
+
   test("a period files its records by topic and keeps the work of a short job (#949)", () => {
     const periods = vaultTemplateFiles(answers)["Life/Periods/AGENTS.md"] ?? "";
     expect(periods).toContain("`Documents/<topic>/`");

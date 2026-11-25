@@ -67,7 +67,7 @@ export const settingsSections: readonly SettingsSection[] = [
   {
     id: "personalize",
     title: "Personalize",
-    summary: "Theme, navigation, sounds, Eva's rules, location, time zone and chat names.",
+    summary: "Theme, navigation, sounds, send key, Eva's rules, location, time zone and chat names.",
     steps: [],
   },
   {
@@ -296,6 +296,12 @@ export const searchEntries: readonly SearchEntry[] = [
       "main menu rail tab bar tabs entries buttons pages hide show computer phone life cases people inventory items objects pets periods",
   },
   {
+    item: "send-key",
+    section: "personalize",
+    title: "Send key",
+    words: "keyboard enter ctrl control cmd command shift new line newline return send message box chat shortcut",
+  },
+  {
     item: "assistant-rules",
     section: "personalize",
     title: "Eva's rules",
@@ -511,6 +517,7 @@ export const settingPlaces: readonly SettingPlace[] = [
   { title: "Appearance", home: "browser", keys: [], link: { section: "personalize", item: "appearance" } },
   { title: "Sounds and vibration", home: "browser", keys: [], link: { section: "personalize", item: "sounds" } },
   { title: "Navigation", home: "browser", keys: [], link: { section: "personalize", item: "navigation" } },
+  { title: "Send key", home: "browser", keys: [], link: { section: "personalize", item: "send-key" } },
 ];
 
 /** Every typed word must appear in the entry's title, its words or its section's title. */

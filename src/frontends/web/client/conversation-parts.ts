@@ -6,6 +6,7 @@ import type { TurnStep } from "../../../shared/turn-steps.ts";
 import type { UndoPreview } from "./api.ts";
 import type { IconName } from "./icons.tsx";
 import type { OutboxEntry, OutboxState } from "./outbox.ts";
+import type { SendKey } from "./send-key.ts";
 import { stateFaces, type Face } from "./visor-faces.ts";
 
 /**
@@ -429,6 +430,7 @@ export interface ComposerKey {
   readonly key: string;
   readonly ctrlKey: boolean;
   readonly metaKey: boolean;
+  readonly shiftKey: boolean;
   readonly isComposing: boolean;
   readonly keyCode: number;
 }
@@ -437,13 +439,15 @@ export interface ComposerKey {
 const inputMethodKeyCode = 229;
 
 /**
- * True when a key press sends the message: Ctrl+Enter, or Cmd+Enter on a Mac. A plain Enter starts a
- * new line, so a stray Enter never sends half a message. An Enter that picks the word of an input
- * method, such as for Japanese, must not send.
+ * True when a key press sends the message with the key that the person chose. The other Enter keys
+ * start a new line. An Enter that picks the word of an input method, such as for Japanese, must not send.
  */
-export function sendsOnEnter(press: ComposerKey): boolean {
-  if (press.key !== "Enter" || !(press.ctrlKey || press.metaKey)) return false;
-  return !press.isComposing && press.keyCode !== inputMethodKeyCode;
+export function sendsOnEnter(press: ComposerKey, sendKey: SendKey): boolean {
+  if (press.key !== "Enter" || press.isComposing || press.keyCode === inputMethodKeyCode) return false;
+  const command = press.ctrlKey || press.metaKey;
+  if (sendKey === "ctrl-enter") return command;
+  if (sendKey === "shift-enter") return press.shiftKey && !command;
+  return !press.shiftKey;
 }
 
 /**

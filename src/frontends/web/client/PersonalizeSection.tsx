@@ -1,6 +1,6 @@
 /**
- * The personalize page: this browser's look, navigation and sounds, the person's rules for Eva, the widgets, then the location, the time zone, the
- * language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the look, the navigation and the sounds
+ * The personalize page: this browser's look, navigation, sounds and send key, the person's rules for Eva, the widgets, then the location, the time
+ * zone, the language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the choices of this browser
  * apply at once. Each item of the message box menu saves on its own.
  */
 import { useEffect, useState, useSyncExternalStore, type ReactElement } from "react";
@@ -10,6 +10,7 @@ import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
 import { LocationCard } from "./LocationCard.tsx";
 import { WidgetsCard } from "./WidgetsCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
+import { readSendKey, saveSendKey, type SendKey } from "./send-key.ts";
 import {
   canVibrate,
   cues,
@@ -109,6 +110,7 @@ export function PersonalizeSection({ context }: { readonly context: SettingsCont
       <AppearanceCard />
       <NavigationCard />
       <CuesCard />
+      <SendKeyCard />
       <AssistantRulesCard context={context} />
       <ComposerMenuCard context={context} />
       <WidgetsCard context={context} />
@@ -501,6 +503,40 @@ const paletteChoices: readonly { value: PaletteId; label: string; icon: IconName
   label: palette.label,
   icon: palette.icon,
 }));
+
+const sendKeyChoices: readonly { value: SendKey; label: string }[] = [
+  { value: "ctrl-enter", label: "Ctrl+Enter" },
+  { value: "enter", label: "Enter" },
+  { value: "shift-enter", label: "Shift+Enter" },
+];
+
+const newLineHints: Record<SendKey, string> = {
+  "ctrl-enter": "Ctrl+Enter sends, or Cmd+Enter on a Mac. Enter and Shift+Enter add a new line.",
+  enter: "Enter sends. Shift+Enter adds a new line. A phone keyboard then has no key for a new line.",
+  "shift-enter": "Shift+Enter sends. Enter adds a new line.",
+};
+
+function SendKeyCard(): ReactElement {
+  const [sendKey, setSendKey] = useState<SendKey>(readSendKey);
+  return (
+    <Card
+      item="send-key"
+      title="Send key"
+      description="The key that sends a message in a chat. This browser keeps its own key."
+    >
+      <ChoiceChips
+        label="Send with"
+        value={sendKey}
+        choices={sendKeyChoices}
+        hint={newLineHints[sendKey]}
+        onChange={(next) => {
+          setSendKey(next);
+          saveSendKey(next);
+        }}
+      />
+    </Card>
+  );
+}
 
 /** A change plays the answer cue at the new levels or style, so the person hears and feels the choice. */
 function CuesCard(): ReactElement {

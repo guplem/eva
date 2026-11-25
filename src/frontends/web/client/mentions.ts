@@ -6,6 +6,7 @@
  */
 import { mentionsIn, mentionToken } from "../../../shared/mentions.ts";
 import type { ListedSession, Project } from "./api.ts";
+import type { SendKey } from "./send-key.ts";
 
 /** The part of a project that the search shows and a note names. */
 export interface MentionProject {
@@ -143,4 +144,13 @@ export function busyProjects(
     chat.mode === "project" && chat.projectId !== null && (chat.running || isLive(chat.id)) ? [chat.projectId] : [],
   );
   return [...new Set(ids)];
+}
+
+/**
+ * True when a key press in the open `@` list picks the marked mention. Shift+Enter adds a new line, unless it is
+ * the send key: then a half-typed `@` would go out with the message.
+ */
+export function picksMention(press: { readonly key: string; readonly shiftKey: boolean }, sendKey: SendKey): boolean {
+  if (press.key === "Tab") return !press.shiftKey;
+  return press.key === "Enter" && (!press.shiftKey || sendKey === "shift-enter");
 }

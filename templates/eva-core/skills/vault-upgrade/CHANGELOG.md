@@ -385,3 +385,26 @@ The root `AGENTS.md` says "Some files go to the cloud drive at any size" and "A 
 
 1. Each line of _Personal rules_ that says where a scan, a card, an IBAN or a shared file goes. The default is "keep it as an exception", with the rule that it overrides.
 2. Each scan and each quick data value of item 3, as one list. The default is "keep it in the vault", so "yes to all" moves nothing. To move one, the person puts it in the cloud drive first, and gives its link in the answer.
+
+## v15
+
+- **Version:** 15
+- **Date:** 2026-11-25
+- **Pull request:**
+- **Summary:** A project can link its own list in your task app, and the things still to do for it go there. When you ask what to do now, Eva checks your free time in the calendar, then asks your task app for the next thing, and prefers your active projects.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The root `AGENTS.md` gets the optional project key `task-app`.** Add the line `task-app: ...` of `template/` after the line `result: ...` in the front matter example of _Projects_. Add the bullet "**`task-app`** is the web link" of `template/` after the bullet "**`result`**". Leave the rest of the file as it is. Why: a person or Eva can open a project's list in the task app in one step. The project card in the web app shows the key as a link with no code change.
+2. **The root `AGENTS.md` says where a project's things still to do go.** Add the paragraph "**Things still to do for a project,**" of `template/` after the paragraph that ends "Never edit a clone as part of note work." Why: the vault had no rule for a project's backlog, so each chat chose its own place.
+3. **The root `AGENTS.md` says how to answer "what should I do now?".** Add the paragraph "**When the person asks what to do now,**" of `template/` after the line "With no tool for that service" of _Outside the vault_. Why: the answer needs both the calendar and the task app, so it fits only when one rule names both.
+4. **Nothing moves.** No project gets a `task-app` key by the upgrade. The `Life/Cases/` rule that only a `deadline` gets a task stays as it is. Each other file stays as it is.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "is the web link to the project's own list in the task app", "**Things still to do for a project,**" and "**When the person asks what to do now,**". Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each line of _Personal rules_ that says where the things to do of a project go, or how to pick what to do next. The default is "keep it as an exception", with the rule that it overrides.

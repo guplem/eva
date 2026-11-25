@@ -145,16 +145,19 @@ describe("forks and retries in other clones (issue 523)", () => {
     }
   });
 
-  test("a reuse counts no given file as work, and removes the given files (#706)", async () => {
+  test("a reuse counts no given file as work, and removes the given files (#706) and every snapshot", async () => {
     const instance = start(finishingEngine());
     const chat = await instance.createProjectSession({ projectId, source: "web" });
     await instance.sessions.send(chat.id, "done");
     const mentions = join(chat.startFolder, ".mentions");
     mkdirSync(mentions, { recursive: true });
     writeFileSync(join(mentions, "Plan-0123456789ab.md"), "The plan.");
+    const folder = repository(instance, "clone-0");
+    expect(refs(folder)).not.toBe("");
     const next = await instance.createProjectSession({ projectId, source: "web" });
     expect(next.clone).toBe("clone-0");
     expect(existsSync(mentions)).toBe(false);
+    expect(refs(folder)).toBe("");
   });
 
   test("a summary of a chat in a clone names no vault folder (#706)", async () => {
@@ -170,17 +173,6 @@ describe("forks and retries in other clones (issue 523)", () => {
     const summaryCall = engine.requests.slice(before).find((request) => request.mode === "model-call");
     expect(summaryCall?.prompt).toContain("@file:Plan.md");
     expect(summaryCall?.prompt).not.toContain("Notes/");
-  });
-
-  test("a reuse of a clone deletes every snapshot in it", async () => {
-    const instance = start(finishingEngine());
-    const chat = await instance.createProjectSession({ projectId, source: "web" });
-    await instance.sessions.send(chat.id, "done");
-    const folder = repository(instance, "clone-0");
-    expect(refs(folder)).not.toBe("");
-    const next = await instance.createProjectSession({ projectId, source: "web" });
-    expect(next.clone).toBe("clone-0");
-    expect(refs(folder)).toBe("");
   });
 
   test("a deleted chat takes the snapshots of its turns along", async () => {

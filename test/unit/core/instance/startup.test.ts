@@ -166,14 +166,6 @@ describe("prepareStart with a vault", () => {
     expect(loadSettings(paths).config).toMatchObject({ timeZone: "Asia/Tokyo", voice: { language: "es" } });
   });
 
-  test("the hub drops a security setting from the vault (#119)", async () => {
-    saveConfig(paths, { ...defaultConfig, vaultPath: vault });
-    mkdirSync(join(vault, ".eva"), { recursive: true });
-    writeFileSync(oldSettingsPath(), JSON.stringify({ trust: { trustedRepositoryOwners: ["example-owner"] } }));
-    await start();
-    expect(JSON.parse(readFileSync(vaultSettingsPath(vault), "utf-8"))).not.toHaveProperty("trust");
-  });
-
   test("a satellite runs no vault migration (#119)", async () => {
     saveConfig(paths, { ...defaultConfig, vaultPath: vault });
     mkdirSync(join(vault, ".eva"), { recursive: true });

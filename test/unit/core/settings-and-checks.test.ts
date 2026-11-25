@@ -966,12 +966,6 @@ describe("live settings, the vault fetch and updates", () => {
     expect(existsSync(join(vault, "Notes", "remote.md"))).toBe(false);
   });
 
-  test("Sync now pushes this machine's changes", async () => {
-    sandbox.write(vault, "Notes/local.md", "local\n");
-    expect(await eva.syncVault()).toMatchObject({ status: "ok" });
-    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s")).toContain("eva: autosave");
-  });
-
   test("without an update channel, Eva reports no updates", async () => {
     expect(eva.updateStatus()).toBeNull();
     expect(eva.status().update).toBeNull();

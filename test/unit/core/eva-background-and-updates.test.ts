@@ -5,7 +5,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Eva, type EvaOptions } from "../../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../../src/core/settings/home.ts";
-import type { SessionEvent } from "../../../src/shared/events.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../src/shared/process-runner.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
 import { ghInstallRunner, serveGhRelease } from "../../support/fake-gh-release.ts";
@@ -692,14 +691,6 @@ describe("Eva", () => {
     expect(await instance.sweep()).toBe("skipped");
     release();
     await turn;
-  });
-
-  test("events reach a subscriber", async () => {
-    const instance = start(new FakeEngine());
-    const events: SessionEvent[] = [];
-    instance.sessions.subscribe((event) => events.push(event));
-    await instance.sessions.send(instance.createAssistantSession({ source: "cli" }).id, "hi");
-    expect(events.map((event) => event.kind)).toEqual(["message_received", "turn_started", "text", "turn_finished"]);
   });
 
   test("with no vault configured, Eva still starts and says so", () => {

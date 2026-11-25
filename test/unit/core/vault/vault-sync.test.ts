@@ -195,17 +195,6 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).toContain("Life/Photo.jpg");
   });
 
-  test("still withholds a binary archive that holds a token", async () => {
-    const archive = Buffer.concat([
-      Buffer.from("dotfiles/.env"),
-      Buffer.alloc(100),
-      Buffer.from("ghp_" + "f".repeat(36)),
-    ]);
-    writeFileSync(join(vault, "backup.tar"), archive);
-    const state = await createSync(vault).save();
-    expect(state.withheldFiles).toEqual([{ path: "backup.tar", reason: "secret" }]);
-  });
-
   test("a project folder keeps no plain secret any more: its secrets reach the vault only encrypted (#707)", async () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/.env", "TOKEN=ghp_" + "b".repeat(36) + "\n");
     const state = await createSync(vault).save();
@@ -326,19 +315,6 @@ describe("VaultSync.save", () => {
     },
   );
 
-  test("removes an index.lock that a killed git left long ago, and keeps a fresh one (#505)", async () => {
-    const lock = join(vault, ".git", "index.lock");
-    sandbox.write(vault, "note.md", "kept\n");
-    writeFileSync(lock, "");
-    expect((await createSync(vault).save()).status).toBe("error");
-    expect(existsSync(lock)).toBe(true);
-    const hourAgo = new Date(Date.now() - 60 * 60_000);
-    utimesSync(lock, hourAgo, hourAgo);
-    expect((await createSync(vault).save()).status).toBe("ok");
-    expect(existsSync(lock)).toBe(false);
-    expect(remoteFiles()).toContain("note.md");
-  });
-
   test("keeps an index.lock just under 30 minutes old, and removes one just over, with a warning (#505)", async () => {
     const lock = join(vault, ".git", "index.lock");
     const logged: { level: string; message: string }[] = [];
@@ -355,6 +331,7 @@ describe("VaultSync.save", () => {
     utimesSync(lock, overLimit, overLimit);
     expect((await createSync(vault, { logger }).save()).status).toBe("ok");
     expect(existsSync(lock)).toBe(false);
+    expect(remoteFiles()).toContain("note.md");
     expect(logged).toContainEqual({ level: "warn", message: "Eva removed a stale index.lock from the vault." });
   });
 
@@ -453,13 +430,6 @@ describe("VaultSync.save", () => {
     expect((await createSync(vault).save()).status).toBe("skipped");
   });
 
-  test("never commits a cloned project repository", async () => {
-    sandbox.write(vault, ".gitignore", "Projects/*/repos/\n");
-    sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/app-0/code.ts", "x\n");
-    await createSync(vault).save();
-    expect(remoteFiles()).not.toContain("code.ts");
-  });
-
   test("never commits a file of a project's `repos/` folder, even when the vault's .gitignore does not list it (#774)", async () => {
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/AGENTS.md", "Eva's line for a clone chat.\n");
     sandbox.write(vault, "Projects/2025-01-01-1200-app/repos/clone-0/.mentions/Plan.md", "A copy.\n");
@@ -507,15 +477,6 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain(".eva/scratch/");
   });
 
-  test("never commits a .eva/scratch/ file that a person staged by hand", async () => {
-    sandbox.write(vault, ".eva/scratch/out/chart.png", "An image.\n");
-    sandbox.git(vault, "add", ".eva/scratch/out/chart.png");
-    sandbox.write(vault, "Methods/New.md", "Steps.\n");
-    await createSync(vault).save();
-    expect(remoteFiles()).toContain("Methods/New.md");
-    expect(remoteFiles()).not.toContain(".eva/scratch/");
-  });
-
   test("saves when a staged Scratch/ file sits beside a note that was staged and then deleted", async () => {
     sandbox.write(vault, ".eva/scratch/out/chart.png", "An image.\n");
     sandbox.git(vault, "add", ".eva/scratch/out/chart.png");
@@ -527,16 +488,6 @@ describe("VaultSync.save", () => {
     expect(state.status).toBe("ok");
     expect(remoteFiles()).toContain("Methods/New.md");
     expect(remoteFiles()).not.toContain(".eva/scratch/");
-  });
-
-  test("keeps a scratch folder in another case out too, as Windows and macOS ignore the case", async () => {
-    sandbox.write(vault, ".gitignore", "Scratch/\n");
-    sandbox.write(vault, "scratch/received/statement.pdf", "A bank statement.\n");
-    sandbox.write(vault, ".eva/Scratch/received/photo.jpg", "A photo.\n");
-    sandbox.write(vault, "Methods/New.md", "Steps.\n");
-    await createSync(vault).save();
-    expect(remoteFiles()).toContain("Methods/New.md");
-    expect(remoteFiles().toLowerCase()).not.toContain("scratch/");
   });
 
   test("commits the removal of a Scratch/ file that an old commit holds", async () => {

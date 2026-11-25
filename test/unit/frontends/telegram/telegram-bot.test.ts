@@ -1483,11 +1483,11 @@ describe("usage limits (issue #67)", () => {
     }));
   }
 
-  test("a warning comes quietly after the answer, which still rings, in the time zone setting", async () => {
+  test("a warning comes quietly after the answer, which still rings, in the time zone and clock settings (#770)", async () => {
     createEva(engineWith(() => warning));
-    eva.updateSettings({ timeZone: "Asia/Tokyo" });
+    eva.updateSettings({ timeZone: "Asia/Tokyo", clock: "12h" });
     const bot = createBot();
-    const line = "You used 86% of your 5-hour usage limit. It resets at 21:00.";
+    const line = "You used 86% of your 5-hour usage limit. It resets at 9:00 PM.";
     telegram.sendText(owner, "first");
     await settle(bot, () => telegram.sentTexts().includes(line));
     const sent = sentMessages();
@@ -1495,16 +1495,6 @@ describe("usage limits (issue #67)", () => {
     expect(sent.find((message) => message.text === line)?.quiet).toBe(true);
     expect(sent.findIndex((message) => message.text === "ok")).toBeLessThan(
       sent.findIndex((message) => message.text === line),
-    );
-  });
-
-  test("the reset time follows the clock setting (#770)", async () => {
-    createEva(engineWith(() => warning));
-    eva.updateSettings({ timeZone: "Asia/Tokyo", clock: "12h" });
-    const bot = createBot();
-    telegram.sendText(owner, "first");
-    await settle(bot, () =>
-      telegram.sentTexts().includes("You used 86% of your 5-hour usage limit. It resets at 9:00 PM."),
     );
   });
 
@@ -1879,6 +1869,9 @@ describe("approvals and commands", () => {
     expect(texts).toContain("Vault sync");
     expect(texts).toContain("No project matches");
     expect(texts).toContain("/new");
+    const help = telegram.sentTexts().find((text) => text.includes("/help: "));
+    expect(help).toContain("/logs");
+    expect(help).toContain("/restart");
     expect(engine.requests).toEqual([]);
   });
 
@@ -2446,14 +2439,6 @@ describe("alerts, logs and restart", () => {
     expect(eva.status().problems[0]).toContain("Bad Gateway");
     await bot.stop();
     expect(eva.status().problems).toEqual([]);
-  });
-
-  test("/help names /logs and /restart", async () => {
-    const bot = createBot();
-    telegram.sendText(owner, "/help");
-    await settle(bot, () => telegram.sentTexts().length >= 1);
-    expect(telegram.sentTexts()[0]).toContain("/logs");
-    expect(telegram.sentTexts()[0]).toContain("/restart");
   });
 });
 

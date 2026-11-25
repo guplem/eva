@@ -408,6 +408,7 @@ function Branch({
       {(working || answerSteps !== null) && (
         <LiveAnswer
           sessionId={session.id}
+          turnCount={turnCount}
           steps={answerSteps ?? []}
           mode={session.mode}
           startedAt={working ? startedAt : null}
@@ -859,11 +860,14 @@ function AnswerBody({
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
   sessionId,
+  turnCount,
   steps,
   mode,
   startedAt,
 }: {
   readonly sessionId: string;
+  /** The stored turns. A queued message starts the next turn in the same element, so each turn notes its answer. */
+  readonly turnCount: number;
   /** The steps so far, with the block that the engine writes now as the last message. */
   readonly steps: readonly TurnStep[];
   readonly mode: SessionRecord["mode"];
@@ -885,7 +889,7 @@ function LiveAnswer({
   // The stored answer takes its place at the turn end.
   useEffect(() => {
     noteShown(answerKey(sessionId));
-  }, [sessionId]);
+  }, [sessionId, turnCount]);
   return (
     <EvaMessage face={liveFace(hasText, mode)} mode={mode}>
       <AnswerBody

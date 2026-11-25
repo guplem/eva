@@ -338,6 +338,9 @@ export function useChatPanelShown(): readonly [boolean, () => void] {
 
 type PanelMotion = "open" | "opening" | "closing" | "gone";
 
+/** The widths that show the column. Keep it in step with the media rule in `chat-details.css`. */
+const columnShown = "(min-width: 761px)";
+
 /**
  * The column slides in and out at the edge of the chat. It stays in the page until its close
  * animation ends. A page load shows it at once: only a toggle animates it, and the first message of a new chat
@@ -348,7 +351,10 @@ export function ChatPanel({
   enters = false,
   ...props
 }: ChatProps & { readonly shown: boolean; readonly enters?: boolean }): ReactElement | null {
-  const [motion, setMotion] = useState<PanelMotion>(shown ? (enters ? "opening" : "open") : "gone");
+  // A phone hides the column, so its slide would never end. It starts open there.
+  const [motion, setMotion] = useState<PanelMotion>(() =>
+    shown ? (enters && window.matchMedia(columnShown).matches ? "opening" : "open") : "gone",
+  );
   if (shown && (motion === "closing" || motion === "gone")) setMotion("opening");
   if (!shown && (motion === "open" || motion === "opening")) setMotion("closing");
   if (motion === "gone") return null;

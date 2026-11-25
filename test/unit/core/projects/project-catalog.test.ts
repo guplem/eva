@@ -6,6 +6,7 @@ import {
   discoverProjects,
   parseFrontMatter,
   parseProjectQuery,
+  projectTitleOf,
   searchProjects,
   noClonesWarning,
   outsideWarning,
@@ -363,6 +364,27 @@ describe("discoverProjects", () => {
 
   test("a vault with no Projects folder has no projects", () => {
     expect(discoverProjects({ vaultPath: vault, extraRoots: [join(vault, "missing")] })).toEqual([]);
+  });
+
+  test("reads a project file that starts with a byte order mark, as Windows Notepad writes it (#1068)", () => {
+    const folder = join(vault, "Projects", "2025-03-02-1015-example-app");
+    mkdirSync(folder, { recursive: true });
+    const text = "---\ncreated: 2025-03-02T10:15\nstatus: active\n---\n\n# Example app\n\nA demo app.\n";
+    writeFileSync(join(folder, "AGENTS.md"), `\uFEFF${text}`);
+
+    const [project] = discoverProjects({ vaultPath: vault, extraRoots: [] });
+    expect(project?.title).toBe("Example app");
+    expect(project?.description).toBe("A demo app.");
+    expect(project?.warnings).toEqual([]);
+  });
+});
+
+describe("projectTitleOf", () => {
+  test("reads the title of a project file, with or without a byte order mark (#1068)", () => {
+    const text = "---\nstatus: active\n---\n\n# Example app\n";
+    expect(projectTitleOf(text, "2025-03-02-1015-example-app")).toBe("Example app");
+    expect(projectTitleOf(`\uFEFF${text}`, "2025-03-02-1015-example-app")).toBe("Example app");
+    expect(projectTitleOf(text, "not-a-project")).toBeNull();
   });
 });
 

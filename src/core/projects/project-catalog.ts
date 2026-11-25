@@ -335,7 +335,8 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
 
   let text: string;
   try {
-    text = readFileSync(agentsFile, "utf-8");
+    // Windows Notepad can start the file with a byte order mark, which hides the front matter.
+    text = readFileSync(agentsFile, "utf-8").replace(/^\uFEFF/, "");
   } catch {
     // One project file without rights must not hide every other project (lesson 54).
     return null;
@@ -371,7 +372,8 @@ function readProject(path: string, name: string, vaultFolder: string | null): Pr
  */
 export function projectTitleOf(text: string, name: string): string | null {
   if (parseProjectId(name) === null) return null;
-  return parseFrontMatter(text).frontMatter === null ? null : readTitle(text);
+  const withoutBom = text.replace(/^\uFEFF/, "");
+  return parseFrontMatter(withoutBom).frontMatter === null ? null : readTitle(withoutBom);
 }
 
 /**

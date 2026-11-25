@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { fileBadgeOf, mediaOf, nameEnds } from "../../../../../src/frontends/web/client/file-kinds.ts";
+import {
+  fileBadgeOf,
+  maxMediaBytes,
+  mediaOf,
+  nameEnds,
+  shownMediaOf,
+} from "../../../../../src/frontends/web/client/file-kinds.ts";
 
 describe("fileBadgeOf", () => {
   test("a well-known type gets its own colour", () => {
@@ -52,11 +58,45 @@ describe("mediaOf", () => {
     expect(mediaOf("clip.webm")).toEqual({ kind: "video", type: "video/webm" });
   });
 
-  test("another file is no media: a PDF, an SVG that shows as text, a HEIC photo or no extension", () => {
-    expect(mediaOf("Report.pdf")).toBeNull();
+  test("a PDF shows in the browser's viewer (#1064)", () => {
+    expect(mediaOf("Docs/Report.PDF")).toEqual({ kind: "pdf", type: "application/pdf" });
+  });
+
+  test("another file is no media: an SVG, which could run its scripts as Eva, a HEIC photo, a Word file or no extension", () => {
     expect(mediaOf("logo.svg")).toBeNull();
     expect(mediaOf("photo.heic")).toBeNull();
+    expect(mediaOf("Letter.docx")).toBeNull();
     expect(mediaOf("Makefile")).toBeNull();
     expect(mediaOf(".png")).toBeNull();
+  });
+});
+
+describe("shownMediaOf: which open file the page shows as media", () => {
+  const binary = { kind: "unreadable", size: 2_000, downloadable: true } as const;
+
+  test("a file that is not text shows as media up to 50 MB (issue 737)", () => {
+    expect(shownMediaOf("photo.png", binary)).toEqual({ kind: "image", type: "image/png" });
+    expect(shownMediaOf("photo.png", { ...binary, size: maxMediaBytes })).not.toBeNull();
+    expect(shownMediaOf("photo.png", { ...binary, size: maxMediaBytes + 1 })).toBeNull();
+    expect(shownMediaOf("data.bin", binary)).toBeNull();
+  });
+
+  test("a secret file never shows, as the download route never sends it", () => {
+    expect(shownMediaOf("Report.pdf", { ...binary, downloadable: false })).toBeNull();
+  });
+
+  test("a PDF of plain letters only passes the text check, and still shows as a PDF (#1064)", () => {
+    expect(shownMediaOf("Report.pdf", { kind: "file", size: 400 })).toEqual({ kind: "pdf", type: "application/pdf" });
+  });
+
+  test("a text file stays text, and an SVG too large for text keeps its message", () => {
+    expect(shownMediaOf("logo.svg", { kind: "file", size: 400 })).toBeNull();
+    expect(shownMediaOf("notes.md", { kind: "file", size: 400 })).toBeNull();
+    expect(shownMediaOf("logo.svg", binary)).toBeNull();
+  });
+
+  test("a folder or an encrypted file is no media", () => {
+    expect(shownMediaOf("Report.pdf", { kind: "encrypted", size: 400 })).toBeNull();
+    expect(shownMediaOf("Media.pdf", { kind: "folder" })).toBeNull();
   });
 });

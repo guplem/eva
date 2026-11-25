@@ -55,7 +55,8 @@ A change to one of these goals needs the owner.
 
 ## Checks
 
-- `bun run check` is exactly what the Ubuntu CI job runs. The Windows CI job runs only `bun run test`.
+- `bun run check` is exactly what the Ubuntu CI job runs. The Windows CI jobs run only the unit tests, in 3 shards. The browser tests run in 4 shards.
+- `bun run test:coverage` fails when one test file takes too long (`scripts/test-with-time-limit.ts`). ESLint refuses `.only` in a test.
 - The pre-push hook runs `bun run check:static`: every check but the tests.
 - The public-content check reads tracked files only (`git add` a new file first). The private denylist lives outside the repository: never copy an entry from it.
 

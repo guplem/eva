@@ -12,7 +12,9 @@ export default defineConfig({
   timeout: 60_000,
   // Every Assistant turn pulls and saves the vault with git, which is slow on Windows.
   expect: { timeout: 20_000 },
-  fullyParallel: false,
+  // The tests share one demo server, so one worker runs them in order. Each test is its own group,
+  // so `--shard` can split the large files across CI jobs, and each job starts its own server.
+  fullyParallel: true,
   workers: 1,
   // One stuck dialog can fail every later test at its full timeout, for hours: stop early instead.
   maxFailures: 10,

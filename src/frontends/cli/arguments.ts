@@ -88,8 +88,8 @@ Commands:
   settings get <key>          Show one setting, such as updates.frequency
   settings set <key> <value>  Change one setting, such as: settings set updates.frequency weekly
   devices allow <code>        Let in the browser that shows this code on Eva's page
-  version           Show Eva's version
-  help              Show this text
+  version           Show Eva's version (also --version or -v)
+  help              Show this text (also --help or -h)
 `;
 
 /**
@@ -135,6 +135,9 @@ const engines: readonly EngineName[] = ["claude-code", "pi"];
 export const switches: readonly string[] = ["--non-interactive", "--check"];
 /** Options that take a value. */
 export const valueOptions: readonly string[] = ["--instance", "--project", "--clone", "--model", "--engine"];
+/** The flags that every command line tool knows. A person tries them first, anywhere on the line. */
+const helpFlags: readonly string[] = ["--help", "-h"];
+const versionFlags: readonly string[] = ["--version", "-v"];
 
 export function parseArguments(argv: readonly string[]): CliCommand {
   const words: string[] = [];
@@ -142,7 +145,7 @@ export function parseArguments(argv: readonly string[]): CliCommand {
   const switchesSeen = new Set<string>();
   for (let index = 0; index < argv.length; index += 1) {
     const word = argv[index] ?? "";
-    if (switches.includes(word)) {
+    if (helpFlags.includes(word) || versionFlags.includes(word) || switches.includes(word)) {
       switchesSeen.add(word);
     } else if (word.startsWith("--")) {
       if (!valueOptions.includes(word)) return usageError(`Unknown option ${word}.`);
@@ -156,6 +159,8 @@ export function parseArguments(argv: readonly string[]): CliCommand {
   }
   const instance = options.get("instance");
   const [name, ...rest] = words;
+  if (helpFlags.some((flag) => switchesSeen.has(flag))) return { command: "help", instance };
+  if (versionFlags.some((flag) => switchesSeen.has(flag))) return { command: "version", instance };
 
   switch (name) {
     case undefined:

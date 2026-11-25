@@ -200,6 +200,16 @@ export function openLayer(key: string, onBack: () => void): LayerHandle {
   };
 }
 
+/**
+ * Closes the top layer as the Back button does, so each of its guards still runs, such as a
+ * question about unsaved changes. False when no layer has an entry.
+ */
+export function backFromTopLayer(): boolean {
+  if (open.length === 0) return false;
+  whenFree((window) => step(window, -1));
+  return true;
+}
+
 /** The layers of the current entry, bottom first, such as the chat list that Back opened again. */
 export function layersOfEntry(): readonly string[] {
   return target === null ? [] : stackOf(target);

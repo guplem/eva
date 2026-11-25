@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   boxAt,
+  colourAt,
   cornersAt,
   crossFade,
   durationMs,
   glideAt,
+  returnDelay,
   springAt,
 } from "../../../../../src/frontends/web/client/send-morph.ts";
 
@@ -86,19 +88,42 @@ describe("cornersAt", () => {
 
 describe("crossFade", () => {
   test("shows only the box at the start and only the bubble at the end", () => {
-    expect(crossFade(0)).toEqual({ box: 1, boxText: 1, bubble: 0 });
-    expect(crossFade(1)).toEqual({ box: 0, boxText: 0, bubble: 1 });
+    expect(crossFade(0)).toEqual({ boxText: 1, bubbleText: 0, colour: 0, shadow: 1 });
+    expect(crossFade(1)).toEqual({ boxText: 0, bubbleText: 1, colour: 1, shadow: 0 });
   });
 
   test("lets the box text go before the bubble text comes, so the two never blur together for long", () => {
-    expect(crossFade(0.2).bubble).toBe(0);
-    expect(crossFade(0.42).boxText).toBe(0);
-    expect(crossFade(0.62).bubble).toBe(1);
+    expect(crossFade(0.2).bubbleText).toBe(0);
+    expect(crossFade(0.32).boxText).toBe(0);
+    expect(crossFade(0.62).bubbleText).toBe(1);
   });
 
-  test("keeps the box surface whole until the bubble covers it, so the chat never shows through", () => {
-    expect(crossFade(0.6).box).toBe(1);
-    expect(crossFade(0.9).box).toBe(0);
+  test("turns one surface into the bubble's colour before it lands, so the colour never jumps at the end", () => {
+    expect(crossFade(0.3).colour).toBeGreaterThan(0);
+    expect(crossFade(0.3).colour).toBeLessThan(1);
+    expect(crossFade(0.62).colour).toBe(1);
+  });
+
+  test("lets the box's shadow go while it flies, as a bubble has none", () => {
+    expect(crossFade(0.3).shadow).toBeLessThan(1);
+    expect(crossFade(0.62).shadow).toBe(0);
+  });
+});
+
+describe("colourAt", () => {
+  test("gives the box colour at the start and the bubble colour at the end", () => {
+    expect(colourAt("rgb(255, 255, 255)", "oklch(0.9 0.02 240)", 0)).toBe("rgb(255, 255, 255)");
+    expect(colourAt("rgb(255, 255, 255)", "oklch(0.9 0.02 240)", 1)).toBe("oklch(0.9 0.02 240)");
+  });
+
+  test("mixes the two colours between, by the share of the way", () => {
+    expect(colourAt("white", "blue", 0.25)).toBe("color-mix(in oklab, blue 25%, white)");
+  });
+});
+
+describe("returnDelay", () => {
+  test("brings the empty box back once the copy has left most of it", () => {
+    expect(returnDelay(600)).toBe(240);
   });
 });
 

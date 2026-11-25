@@ -70,15 +70,36 @@ function ramp(time: number, start: number, end: number): number {
 }
 
 /**
- * The opacity of each layer. The box text leaves before the bubble text comes, so the two blur together only briefly.
- * The box surface stays whole until the bubble covers it, so the chat never shows through the morph.
+ * The look of the copy at each moment. The box text leaves before the bubble text comes, so the two blur together only
+ * briefly. One surface changes its colour from the box to the bubble, so the copy lands with the bubble's colour.
+ * Two layers that fade over each other would show a paler colour between, and a jump at the end.
  */
-export function crossFade(time: number): { readonly box: number; readonly boxText: number; readonly bubble: number } {
+export function crossFade(time: number): {
+  readonly boxText: number;
+  readonly bubbleText: number;
+  /** The share of the bubble's colour in the surface. */
+  readonly colour: number;
+  /** The opacity of the box's shadow. A bubble has none. */
+  readonly shadow: number;
+} {
   return {
-    box: 1 - ramp(time, 0.62, 0.8),
-    boxText: 1 - ramp(time, 0, 0.42),
-    bubble: ramp(time, 0.22, 0.62),
+    boxText: 1 - ramp(time, 0, 0.32),
+    bubbleText: ramp(time, 0.22, 0.62),
+    colour: ramp(time, 0.05, 0.62),
+    shadow: 1 - ramp(time, 0, 0.62),
   };
+}
+
+/** The surface colour at `share` of the way. The browser mixes the two, so any colour that it computes works. */
+export function colourAt(from: string, to: string, share: number): string {
+  if (share <= 0) return from;
+  if (share >= 1) return to;
+  return `color-mix(in oklab, ${to} ${String(Math.round(share * 100))}%, ${from})`;
+}
+
+/** When the empty box comes back, in milliseconds after the send. The copy has left most of its place by then. */
+export function returnDelay(morph: number): number {
+  return Math.round(morph * 0.4);
 }
 
 /** A `--dur-*` token in milliseconds. The bundler may write `560ms` as `.56s`. Null when the value is not a time. */

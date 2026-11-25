@@ -716,6 +716,58 @@ test("a send turns the box into the new bubble, and reduced motion plays no morp
   expect(await morphsSeen()).toBe(0);
 });
 
+test("the first message of a new chat slides its panel in, and its stored turn does not fade in again (#1053)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  // The classes of the panel when it comes, and of each bubble the stored turn draws. A watcher sees each one, even
+  // when a slow machine skips the polls.
+  await page.evaluate(() => {
+    const seen = { panel: [] as string[], bubbles: [] as string[], answers: [] as string[] };
+    Object.assign(window, { sendSeen: seen });
+    new MutationObserver((changes) => {
+      for (const change of changes)
+        for (const added of change.addedNodes) {
+          if (!(added instanceof HTMLElement)) continue;
+          const panel = added.matches(".chat-panel-frame") ? added : added.querySelector(".chat-panel-frame");
+          if (panel !== null) seen.panel.push(panel.className);
+          // Only a stored turn gives its bubble a turn key. Each answer counts: the running one comes first.
+          for (const [list, stored] of [
+            [seen.bubbles, ".msg.me[data-turn] .message.user"],
+            [seen.answers, ".message.answer"],
+          ] as const)
+            for (const message of [added, ...added.querySelectorAll(stored)])
+              if (message.matches(stored)) list.push(message.className);
+        }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  interface Seen {
+    panel: string[];
+    bubbles: string[];
+    answers: string[];
+  }
+  const seen = (): Promise<Seen> => page.evaluate(() => (window as unknown as { sendSeen: Seen }).sendSeen);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("A first message");
+  await box.press("Control+Enter");
+  await expect(page.locator(".message.user").first()).toContainText("A first message");
+  // A phone has no panel column: its header opens the details in a sheet.
+  if (test.info().project.name !== "phone") {
+    await expect.poll(async () => (await seen()).panel.length).toBeGreaterThan(0);
+    expect((await seen()).panel[0]).toContain("opening");
+    await expect(page.locator(".chat-panel-frame")).toHaveClass(/\bopen\b/);
+  }
+  await expect.poll(async () => (await seen()).bubbles.length).toBeGreaterThan(0);
+  for (const name of (await seen()).bubbles) expect(name).toContain("settled");
+  // The running answer showed first, so its stored copy takes its place with no fade.
+  await expect(page.locator(".message.answer").first()).toContainText("Echo");
+  await expect(page.locator(".message.answer .answer-actions").first()).toBeVisible();
+  const answers = (await seen()).answers;
+  expect(answers.length).toBeGreaterThan(1);
+  expect(answers.at(-1)).toContain("settled");
+});
+
 test("a send glides the chat down to the new bubble, and the bubble lands above the box", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await logIn(page);
@@ -1001,6 +1053,80 @@ async function chooseFromMore(page: Page, item: string): Promise<void> {
   await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menu", { name: "Chat actions" }).getByRole("menuitem", { name: item, exact: true }).click();
 }
+
+/** Drags a bottom sheet from its grab handle, slowly, so the release is no flick. */
+async function dragSheet(page: Page, sheet: Locator, distance: number): Promise<void> {
+  // The box of a sheet that still slides in is lower than its place.
+  await expect(sheet).toHaveCSS("transform", "none");
+  const box = await sheet.boundingBox();
+  if (box === null) throw new Error("The sheet has no box.");
+  const x = box.x + box.width / 2;
+  const y = box.y + 12;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y + distance, { steps: 20 });
+  // A pause before the release, so the drag has no speed.
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+test("a drag down on the grab handle closes a sheet, as the Back button does (#1055)", async ({ page }) => {
+  test.skip(test.info().project.name !== "phone", "A computer shows a box, not a sheet.");
+  await logIn(page);
+  await newChat(page);
+  const rename = page.getByRole("dialog", { name: "Rename chat" });
+  await chooseFromMore(page, "Rename");
+  await expect(rename).toBeVisible();
+
+  // A short drag springs the sheet back.
+  await dragSheet(page, rename, 30);
+  await expect(rename).toBeVisible();
+  await expect(rename).toHaveCSS("transform", "none");
+
+  // A changed title asks first, as with the Back button.
+  await page.getByLabel("Chat title").fill("Draft");
+  await dragSheet(page, rename, 300);
+  const question = page.getByRole("dialog", { name: "Unsaved changes" });
+  await expect(question).toBeVisible();
+  // The question opens from Back itself, so a drag does not close it.
+  await dragSheet(page, question, 300);
+  await expect(question).toBeVisible();
+  await question.getByRole("button", { name: "Discard and close" }).click();
+  await expect(rename).toHaveCount(0);
+
+  await chooseFromMore(page, "Rename");
+  await dragSheet(page, rename, 300);
+  await expect(rename).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
+});
+
+test("a finger drags a sheet down to close it (#1055)", async ({ browser, baseURL }) => {
+  test.skip(test.info().project.name !== "phone", "A computer shows a box, not a sheet.");
+  const context = await browser.newContext({
+    baseURL: baseURL ?? "",
+    viewport: { width: 375, height: 812 },
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await logIn(page);
+  await newChat(page);
+  const rename = page.getByRole("dialog", { name: "Rename chat" });
+  await chooseFromMore(page, "Rename");
+  await expect(rename).toHaveCSS("transform", "none");
+  const box = await rename.boundingBox();
+  if (box === null) throw new Error("The sheet has no box.");
+  // A real touch, so the browser decides about the scroll as on a phone.
+  const touch = await context.newCDPSession(page);
+  const x = box.x + box.width / 2;
+  const at = (y: number): { x: number; y: number }[] => [{ x, y }];
+  await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(box.y + 12) });
+  for (let step = 1; step <= 20; step += 1) {
+    await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(box.y + 12 + step * 15) });
+  }
+  await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await expect(rename).toHaveCount(0);
+  await context.close();
+});
 
 test("the More actions menu works from the keyboard, and the focus never gets lost", async ({ page }) => {
   await logIn(page);

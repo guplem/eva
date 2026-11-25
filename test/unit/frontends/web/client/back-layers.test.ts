@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
+  backFromTopLayer,
   goTo,
   goUp,
   leaveFor,
@@ -354,5 +355,22 @@ describe("watchLayers", () => {
     browser.entries[0] = { hash: "#/chats", state: { evaPlace: 0, evaLayers: ["dialog"] } };
     watchLayers(browser);
     expect(browser.current.state).toMatchObject({ evaPlace: 0, evaLayers: [] });
+  });
+});
+
+describe("backFromTopLayer", () => {
+  test("closes the top layer as the Back button does", () => {
+    const closed: string[] = [];
+    openLayer("sheet", () => closed.push("sheet"));
+    openLayer("dialog", () => closed.push("dialog"));
+    expect(backFromTopLayer()).toBe(true);
+    expect(browser.steps).toEqual([-1]);
+    browser.arrive();
+    expect(closed).toEqual(["dialog"]);
+  });
+
+  test("does nothing when no layer is open", () => {
+    expect(backFromTopLayer()).toBe(false);
+    expect(browser.steps).toEqual([]);
   });
 });

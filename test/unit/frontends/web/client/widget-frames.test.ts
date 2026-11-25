@@ -34,8 +34,8 @@ describe("the grid's tokens", () => {
     expect(refreshDue(1_000, 1_000 + frameRefreshMs)).toBe(true);
   });
 
-  test("narrow the page's frames to the widget paths", () => {
-    expect(framePolicy("http://127.0.0.1:7420")).toBe("frame-src http://127.0.0.1:7420/widgets/");
+  test("narrow the page's frames to the widget paths and to the PDFs that the page holds (#1064)", () => {
+    expect(framePolicy("http://127.0.0.1:7420")).toBe("frame-src http://127.0.0.1:7420/widgets/ blob:");
   });
 
   test("tell each grid of a reconnect, until it stops listening", () => {

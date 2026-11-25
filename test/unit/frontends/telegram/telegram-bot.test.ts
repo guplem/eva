@@ -3019,4 +3019,12 @@ describe("schedules (lessons 70, 126)", () => {
     await settle(bot, () => telegram.sentTexts().length >= 4);
     expect(telegram.sentTexts().at(-1)).toBe("No schedules. Ask Eva to create one.");
   });
+
+  test("the remove button answers in the topic of its message (#1073)", async () => {
+    writeSchedules([morning]);
+    const bot = createBot();
+    telegram.pressButton(owner, "s:morning", 42);
+    await settle(bot, () => telegram.sentTexts().includes("Removed the schedule morning."));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(42);
+  });
 });

@@ -909,7 +909,11 @@ export class TelegramBot {
       await this.files.sendOffered(chatId, topicOf(query.message), first);
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
-      await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+      await this.send(
+        chatId,
+        topicOf(query.message),
+        removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`,
+      );
     } else if (kind === "c" && first !== undefined && second !== undefined) {
       const topicId = topicOf(query.message);
       this.inBackground(chatId, topicId, () => this.conflicts.pick(chatId, topicId, first, second));

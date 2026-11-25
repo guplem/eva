@@ -466,8 +466,8 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       }),
     },
     development: false,
-    // Bun closes a request after 10 idle seconds by default. Some routes run git or gh for longer,
-    // such as a new clone or a setup report, so allow Bun's maximum.
+    // Bun closes a request after 10 idle seconds by default. Most routes run git or gh for a short
+    // time, such as a setup report, so allow Bun's maximum. Longer routes turn the limit off below.
     idleTimeout: options.idleTimeoutSeconds ?? 255,
     fetch: async (request, bunServer) => {
       const url = new URL(request.url);
@@ -499,7 +499,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           ? undefined
           : json({ error: "A WebSocket upgrade was expected." }, 400);
       }
-      // Bun closes a request after 10 idle seconds. An engine check waits for a whole real turn,
+      // Bun closes a request after the idle time above. An engine check waits for a whole real turn,
       // a vault sync or pick waits for git's network steps, the Google login waits for Google, the
       // GitHub login waits until the person confirms the code, and an update waits for the download
       // of the new version, as a tool install waits for its download. Each ends at its own timeout.
@@ -519,7 +519,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
         (url.pathname === "/api/projects" && request.method === "POST") ||
         url.pathname.endsWith("/setup/fix") ||
         // A fork or a retry of a Project chat may wait for a new clone and a summary (issue 523).
-        (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname))
+        (url.pathname.startsWith("/api/sessions/") && /\/(fork|retry)$/.test(url.pathname)) ||
+        // A new Project chat and a project's work may wait for a new clone, and a clone may take
+        // 10 minutes. Every other POST to a project's clones runs git's network steps (#1076).
+        (request.method === "POST" &&
+          (url.pathname === "/api/sessions" || /^\/api\/projects\/[^/]+\/(work|clones(\/.*)?)$/.test(url.pathname)))
       )
         bunServer.timeout(request, 0);
       try {

@@ -58,6 +58,8 @@ let api: LocalApi;
 let engine: FakeEngine;
 /** The fixture engine runs this script; a test may replace it before its first turn. */
 let turnScript: FakeTurnScript | null;
+/** Each `git clone` waits this long first, as for a large repository. */
+let cloneDelayMs = 0;
 /**
  * A GitHub API that refuses every token, so a saved GitHub token never reaches github.com. It
  * lists two releases for the changelog, and counts how often Eva reads them.
@@ -121,6 +123,7 @@ beforeEach(() => {
   sandbox.git(vault, "push", "-q", "origin", "main");
   home = mkdtempSync(join(tmpdir(), "eva-api-"));
   turnScript = null;
+  cloneDelayMs = 0;
   engine = new FakeEngine((request, turnNumber) =>
     turnScript === null ? FakeEngine.answer(request, `answer ${String(turnNumber)}`) : turnScript(request, turnNumber),
   );
@@ -131,7 +134,12 @@ beforeEach(() => {
     config: { ...defaultConfig, vaultPath: vault, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
     secrets: {},
     engines: [engine],
-    runner: fakeGh(systemProcessRunner),
+    runner: fakeGh({
+      run: async (command, options) => {
+        if (command[0] === "git" && command.includes("clone")) await Bun.sleep(cloneDelayMs);
+        return systemProcessRunner.run(command, options);
+      },
+    }),
     processEnvironment: gitEnvironment,
     now: () => new Date("2026-10-14T10:30:00Z"),
     basePrompt: "Base.",
@@ -1516,6 +1524,21 @@ describe("web routes", () => {
     const gone = await call("/api/projects/2025-03-02-1015-example-app/clones/clone-0", { method: "DELETE" });
     expect(gone.status).toBe(404);
   });
+
+  test("a new clone may take longer than Bun's idle timeout (#1076)", async () => {
+    // A large repository can outlast any idle timeout. A short one keeps the test fast.
+    // Bun closes an idle request at its next 4 s tick, so 8 s leaves a margin on a slow runner.
+    api.stop();
+    api = startLocalApi({ eva, port: 0, token, extraHosts: [], allowedTailscaleIdentities: [], idleTimeoutSeconds: 1 });
+    sandbox.write(
+      join(sandbox.root, "vault"),
+      "Projects/2025-03-02-1015-example-app/AGENTS.md",
+      `---\ncreated: 2025-03-02T10:15\nstatus: active\nrepos:\n  - ${sandbox.remote}\n---\n# Example app\n`,
+    );
+    cloneDelayMs = 8_000;
+    const created = await call("/api/projects/2025-03-02-1015-example-app/clones", { method: "POST" });
+    expect(await json<{ name: string }>(created)).toMatchObject({ name: "clone-0" });
+  }, 30_000);
 
   test("a clone fetches, pulls and pushes, and a model writes the message of an empty note", async () => {
     const path = "/api/projects/2025-03-02-1015-example-app";

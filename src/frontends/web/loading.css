@@ -224,6 +224,12 @@ button[aria-busy="true"]:disabled {
   border-radius: 5px;
 }
 
+/* The open chat while its turns load: its parts take their place in the page's own layout. */
+.chat-skeleton,
+.chat-panel-skeleton {
+  display: contents;
+}
+
 /* The facts list of a card, such as the Versions card. The grid, gaps and text size copy `.facts`. */
 .facts-skeleton .skeleton-shapes {
   display: grid;

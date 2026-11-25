@@ -1167,11 +1167,11 @@ async function waitUntilNewestChatSeen(page: Page): Promise<void> {
     .poll(async () => {
       const sessions = (await (await page.request.get("/api/sessions")).json()) as {
         createdAt: string;
-        turns: unknown[];
+        turnCount: number;
         seenTurns: number;
       }[];
       const newest = sessions.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
-      return newest.turns.length > 0 && newest.turns.length === newest.seenTurns;
+      return newest.turnCount > 0 && newest.turnCount === newest.seenTurns;
     })
     .toBe(true);
 }
@@ -1262,11 +1262,10 @@ test("a message whose answer got lost runs once, though the page sends it again 
   await composer.press("Control+Enter");
   await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
   await waitUntilIdle(page, chatId);
-  const sessions = (await (await page.request.get("/api/sessions")).json()) as {
-    id: string;
+  // The list holds no turns (#1046): one chat's own read has them.
+  const { turns } = (await (await page.request.get(`/api/sessions/${chatId}`)).json()) as {
     turns: { userText: string }[];
-  }[];
-  const turns = sessions.find((session) => session.id === chatId)?.turns ?? [];
+  };
   expect(turns.filter((turn) => turn.userText === text)).toHaveLength(1);
   await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
   await waitUntilNewestChatSeen(page);

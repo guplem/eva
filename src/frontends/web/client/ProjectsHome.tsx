@@ -3,7 +3,7 @@
  * and the statistics of a time range (#878).
  */
 import type { ReactElement } from "react";
-import type { Project, SessionRecord } from "./api.ts";
+import type { Project, ListedSession } from "./api.ts";
 import { chatTime, type ChatState } from "./chat-list.ts";
 import { ChatStatePill } from "./ChatHeader.tsx";
 import { CardsSkeleton } from "./Loading.tsx";
@@ -14,9 +14,9 @@ import { chatAddressOf } from "./navigation.ts";
 import { tabLinkProps } from "./new-tab.ts";
 
 interface ChatRowsProps {
-  readonly chats: readonly { readonly chat: SessionRecord; readonly state: ChatState }[];
-  readonly projectOf: (chat: SessionRecord) => Project | undefined;
-  readonly onOpenChat: (chat: SessionRecord) => void;
+  readonly chats: readonly { readonly chat: ListedSession; readonly state: ChatState }[];
+  readonly projectOf: (chat: ListedSession) => Project | undefined;
+  readonly onOpenChat: (chat: ListedSession) => void;
   readonly now: Date;
 }
 
@@ -50,10 +50,10 @@ function ChatRows({ chats, projectOf, onOpenChat, now }: ChatRowsProps): ReactEl
 }
 
 interface NeedsYouProps {
-  readonly chats: readonly SessionRecord[];
+  readonly chats: readonly ListedSession[];
   readonly projects: readonly Project[];
-  readonly stateOf: (chat: SessionRecord) => ChatState;
-  readonly onOpenChat: (chat: SessionRecord) => void;
+  readonly stateOf: (chat: ListedSession) => ChatState;
+  readonly onOpenChat: (chat: ListedSession) => void;
   readonly className?: string;
 }
 
@@ -85,9 +85,9 @@ interface ProjectsHomeProps {
   /** Every project, whatever the filters of the list. Null while they load. */
   readonly projects: readonly Project[] | null;
   /** The first chat of each tree, the newest first. */
-  readonly chats: readonly SessionRecord[];
-  readonly stateOf: (chat: SessionRecord) => ChatState;
-  readonly onOpenChat: (chat: SessionRecord) => void;
+  readonly chats: readonly ListedSession[];
+  readonly stateOf: (chat: ListedSession) => ChatState;
+  readonly onOpenChat: (chat: ListedSession) => void;
   readonly onOpenProject: (project: Project) => void;
   /** A press on a count filters the list by that status, or by In use. */
   readonly onFilterStatus: (count: StatusCount) => void;
@@ -109,7 +109,7 @@ export function ProjectsHome({
   const now = new Date();
   const known = projects ?? [];
   const byId = new Map(known.map((project) => [project.id, project]));
-  const projectOf = (chat: SessionRecord): Project | undefined =>
+  const projectOf = (chat: ListedSession): Project | undefined =>
     chat.projectId === null ? undefined : byId.get(chat.projectId);
   const { needsYou, recent } = homeChats(chats, stateOf);
   return (

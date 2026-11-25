@@ -4,7 +4,7 @@
  * shows the way to start (issue 392).
  */
 import { useState, type ReactElement } from "react";
-import type { CloneDetails, PreviewPlace, Project, RepositoryDetails, SessionRecord } from "./api.ts";
+import type { CloneDetails, PreviewPlace, Project, RepositoryDetails, ListedSession } from "./api.ts";
 import { WidgetPreviewDialog } from "./WidgetPreviewDialog.tsx";
 import { Icon } from "./icons.tsx";
 import {
@@ -41,20 +41,20 @@ interface ProjectPageProps {
   /** The read of the clones failed, so an empty list does not mean that the project has none. */
   readonly clonesFailed: boolean;
   /** The root chats of each clone, by clone path. */
-  readonly chatsOf: (clone: CloneDetails) => readonly SessionRecord[];
+  readonly chatsOf: (clone: CloneDetails) => readonly ListedSession[];
   /** Whether a chat needs the person, works, or has an answer that the person did not see. */
-  readonly stateOf: (chat: SessionRecord) => ChatState;
+  readonly stateOf: (chat: ListedSession) => ChatState;
   /** Whether Eva runs a turn now in a chat or one of its forks. */
-  readonly isWorking: (chat: SessionRecord) => boolean;
+  readonly isWorking: (chat: ListedSession) => boolean;
   readonly error: string | null;
   readonly onBackToList: () => void;
   readonly onDetails: () => void;
   readonly onSetup: () => void;
   readonly onNewClone: () => void;
   /** The root chats of a specialist, which work in its folder with no clone (#703). */
-  readonly specialistChats: readonly SessionRecord[];
+  readonly specialistChats: readonly ListedSession[];
   /** With an action, the chat opens and its header starts it, as the context menu asks. No clone for a specialist. */
-  readonly onOpenChat: (clone: CloneDetails | null, chat: SessionRecord, action?: ChatAction) => void;
+  readonly onOpenChat: (clone: CloneDetails | null, chat: ListedSession, action?: ChatAction) => void;
   /** Eva picks the clone of the new chat: a free one, or a new one. */
   readonly onNewChat: () => void;
   /** Opens a new Assistant chat that mentions the project (issue 657). */
@@ -216,11 +216,11 @@ function SpecialistChats({
   stateOf,
   onOpenChat,
 }: {
-  readonly chats: readonly SessionRecord[];
+  readonly chats: readonly ListedSession[];
   readonly specialist: boolean;
   readonly now: Date;
-  readonly stateOf: (chat: SessionRecord) => ChatState;
-  readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
+  readonly stateOf: (chat: ListedSession) => ChatState;
+  readonly onOpenChat: (chat: ListedSession, action?: ChatAction) => void;
 }): ReactElement {
   return (
     <section className="clones-section" aria-labelledby="chats-heading">
@@ -287,7 +287,7 @@ function ClonesSection({
   readonly now: Date;
   /** How many repositories of the clones are behind their remote. */
   readonly behind: number;
-  readonly onOpenChat: (clone: CloneDetails, chat: SessionRecord, action?: ChatAction) => void;
+  readonly onOpenChat: (clone: CloneDetails, chat: ListedSession, action?: ChatAction) => void;
   /** A general project or a specialist shows its old clones only so that they can go: it makes no new one. */
   readonly inFolder: boolean;
   /** The folder names of the widget repositories: each gets a Preview button (#693). */
@@ -421,11 +421,11 @@ function NewCloneCard({
 
 interface CloneCardProps {
   readonly clone: CloneDetails;
-  readonly chats: readonly SessionRecord[];
+  readonly chats: readonly ListedSession[];
   readonly now: Date;
-  readonly stateOf: (chat: SessionRecord) => ChatState;
-  readonly isWorking: (chat: SessionRecord) => boolean;
-  readonly onOpenChat: (chat: SessionRecord, action?: ChatAction) => void;
+  readonly stateOf: (chat: ListedSession) => ChatState;
+  readonly isWorking: (chat: ListedSession) => boolean;
+  readonly onOpenChat: (chat: ListedSession, action?: ChatAction) => void;
   readonly onDelete: () => Promise<void>;
   /** The repository whose pull runs now, as `<clone>/<repository>`, or null. */
   readonly pulling: string | null;
@@ -569,8 +569,8 @@ function DeleteCloneDialog({
   onClose,
 }: {
   readonly clone: CloneDetails;
-  readonly chats: readonly SessionRecord[];
-  readonly working: readonly SessionRecord[];
+  readonly chats: readonly ListedSession[];
+  readonly working: readonly ListedSession[];
   readonly onDelete: () => Promise<void>;
   readonly onClose: () => void;
 }): ReactElement {
@@ -644,7 +644,7 @@ function CloneChat({
   state,
   onOpen,
 }: {
-  readonly chat: SessionRecord;
+  readonly chat: ListedSession;
   readonly time: string;
   readonly state: ChatState;
   readonly onOpen: (action?: ChatAction) => void;

@@ -46,7 +46,7 @@ import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { currentLifeKindName, isLifeKind } from "../../shared/life-kinds.ts";
 import type { Logger } from "../../shared/logger.ts";
 import { unlockHeader } from "../../shared/vault-unlock.ts";
-import { recentTurnsWithSteps, withRecentSteps, withRunState } from "./session-list.ts";
+import { listedSessions, openedSession, recentTurnsWithSteps } from "./session-list.ts";
 
 export interface LocalApiOptions {
   readonly eva: Eva;
@@ -873,10 +873,16 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
   if (method === "GET" && url.pathname === "/api/status") return json(eva.status());
   if (method === "GET" && url.pathname === "/api/versions") return json(await eva.versions());
   if (method === "GET" && url.pathname === "/api/versions/latest") return json(await eva.latestToolVersions());
-  if (method === "GET" && url.pathname === "/api/sessions")
-    return json(
-      withRunState(withRecentSteps(eva.sessions.list(), recentTurnsWithSteps), (id) => eva.sessions.isTurnRunning(id)),
-    );
+  const isRunning = (id: string): boolean => eva.sessions.isTurnRunning(id);
+  if (method === "GET" && url.pathname === "/api/sessions") return json(listedSessions(eva.sessions.list(), isRunning));
+  if (
+    method === "GET" &&
+    parts[0] === "api" &&
+    parts[1] === "sessions" &&
+    parts[2] !== undefined &&
+    parts[3] === undefined
+  )
+    return json(openedSession(eva.sessions.get(decodeURIComponent(parts[2])), isRunning, recentTurnsWithSteps));
   if (method === "GET" && url.pathname === "/api/approvals") return json(eva.sessions.pendingApprovals());
   if (method === "GET" && url.pathname === "/api/tasks") return json(eva.sessions.backgroundTasks());
   if (method === "GET" && url.pathname === "/api/turns") return json(eva.sessions.runningTurns());

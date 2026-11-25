@@ -110,6 +110,8 @@ async function openNewChat(page: Page, text: string): Promise<string> {
   await page.getByRole("navigation", { name: "Main" }).getByRole("button", { name: "Chats" }).click();
   const newChat = page.getByRole("button", { name: /^New/ }).first();
   if (await newChat.isVisible()) await newChat.click();
+  // The page closes the list before it opens New chat, and the box of the old chat shows until then.
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("New chat");
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
   await composer.press("Control+Enter");

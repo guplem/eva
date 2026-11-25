@@ -266,6 +266,24 @@ const answerActions = ["Retry", "Fork", "Copy"];
  * A chat: a question of the person, then an answer of Eva, twice, and the message box. It uses
  * the classes of the chat, so the visor sits at the bottom of the answer, as in the chat.
  */
+/** The open chat while its turns load: the list holds no turns, so each chat reads its own (#1046). */
+export function ChatSkeleton(): ReactElement {
+  return (
+    <Skeleton label="Loading the chat…" className="chat-skeleton">
+      <ConversationSkeleton />
+    </Skeleton>
+  );
+}
+
+/** The details of the open chat while its turns load. */
+export function ChatPanelLoading(): ReactElement {
+  return (
+    <Skeleton label={undefined} className="chat-panel-skeleton">
+      <ChatPanelSkeleton />
+    </Skeleton>
+  );
+}
+
 function ConversationSkeleton(): ReactElement {
   return (
     <div className="branches">

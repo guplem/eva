@@ -13,7 +13,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { api, type ChatBlocker, type SessionRecord } from "./api.ts";
+import { api, type ChatBlocker, type OpenedSession, type SessionRecord } from "./api.ts";
 import { answerActions } from "./answer-actions.ts";
 import { useAnswerActions, type AnswerActions } from "./AnswerActions.tsx";
 import { ApprovalRequests, type ChatApprovals } from "./ApprovalCard.tsx";
@@ -88,8 +88,11 @@ import { describeUsageLimit, hasReset } from "../../../shared/usage-limit.ts";
 import { displayFormat } from "./display-format.ts";
 
 interface ConversationProps {
-  readonly root: SessionRecord;
-  readonly sessions: readonly SessionRecord[];
+  readonly root: OpenedSession;
+  /** The chat and its forks with their turns, from `useOpenedTree`, the chat first. */
+  readonly tree: readonly OpenedSession[];
+  /** The chat list, which names the chat that this chat came from. */
+  readonly sessions: readonly Pick<SessionRecord, "id" | "title">[];
   /** The branch of the chat that the page shows, from `useShownBranch`. */
   readonly shown: ShownBranch;
   readonly live: LiveState;
@@ -106,6 +109,7 @@ interface ConversationProps {
 
 export function Conversation({
   root,
+  tree,
   sessions,
   shown,
   live,
@@ -115,7 +119,6 @@ export function Conversation({
   voiceNotes,
   projectTitle = null,
 }: ConversationProps): ReactElement {
-  const tree = chatTree(root, sessions);
   const branch = tree.find((session) => session.id === shown.id) ?? root;
   const states = useBranchStates(tree, branch.id, approvals.pending, live);
   const answers = useAnswerActions(onChanged, `${root.id} ${branch.id}`);
@@ -933,18 +936,21 @@ function counted(count: number, noun: string): string {
   return `${String(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
+/** The facts that link a chat to its forks. */
+type ChatLink = Pick<SessionRecord, "id" | "parentId">;
+
 /** A chat and each of its forks, the chat first. */
-export function chatTree(root: SessionRecord, sessions: readonly SessionRecord[]): SessionRecord[] {
+export function chatTree<S extends ChatLink>(root: S, sessions: readonly S[]): S[] {
   return [root, ...descendantsOf(root.id, sessions)];
 }
 
-function descendantsOf(sessionId: string, sessions: readonly SessionRecord[]): SessionRecord[] {
+function descendantsOf<S extends ChatLink>(sessionId: string, sessions: readonly S[]): S[] {
   const children = sessions.filter((session) => session.parentId === sessionId);
   return children.flatMap((child) => [child, ...descendantsOf(child.id, sessions)]);
 }
 
 /** The first chat of a fork's line, found through the parents that the list still has. */
-export function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]): string {
+export function rootIdOf(chat: ChatLink, sessions: readonly ChatLink[]): string {
   let current = chat;
   const seen = new Set<string>();
   while (current.parentId !== null && !seen.has(current.id)) {
@@ -957,7 +963,9 @@ export function rootIdOf(chat: SessionRecord, sessions: readonly SessionRecord[]
 }
 
 /** The chats that start a tree: no parent, newest first. */
-export function rootChats(sessions: readonly SessionRecord[]): SessionRecord[] {
+export function rootChats<S extends ChatLink & Pick<SessionRecord, "lastTurnAt" | "createdAt">>(
+  sessions: readonly S[],
+): S[] {
   return sessions
     .filter((session) => session.parentId === null)
     .sort((first, second) =>
@@ -968,7 +976,7 @@ export function rootChats(sessions: readonly SessionRecord[]): SessionRecord[] {
 /** The note of a chat that came from another clone (issue 523). A deleted parent gets no link. */
 function forkedFromNote(
   root: SessionRecord,
-  sessions: readonly SessionRecord[],
+  sessions: readonly Pick<SessionRecord, "id" | "title">[],
 ): { readonly text: string; readonly chatId: string | null } | null {
   const parent = sessions.find((session) => session.id === root.forkedFrom?.sessionId);
   const text = forkedFromText(root, parent?.title ?? null);

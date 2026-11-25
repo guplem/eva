@@ -9,8 +9,10 @@ import { hasUnseenTurns } from "./branch-path.ts";
  * The core then tells every device, which fetches the list again.
  */
 export function useMarkSeen(tree: readonly SessionRecord[], shown: boolean): void {
-  // A string, so the effect runs again only when a new turn ends, not at each render.
-  const unseen = JSON.stringify(tree.filter(hasUnseenTurns).map((session) => [session.id, session.turns.length]));
+  // A string, so the effect runs again only when a new turn ends, not at each render. Only the turns
+  // that the page shows count: the list can know a turn whose text did not arrive yet.
+  const shownCounts = tree.map((session) => ({ ...session, turnCount: session.turns.length }));
+  const unseen = JSON.stringify(shownCounts.filter(hasUnseenTurns).map((session) => [session.id, session.turnCount]));
   useEffect(() => {
     const marks = JSON.parse(unseen) as [string, number][];
     if (!shown || marks.length === 0) return undefined;

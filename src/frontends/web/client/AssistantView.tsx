@@ -1,9 +1,11 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import type { ChatBlocker, ListedSession, SessionRecord } from "./api.ts";
+import type { ChatBlocker, ChatFacts, ListedSession, SessionRecord } from "./api.ts";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
+import { useOpenedTree } from "./opened-chats.ts";
+import { ChatPanelLoading, ChatSkeleton } from "./Loading.tsx";
 import { latestId, type LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
 import { seenPart } from "./branch-path.ts";
@@ -39,7 +41,7 @@ interface AssistantViewProps {
   /** Grows at each tap on Chats while Chats is open on a computer. Each change opens a new chat. */
   readonly newChatRequest: number;
   /** The chat that the address names; it opens once it is in the list. */
-  readonly linkedChat: SessionRecord | null;
+  readonly linkedChat: ListedSession | null;
   /** `address` names the page of the opened chat, so the used link leaves the history. */
   readonly onLinkedChatOpened: (address?: string) => void;
   readonly approvals: ChatApprovals;
@@ -81,7 +83,7 @@ export function AssistantView({
   }, []);
   const [query, setQuery] = useState("");
   /** An archived chat leaves the page, so the list opens another one. */
-  const afterArchive = async (chat: SessionRecord): Promise<void> => {
+  const afterArchive = async (chat: ChatFacts): Promise<void> => {
     // The address, not this render: the person may have opened another chat while the request ran.
     if (chat.archived && assistantChatIdOf(window.location.hash) === chat.id) {
       setSelectedId(null);
@@ -121,7 +123,10 @@ export function AssistantView({
       roots.find((chat) => chat.id === selectedId) ??
       active[0] ??
       chats[0]);
-  const tree = selected === undefined ? [] : chatTree(selected, sessions);
+  const listedTree = selected === undefined ? [] : chatTree(selected, sessions);
+  const openedTree = useOpenedTree(listedTree);
+  // Until the turns arrive, the facts of the list stand in with no turns, and the chat shows its skeleton.
+  const tree = openedTree ?? listedTree.map((session) => ({ ...session, turns: [] }));
   // A fork that the person picks in the list opens like a link to it.
   const [pickedBranchId, setPickedBranchId] = useState<string | null>(null);
   const branch = useShownBranch(tree, linkedChat?.id ?? pickedBranchId, live.heirs);
@@ -159,7 +164,7 @@ export function AssistantView({
   useShownChat(approvals.onShowChat, branch.id === null ? [] : [branch.id]);
   // On a phone, the open list covers the chat.
   useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
-  const stateOf = (candidate: SessionRecord): ChatState => {
+  const stateOf = (candidate: ListedSession): ChatState => {
     const state = chatState(chatTree(candidate, sessions), isRunning, approvalSessionIds);
     // The person reads the open chat now. Its mark reaches the core a moment later.
     return state === "unread" && candidate.id === selected?.id && !sidebarOpen ? null : state;
@@ -335,34 +340,40 @@ export function AssistantView({
                 onTogglePanel={togglePanel}
                 onChanged={onChanged}
               />
-              <Conversation
-                root={selected}
-                shown={branch}
-                sessions={sessions}
-                live={live}
-                onChanged={onChanged}
-                approvals={approvals}
-                blocker={blocker}
-                voiceNotes={voiceNotes}
-              />
+              {openedTree === null ? (
+                <ChatSkeleton />
+              ) : (
+                <Conversation
+                  root={tree[0] ?? { ...selected, turns: [] }}
+                  tree={tree}
+                  shown={branch}
+                  sessions={sessions}
+                  live={live}
+                  onChanged={onChanged}
+                  approvals={approvals}
+                  blocker={blocker}
+                  voiceNotes={voiceNotes}
+                />
+              )}
             </>
           )}
         </BusyProjects.Provider>
       </main>
       {/* The inspector is about one chat, so a new chat draft has none. */}
-      {selected !== undefined && <ChatPanel shown={panelShown} {...chat} />}
+      {selected !== undefined &&
+        (openedTree === null ? panelShown && <ChatPanelLoading /> : <ChatPanel shown={panelShown} {...chat} />)}
     </div>
   );
 }
 
 /** The time the list sorts a chat by: its last turn, or its start. */
-function timeOf(chat: SessionRecord): Date {
+function timeOf(chat: ListedSession): Date {
   return new Date(chat.lastTurnAt ?? chat.createdAt);
 }
 
 /** One branch of a chat in the list. */
 interface ForkItem {
-  readonly session: SessionRecord;
+  readonly session: ListedSession;
   readonly name: string;
   readonly preview: string;
   readonly state: ChatState;
@@ -383,7 +394,7 @@ function ChatItem({
   onToggleForks,
   onSelectFork,
 }: {
-  readonly chat: SessionRecord;
+  readonly chat: ListedSession;
   readonly time: string;
   readonly state: ChatState;
   readonly isSelected: boolean;

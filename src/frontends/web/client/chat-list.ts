@@ -1,6 +1,6 @@
 /** The parts of the chat list that need no page: groups, times, previews, states and the search. */
 import { shownAnswerText } from "../../../shared/file-markers.ts";
-import type { SessionRecord } from "./api.ts";
+import type { ListedSession, SessionRecord } from "./api.ts";
 import { branchNames, hasUnseenTurns, type BranchSession, type UnseenFacts } from "./branch-path.ts";
 import { turnLine } from "../../../shared/project-report.ts";
 import { clockTime, type Clock } from "../../../shared/time-format.ts";
@@ -51,10 +51,10 @@ export function chatTime(at: Date, now: Date, clock: Clock | null = displayForma
  * One line of the last message: the answer, why the turn failed, or the person's message.
  * A waiting approval or question comes first: the last answer no longer tells the current state.
  */
-export function chatPreview(chat: Pick<SessionRecord, "turns">, state: ChatState = null): string {
+export function chatPreview(chat: Pick<ListedSession, "lastTurn">, state: ChatState = null): string {
   if (state === "needs-you") return "Eva waits for your answer";
-  const last = chat.turns.at(-1);
-  if (last === undefined) return state === "working" ? "Eva is working on it" : "No messages yet";
+  const last = chat.lastTurn;
+  if (last === null) return state === "working" ? "Eva is working on it" : "No messages yet";
   const line = oneLine(last.failure ?? "") || oneLine(shownAnswerText(last.answerText)) || oneLine(turnLine(last));
   if (line === "") return "No messages yet";
   // By code point, so the cut never splits an emoji.
@@ -155,7 +155,7 @@ export const chatStateLabels: Record<NonNullable<ChatState>, string> = {
 };
 
 /** The branches that a chat lists under its row, by name. A chat with no fork lists none. */
-export function chatForks<S extends BranchSession>(
+export function chatForks<S extends Pick<BranchSession, "id" | "forkName">>(
   tree: readonly S[],
 ): { readonly session: S; readonly name: string }[] {
   if (tree.length < 2) return [];

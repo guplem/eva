@@ -41,6 +41,11 @@ function turn(fields: Partial<Turn>): Turn {
   };
 }
 
+/** A chat of the list: it keeps only its last turn, for the preview (#1046). */
+function listed(turns: Turn[]): { lastTurn: Turn | null } {
+  return { lastTurn: turns.at(-1) ?? null };
+}
+
 describe("chatGroup", () => {
   test("splits the chats into today, the 6 days before, and older", () => {
     expect(chatGroup(new Date(2026, 9, 19, 0, 5), now)).toBe("Today");
@@ -66,20 +71,18 @@ describe("chatTime", () => {
 
 describe("chatPreview", () => {
   test("shows one line of the last answer, with no Markdown marks", () => {
-    const chat = {
-      turns: [turn({ answerText: "old" }), turn({ answerText: "## Plan\n\n**Four** things\nthis week" })],
-    };
+    const chat = listed([turn({ answerText: "old" }), turn({ answerText: "## Plan\n\n**Four** things\nthis week" })]);
     expect(chatPreview(chat)).toBe("Plan Four things this week");
   });
 
   test("leaves out the file markers of the answer (#581)", () => {
-    const chat = { turns: [turn({ answerText: "Here it is.\n[[attach: .eva/scratch/example-app.zip]]" })] };
+    const chat = listed([turn({ answerText: "Here it is.\n[[attach: .eva/scratch/example-app.zip]]" })]);
     expect(chatPreview(chat)).toBe("Here it is.");
   });
 
   test("shows why the turn failed, or the person's message while no answer exists", () => {
-    expect(chatPreview({ turns: [turn({ failure: "The engine stopped." })] })).toBe("The engine stopped.");
-    expect(chatPreview({ turns: [turn({ answerText: "  " })] })).toBe("What is on today?");
+    expect(chatPreview(listed([turn({ failure: "The engine stopped." })]))).toBe("The engine stopped.");
+    expect(chatPreview(listed([turn({ answerText: "  " })]))).toBe("What is on today?");
   });
 
   test("names a project work result with no answer by its headline, not its raw message", () => {
@@ -95,12 +98,12 @@ describe("chatPreview", () => {
       resultCut: false,
     };
     const result = turn({ userText: "[Project work finished: example-app]", fromEva: true, projectReports: [report] });
-    expect(chatPreview({ turns: [result] })).toBe("Eva finished the work in Example app");
+    expect(chatPreview(listed([result]))).toBe("Eva finished the work in Example app");
   });
 
   test("says that a new chat has no message, and cuts a long text", () => {
-    expect(chatPreview({ turns: [] })).toBe("No messages yet");
-    const preview = chatPreview({ turns: [turn({ answerText: "word ".repeat(100) })] });
+    expect(chatPreview(listed([]))).toBe("No messages yet");
+    const preview = chatPreview(listed([turn({ answerText: "word ".repeat(100) })]));
     expect(preview).toHaveLength(140);
     expect(preview.endsWith("…")).toBe(true);
   });
@@ -108,12 +111,15 @@ describe("chatPreview", () => {
 
 describe("chatState", () => {
   const running = (id: string): boolean => id === "fork";
-  const seen = (id: string): { id: string; turns: Turn[]; seenTurns: number } => ({
+  const seen = (id: string): { id: string; turnCount: number; seenTurns: number } => ({
     id,
-    turns: [turn({})],
+    turnCount: 1,
     seenTurns: 1,
   });
-  const unseen = (id: string): { id: string; turns: Turn[]; seenTurns: number } => ({ ...seen(id), seenTurns: 0 });
+  const unseen = (id: string): { id: string; turnCount: number; seenTurns: number } => ({
+    ...seen(id),
+    seenTurns: 0,
+  });
 
   test("a waiting approval in the chat or a fork needs the person, also while the turn runs", () => {
     expect(chatState([unseen("root"), seen("fork")], running, ["fork"])).toBe("needs-you");
@@ -139,12 +145,14 @@ describe("chatState", () => {
 });
 
 describe("unreadChats", () => {
-  type Listed = Pick<SessionRecord, "id" | "parentId" | "archived" | "turns" | "seenTurns" | "reportsTo">;
+  type Listed = Pick<SessionRecord, "id" | "parentId" | "archived" | "seenTurns" | "reportsTo"> & {
+    turnCount: number;
+  };
   const chat = (id: string, fields: Partial<Listed> = {}): Listed => ({
     id,
     parentId: null,
     archived: false,
-    turns: [turn({})],
+    turnCount: 1,
     seenTurns: 1,
     reportsTo: null,
     ...fields,
@@ -192,36 +200,34 @@ describe("groupChats", () => {
 
 describe("chatPreview with a state", () => {
   test("a waiting approval says so, because the last answer is out of date", () => {
-    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "needs-you")).toBe("Eva waits for your answer");
+    expect(chatPreview(listed([turn({ answerText: "Done." })]), "needs-you")).toBe("Eva waits for your answer");
   });
 
   test("a first turn that runs says that Eva works, not that the chat is empty", () => {
-    expect(chatPreview({ turns: [] }, "working")).toBe("Eva is working on it");
-    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "working")).toBe("Done.");
+    expect(chatPreview(listed([]), "working")).toBe("Eva is working on it");
+    expect(chatPreview(listed([turn({ answerText: "Done." })]), "working")).toBe("Done.");
   });
 
   test("an unread chat shows its new answer", () => {
-    expect(chatPreview({ turns: [turn({ answerText: "Done." })] }, "unread")).toBe("Done.");
+    expect(chatPreview(listed([turn({ answerText: "Done." })]), "unread")).toBe("Done.");
   });
 });
 
 describe("chatPreview edge cases", () => {
   test("keeps a mark inside the text, such as an issue number or an arrow", () => {
-    expect(chatPreview({ turns: [turn({ answerText: "Closed #169 in C#: a -> b, 2*3" })] })).toBe(
+    expect(chatPreview(listed([turn({ answerText: "Closed #169 in C#: a -> b, 2*3" })]))).toBe(
       "Closed #169 in C#: a -> b, 2*3",
     );
-    expect(chatPreview({ turns: [turn({ answerText: "> Quote\n- **Bold** and `code`" })] })).toBe(
-      "Quote Bold and code",
-    );
+    expect(chatPreview(listed([turn({ answerText: "> Quote\n- **Bold** and `code`" })]))).toBe("Quote Bold and code");
   });
 
   test("an answer of marks only, or an empty failure, falls back to the person's message", () => {
-    expect(chatPreview({ turns: [turn({ answerText: "**\n```" })] })).toBe("What is on today?");
-    expect(chatPreview({ turns: [turn({ failure: "" })] })).toBe("What is on today?");
+    expect(chatPreview(listed([turn({ answerText: "**\n```" })]))).toBe("What is on today?");
+    expect(chatPreview(listed([turn({ failure: "" })]))).toBe("What is on today?");
   });
 
   test("cuts a long text between characters, never inside an emoji", () => {
-    const preview = chatPreview({ turns: [turn({ answerText: "🙂".repeat(200) })] });
+    const preview = chatPreview(listed([turn({ answerText: "🙂".repeat(200) })]));
     expect(Array.from(preview)).toHaveLength(141);
     expect(preview.endsWith("🙂…")).toBe(true);
   });
@@ -235,7 +241,7 @@ describe("a bad date", () => {
 });
 
 describe("chatPreview on realistic Markdown", () => {
-  const preview = (answerText: string): string => chatPreview({ turns: [turn({ answerText })] });
+  const preview = (answerText: string): string => chatPreview(listed([turn({ answerText })]));
 
   test("keeps names and sums that look like emphasis", () => {
     expect(preview("Edit __init__.py and my_file.ts")).toBe("Edit __init__.py and my_file.ts");
@@ -249,21 +255,14 @@ describe("chatPreview on realistic Markdown", () => {
 });
 
 describe("chatForks", () => {
-  const session = (id: string, parentId: string | null): Parameters<typeof chatForks>[0][number] => ({
-    id,
-    parentId,
-    forkAtMessageId: null,
-    turns: [],
-    createdAt: "2026-10-19T10:00:00Z",
-    lastTurnAt: null,
-  });
+  const session = (id: string): Parameters<typeof chatForks>[0][number] => ({ id });
 
   test("a chat with no fork lists no branch", () => {
-    expect(chatForks([session("a", null)])).toEqual([]);
+    expect(chatForks([session("a")])).toEqual([]);
   });
 
   test("a chat with forks lists each branch by name, the main line first", () => {
-    const tree = [session("a", null), session("b", "a"), session("c", "a")];
+    const tree = [session("a"), session("b"), session("c")];
     expect(chatForks(tree).map(({ session: branch, name }) => [branch.id, name])).toEqual([
       ["a", "Main line"],
       ["b", "Fork 1"],

@@ -246,9 +246,10 @@ describe("seenPart", () => {
 });
 
 describe("branchStates", () => {
-  const seen = (shown: BranchSession, seenTurns: number): BranchSession & { seenTurns: number } => ({
+  const seen = (shown: BranchSession, seenTurns: number): BranchSession & { seenTurns: number; turnCount: number } => ({
     ...shown,
     seenTurns,
+    turnCount: shown.turns.length,
   });
 
   test("a request beats a running turn, and a running turn beats a new answer", () => {

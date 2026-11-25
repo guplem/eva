@@ -11,7 +11,7 @@ import {
   type CloneFetch,
   type Project,
   type RepositoryDetails,
-  type SessionRecord,
+  type ListedSession,
 } from "./api.ts";
 import { PushCloneDialog } from "./PushCloneDialog.tsx";
 import { Toast } from "./Toast.tsx";
@@ -51,7 +51,8 @@ import {
   type StatusCount,
 } from "./project-format.ts";
 import { projectStatusFilters } from "../../../shared/project-statuses.ts";
-import { ListSkeleton } from "./Loading.tsx";
+import { ChatPanelLoading, ChatSkeleton, ListSkeleton } from "./Loading.tsx";
+import { useOpenedTree } from "./opened-chats.ts";
 import { goTo, goUp, leaveFor, replaceAddress } from "./back-layers.ts";
 import { linkedChatIdOf, projectAddressOf, projectRouteOf, type ProjectRoute } from "./navigation.ts";
 import { tabLinkProps } from "./new-tab.ts";
@@ -59,13 +60,13 @@ import { chatKind, chatKindName } from "../../../shared/chat-kind.ts";
 import { worksInClones } from "../../../shared/project-types.ts";
 
 interface ProjectViewProps {
-  readonly sessions: readonly SessionRecord[];
+  readonly sessions: readonly ListedSession[];
   readonly live: LiveState;
   readonly sidebarOpen: boolean;
   readonly onChanged: () => Promise<void>;
   readonly onNavigate: () => void;
   /** The chat that the address names; its project and clone open with it. */
-  readonly linkedChat: SessionRecord | null;
+  readonly linkedChat: ListedSession | null;
   /** `address` names the page of the opened chat, so the used link leaves the history. */
   readonly onLinkedChatOpened: (address?: string) => void;
   readonly approvals: ChatApprovals;
@@ -257,10 +258,10 @@ export function ProjectView({
 
   const roots = useMemo(() => rootChats(sessions), [sessions]);
   const chatsOf = useCallback(
-    (clone: CloneDetails): SessionRecord[] => roots.filter((session) => session.startFolder === clone.path),
+    (clone: CloneDetails): ListedSession[] => roots.filter((session) => session.startFolder === clone.path),
     [roots],
   );
-  const specialistChats = (project: Project): SessionRecord[] =>
+  const specialistChats = (project: Project): ListedSession[] =>
     roots.filter((session) => session.projectId === project.id && chatKind(session) === "specialist");
   // The same rule as the clone cards: a chat counts when its clone folder is still there. A closed chat takes no work.
   // A type that changed by hand or on another machine can leave chats of both kinds (#703).
@@ -545,16 +546,19 @@ export function ProjectView({
     leaveFor(projectAddressOf(routeOfPage(above)), () => setRoute(routeOfPage(above)));
   }, [goneProject]);
 
-  const tree = chat === undefined ? [] : chatTree(chat, sessions);
+  const listedTree = chat === undefined ? [] : chatTree(chat, sessions);
+  const openedTree = useOpenedTree(listedTree);
+  // Until the turns arrive, the facts of the list stand in with no turns, and the chat shows its skeleton.
+  const tree = openedTree ?? listedTree.map((session) => ({ ...session, turns: [] }));
   const branch = useShownBranch(tree, linkedChat?.id ?? null, live.heirs);
   const branchStates = useBranchStates(tree, branch.id, approvals.pending, live);
   // Only the chat page shows a conversation: on the other pages the tree is empty, so no chat is on screen.
   // Only the shown branch shows its requests as cards, so a hidden branch gets the notice.
   useShownChat(approvals.onShowChat, branch.id === null ? [] : [branch.id]);
   const approvalSessionIds = approvals.pending.map((approval) => approval.sessionId);
-  const isWorking = (candidate: SessionRecord): boolean =>
+  const isWorking = (candidate: ListedSession): boolean =>
     chatTree(candidate, sessions).some((session) => live.steps[session.id] !== undefined);
-  const stateOf = (candidate: SessionRecord): ChatState =>
+  const stateOf = (candidate: ListedSession): ChatState =>
     chatState(chatTree(candidate, sessions), (sessionId) => live.steps[sessionId] !== undefined, approvalSessionIds);
   // On a phone, the open list covers the chat.
   useMarkSeen(branch.id === null ? [] : seenPart(tree, branch.id), !sidebarOpen);
@@ -563,7 +567,7 @@ export function ProjectView({
     unreadChats(sessions, branch.id === null || sidebarOpen ? [] : [branch.id]).map((session) => session.projectId),
   );
   // A chat of the home page opens by its address: the page reads its project and its clone, as after a reload.
-  const openHomeChat = (picked: SessionRecord): void => {
+  const openHomeChat = (picked: ListedSession): void => {
     if (picked.projectId === null) return;
     clearAction();
     opening.current = null;
@@ -798,17 +802,22 @@ export function ProjectView({
               onTogglePanel={togglePanel}
               onChanged={onChanged}
             />
-            <Conversation
-              root={chat}
-              shown={branch}
-              sessions={sessions}
-              live={live}
-              onChanged={onChanged}
-              approvals={approvals}
-              blocker={blocker}
-              voiceNotes={voiceNotes}
-              projectTitle={page.project.title}
-            />
+            {openedTree === null ? (
+              <ChatSkeleton />
+            ) : (
+              <Conversation
+                root={tree[0] ?? { ...chat, turns: [] }}
+                tree={tree}
+                shown={branch}
+                sessions={sessions}
+                live={live}
+                onChanged={onChanged}
+                approvals={approvals}
+                blocker={blocker}
+                voiceNotes={voiceNotes}
+                projectTitle={page.project.title}
+              />
+            )}
           </>
         ) : (
           <ProjectPage
@@ -860,7 +869,8 @@ export function ProjectView({
         {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}
       </main>
       {/* The inspector is about one chat, so a project page has none. */}
-      {chat !== undefined && <ChatPanel shown={panelShown} {...chatDetails} />}
+      {chat !== undefined &&
+        (openedTree === null ? panelShown && <ChatPanelLoading /> : <ChatPanel shown={panelShown} {...chatDetails} />)}
     </div>
   );
 }

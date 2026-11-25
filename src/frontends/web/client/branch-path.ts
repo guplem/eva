@@ -116,7 +116,7 @@ function byAge<S extends BranchSession>(sessions: readonly S[]): S[] {
 }
 
 /** "Main line" for the first branch, then "Fork 1", "Fork 2" in the order of the tree. A name that the person gave wins. */
-export function branchNames(tree: readonly BranchSession[]): Map<string, string> {
+export function branchNames(tree: readonly Pick<BranchSession, "id" | "forkName">[]): Map<string, string> {
   return new Map(
     tree.map((session, index) => [
       session.id,
@@ -277,7 +277,7 @@ export type BranchState = "waiting" | "running" | "unread";
 
 /** What tells whether a session has an answer that the person did not see. */
 export interface UnseenFacts {
-  readonly turns: readonly unknown[];
+  readonly turnCount: number;
   readonly seenTurns: number;
   readonly reportsTo?: string | null;
 }
@@ -287,7 +287,7 @@ export interface UnseenFacts {
  * chat that Eva made for another chat never counts (#614): its report reaches the chat that asked.
  */
 export function hasUnseenTurns(session: UnseenFacts): boolean {
-  return (session.reportsTo ?? null) === null && session.turns.length > session.seenTurns;
+  return (session.reportsTo ?? null) === null && session.turnCount > session.seenTurns;
 }
 
 /**

@@ -150,7 +150,10 @@ export async function cloneRepository(
   let result: Awaited<ReturnType<ProcessRunner["run"]>>;
   try {
     // Eva's credential helper, so a private project repository clones with the GitHub token too.
-    result = await options.runner.run(["git", ...githubCredentialArguments, "clone", "-q", "--", repositoryUrl, path], {
+    // A local repository gets copies, not hardlinks: two clones at once on Windows can fail
+    // git's check of a new hardlink (#1051). Git ignores the flag for a URL.
+    const command = ["git", ...githubCredentialArguments, "clone", "-q", "--no-hardlinks", "--", repositoryUrl, path];
+    result = await options.runner.run(command, {
       cwd: clonePath,
       environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
       timeoutMs: cloneTimeoutMs,

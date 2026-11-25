@@ -267,6 +267,23 @@ describe("clone folders", () => {
     ]);
   });
 
+  test("copies the objects of a local repository, so two clones at once never race on its hardlinks (#1051)", async () => {
+    const commands: (readonly string[])[] = [];
+    await createClone({
+      projectPath: project,
+      repositoryUrls: [sandbox.remote],
+      runner: {
+        run: (command) => {
+          commands.push(command);
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        },
+      },
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    expect(commands[0]).toContain("--no-hardlinks");
+  });
+
   test("describes a repository with its branch, and counts its changed files apart", async () => {
     const clone = await createClone({
       projectPath: project,

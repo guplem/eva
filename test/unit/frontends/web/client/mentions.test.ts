@@ -6,6 +6,7 @@ import {
   mentionProjectOf,
   mentionQueryAt,
   mentionWordEnd,
+  picksMention,
   pickedProjects,
   busyProjects,
   withFixRequest,
@@ -201,5 +202,23 @@ describe("mentionProjectOf", () => {
       folder: "Projects/2026-01-02-0304-example-app",
     });
     expect(mentionProjectOf(outside).folder).toBe(base.path);
+  });
+});
+
+describe("picksMention", () => {
+  test("Enter and Tab pick the mention, and Shift+Enter adds a line", () => {
+    expect(picksMention({ key: "Enter", shiftKey: false }, "ctrl-enter")).toBe(true);
+    expect(picksMention({ key: "Tab", shiftKey: false }, "ctrl-enter")).toBe(true);
+    expect(picksMention({ key: "Enter", shiftKey: true }, "ctrl-enter")).toBe(false);
+    expect(picksMention({ key: "Enter", shiftKey: true }, "enter")).toBe(false);
+  });
+
+  test("with Shift+Enter to send, Shift+Enter picks the mention instead of sending a half-typed @", () => {
+    expect(picksMention({ key: "Enter", shiftKey: true }, "shift-enter")).toBe(true);
+    expect(picksMention({ key: "Tab", shiftKey: true }, "shift-enter")).toBe(false);
+  });
+
+  test("another key picks nothing", () => {
+    expect(picksMention({ key: "a", shiftKey: false }, "enter")).toBe(false);
   });
 });

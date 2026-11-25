@@ -15,6 +15,7 @@ import {
 import { api } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
+import { readSendKey } from "./send-key.ts";
 import {
   insertMention,
   mentionNotes,
@@ -22,6 +23,7 @@ import {
   mentionQueryAt,
   mentionWordEnd,
   pickedProjects,
+  picksMention,
   type MentionProject,
   type MentionQuery,
 } from "./mentions.ts";
@@ -189,7 +191,7 @@ export function useMentionPicker(
       return true;
     }
     const chosen = options[activeIndex];
-    if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey && chosen !== undefined) {
+    if (chosen !== undefined && picksMention(event, readSendKey())) {
       event.preventDefault();
       pick(chosen);
       return true;

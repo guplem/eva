@@ -49,6 +49,12 @@ describe("toTelegramHtml", () => {
     expect(toTelegramHtml("above\n---\nbelow")).toBe("above\n──────\nbelow");
   });
 
+  test("a heading drops only a closing run of # that follows a space (#1073)", () => {
+    expect(toTelegramHtml("## Learning C#")).toBe("<b>Learning C#</b>");
+    expect(toTelegramHtml("## Step 2 ##")).toBe("<b>Step 2</b>");
+    expect(toTelegramHtml("# Title #  ")).toBe("<b>Title</b>");
+  });
+
   test("fenced blocks become pre, with their language, and an open fence runs to the end", () => {
     expect(toTelegramHtml("```ts\nconst a = 1 < 2;\n```")).toBe(
       '<pre><code class="language-ts">const a = 1 &lt; 2;</code></pre>',

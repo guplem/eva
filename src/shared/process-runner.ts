@@ -57,14 +57,16 @@ export const systemProcessRunner: ProcessRunner = {
       throw new EvaError("process_failed", `Could not start ${command[0] ?? "a process"}.`, { cause: error });
     }
 
-    if (options.stdin !== undefined) await child.stdin.write(options.stdin);
-    await child.stdin.end();
-
+    // The timer starts before the stdin write: a child that never reads a large stdin blocks the write.
     const timeout = { reached: false };
     const timer = setTimeout(() => {
       timeout.reached = true;
       stopProcessTree(child.pid);
     }, options.timeoutMs);
+
+    // Not awaited, and its error ignored: a child that stops reading, such as git that cannot lock
+    // its index, makes the write fail with EPIPE. Its exit code and stderr tell the caller why.
+    void writeStdin(child, options.stdin).catch(() => undefined);
 
     try {
       const [stdout, stderr, exitCode] = await Promise.all([
@@ -81,6 +83,11 @@ export const systemProcessRunner: ProcessRunner = {
     }
   },
 };
+
+async function writeStdin(child: Bun.Subprocess<"pipe", "pipe", "pipe">, stdin: string | undefined): Promise<void> {
+  if (stdin !== undefined) await child.stdin.write(stdin);
+  await child.stdin.end();
+}
 
 export type StopStep =
   | { readonly kind: "command"; readonly command: readonly string[] }

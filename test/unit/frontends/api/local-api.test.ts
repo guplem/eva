@@ -3275,3 +3275,23 @@ describe("remote access", () => {
     expect((await call("/api/remote-access/sign-in", { method: "POST", body: {} })).status).toBe(409);
   });
 });
+
+describe("compression", () => {
+  test("a large JSON answer is gzipped for a client that accepts gzip (#1049)", async () => {
+    for (let index = 0; index < 6; index++) {
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant", model: "default" } });
+    }
+    const raw = await fetch(`${api.url}/api/sessions`, {
+      headers: { ...headers(), "accept-encoding": "gzip" },
+      decompress: false,
+    });
+    expect(raw.headers.get("content-encoding")).toBe("gzip");
+    const listed = JSON.parse(
+      new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await raw.arrayBuffer()))),
+    ) as unknown;
+    expect(Array.isArray(listed)).toBe(true);
+    const plain = await call("/api/sessions", { headers: { ...headers(), "accept-encoding": "identity" } });
+    expect(plain.headers.get("content-encoding")).toBeNull();
+    expect(await plain.json()).toEqual(listed);
+  });
+});

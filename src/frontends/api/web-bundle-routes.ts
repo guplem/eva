@@ -60,7 +60,7 @@ function fileRoute(content: Uint8Array<ArrayBuffer>, contentType: string, cacheC
 }
 
 /** True when `Accept-Encoding` names the encoding with a quality above zero: `gzip;q=0` refuses gzip. */
-function accepts(acceptEncoding: string, encoding: string): boolean {
+export function accepts(acceptEncoding: string, encoding: string): boolean {
   return acceptEncoding.split(",").some((part) => {
     const [name = "", ...parameters] = part.split(";").map((piece) => piece.trim().toLowerCase());
     return name === encoding && !parameters.some((parameter) => /^q=0(\.0*)?$/.test(parameter));

@@ -39,6 +39,7 @@ import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
 import iconSvg from "../web/icons/icon.svg" with { type: "file" };
 import { serviceWorkerScript } from "../web/service-worker-script.ts";
+import { compressedJson } from "./json-compression.ts";
 import { bundledWebRoutes } from "./web-bundle-routes.ts";
 import type { SessionEvent } from "../../shared/events.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
@@ -524,10 +525,11 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
       try {
         // As for the socket: a login with the token has no device login, whatever cookie it also carries.
         const deviceToken = hasValidToken(request, options.token) ? null : cookieValue(request, deviceCookie);
-        return (
+        return await compressedJson(
+          request,
           (await devices(request, url, options.eva, pageApprover)) ??
-          (await widgetsApi(request, url, options)) ??
-          (await route(request, url, options.eva, deviceToken))
+            (await widgetsApi(request, url, options)) ??
+            (await route(request, url, options.eva, deviceToken)),
         );
       } catch (error) {
         return errorResponse(error, request, options);

@@ -340,10 +340,15 @@ type PanelMotion = "open" | "opening" | "closing" | "gone";
 
 /**
  * The column slides in and out at the edge of the chat. It stays in the page until its close
- * animation ends. A page load shows it at once: only a toggle animates it.
+ * animation ends. A page load shows it at once: only a toggle animates it, and the first message of a new chat
+ * (`enters`), as the New chat page has no panel.
  */
-export function ChatPanel({ shown, ...props }: ChatProps & { readonly shown: boolean }): ReactElement | null {
-  const [motion, setMotion] = useState<PanelMotion>(shown ? "open" : "gone");
+export function ChatPanel({
+  shown,
+  enters = false,
+  ...props
+}: ChatProps & { readonly shown: boolean; readonly enters?: boolean }): ReactElement | null {
+  const [motion, setMotion] = useState<PanelMotion>(shown ? (enters ? "opening" : "open") : "gone");
   if (shown && (motion === "closing" || motion === "gone")) setMotion("opening");
   if (!shown && (motion === "open" || motion === "opening")) setMotion("closing");
   if (motion === "gone") return null;

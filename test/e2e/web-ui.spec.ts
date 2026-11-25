@@ -5025,6 +5025,42 @@ test("a voice note puts what Eva heard in the box, and the person sends it as te
   await expect(page.locator(".message.user audio")).toHaveCount(0);
 });
 
+test("a microphone that the person allows after leaving the chat goes off at once (issue 1072)", async ({ page }) => {
+  // The browser's question waits until the test answers it, as a person who reads it would.
+  await page.addInitScript(() => {
+    const holder = window as unknown as { allowMicrophone?: () => void; microphone?: MediaStream };
+    navigator.mediaDevices.getUserMedia = () =>
+      new Promise((resolve) => {
+        holder.allowMicrophone = () => {
+          const context = new AudioContext();
+          const output = context.createMediaStreamDestination();
+          context.createOscillator().connect(output);
+          holder.microphone = output.stream;
+          resolve(output.stream);
+        };
+      });
+  });
+  await page.route("**/api/status", async (route) => {
+    const response = await route.fetch();
+    const status = (await response.json()) as Record<string, unknown>;
+    await route.fulfill({ response, json: { ...status, voiceNotes: true } });
+  });
+  await logIn(page);
+  await newChat(page);
+  await page.getByRole("button", { name: "Record a voice note" }).first().click();
+  await page.waitForFunction(() => "allowMicrophone" in window);
+  await openSettings(page);
+  await expect(page.getByRole("textbox", { name: "Message" })).toHaveCount(0);
+  await page.evaluate(() => (window as unknown as { allowMicrophone: () => void }).allowMicrophone());
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as unknown as { microphone: MediaStream }).microphone.getTracks().map((track) => track.readyState),
+      ),
+    )
+    .toEqual(["ended"]);
+});
+
 test("an attached file reaches the agent as its vault path, and a removed one does not (issue 409)", async ({
   page,
 }) => {

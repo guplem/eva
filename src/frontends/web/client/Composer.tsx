@@ -1028,18 +1028,20 @@ function useVoiceNote(deliver: (heard: string) => void): VoiceNote {
   const [state, setState] = useState<VoiceState>({ phase: "idle" });
   const recorder = useRef<MediaRecorder | null>(null);
   const keep = useRef(false);
+  const isGone = useRef(false);
   const showError = useShowError();
   // A browser gives the microphone only to a secure page: HTTPS, or this computer itself.
   const isSupported = window.isSecureContext && typeof MediaRecorder !== "undefined";
 
   // The microphone light must go off when the person leaves the chat.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isGone.current = false;
+    return () => {
+      isGone.current = true;
       keep.current = false;
       recorder.current?.stop();
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     if (state.phase !== "recording") return;
@@ -1067,6 +1069,11 @@ function useVoiceNote(deliver: (heard: string) => void): VoiceNote {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       showError(new Error("The browser does not let Eva use the microphone. Allow it in the site settings."));
+      return;
+    }
+    // The person can leave the chat while the browser asks for the microphone (#1072).
+    if (isGone.current) {
+      for (const track of stream.getTracks()) track.stop();
       return;
     }
     const type = recordingType((candidate) => MediaRecorder.isTypeSupported(candidate));

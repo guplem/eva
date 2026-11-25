@@ -31,8 +31,8 @@ Run these on the computer where Eva runs. Eight commands need Eva to run: `statu
 | `eva settings`                    | Lists every setting; `(vault)` marks the settings that every computer shares.                                                                                                                |
 | `eva settings get <key>`          | Shows one setting, such as `updates.frequency`.                                                                                                                                              |
 | `eva settings set <key> <value>`  | Changes one setting, such as `eva settings set updates.frequency weekly`.                                                                                                                    |
-| `eva version`                     | Shows Eva's version.                                                                                                                                                                         |
-| `eva help`                        | Shows every command.                                                                                                                                                                         |
+| `eva version`                     | Shows Eva's version. `eva --version` and `eva -v` do the same.                                                                                                                               |
+| `eva help`                        | Shows every command. `eva --help` and `eva -h` do the same.                                                                                                                                  |
 | `eva --instance <name> <command>` | Runs the command for the Eva with this name, as `EVA_INSTANCE=<name>` does. Without it, `eva` asks which Eva, or uses the only one.                                                          |
 
 In Telegram, type `/` to see these commands, each with a short note:

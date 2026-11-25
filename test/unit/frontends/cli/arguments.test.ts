@@ -48,7 +48,16 @@ describe("a short flag in free text", () => {
 
   test("stays a word of a setting's value and of a project search", () => {
     expect(parseArguments(["settings", "set", "some.key", "-h"])).toMatchObject({ command: "settings", value: "-h" });
-    expect(parseArguments(["projects", "-v"])).toMatchObject({ command: "projects", query: "-v" });
+    expect(parseArguments(["projects", "cli", "-v"])).toMatchObject({ command: "projects", query: "cli -v" });
+  });
+
+  test("is still a flag before the free text starts", () => {
+    expect(parseArguments(["projects", "-h"]).command).toBe("help");
+    expect(parseArguments(["projects", "-v"]).command).toBe("version");
+    expect(parseArguments(["settings", "-h"]).command).toBe("help");
+    expect(parseArguments(["settings", "get", "-h"]).command).toBe("help");
+    expect(parseArguments(["settings", "set", "-h"]).command).toBe("help");
+    expect(parseArguments(["work", "-h"]).command).toBe("help");
   });
 
   test("the long flags still show the help and the version there", () => {

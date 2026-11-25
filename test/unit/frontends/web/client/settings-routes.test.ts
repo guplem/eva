@@ -8,7 +8,6 @@ import {
   sameSettingsPage,
   searchEntries,
   searchSettings,
-  sectionOfStep,
   settingsHash,
   settingsHome,
   settingsSections,
@@ -78,10 +77,7 @@ describe("settings addresses", () => {
     expect(parentRoute(settingsHome)).toEqual(settingsHome);
   });
 
-  test("each setup step has a section that holds its controls", () => {
-    expect(sectionOfStep("engine")).toBe("engines");
-    expect(sectionOfStep("device")).toBe("devices");
-    expect(sectionOfStep("google")).toBe("connections");
+  test("each setup step has one section at most that holds its controls", () => {
     const owned = settingsSections.flatMap((section) => section.steps);
     expect(new Set(owned).size).toBe(owned.length);
   });

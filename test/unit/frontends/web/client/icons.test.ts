@@ -97,8 +97,9 @@ describe("Icon", () => {
     expect([...iconNames].sort()).toEqual([...designIcons].sort());
   });
 
-  test.each(designIcons)("%s is a line drawing on a 24 px grid in the colour of the text", (name) => {
-    const svg = render(name);
+  test("each icon is a line drawing on a 24 px grid in the colour of the text", () => {
+    // One `<svg>` wraps every drawing, so its attributes need one check.
+    const svg = render("chat");
     expect(svg).toStartWith('<svg class="icon"');
     expect(svg).toContain('viewBox="0 0 24 24"');
     expect(svg).toContain('fill="none"');
@@ -106,7 +107,7 @@ describe("Icon", () => {
     expect(svg).toContain('stroke-width="1.8"');
     expect(svg).toContain('stroke-linecap="round"');
     expect(svg).toContain('stroke-linejoin="round"');
-    expect(svg).toMatch(/<(path|circle|rect) /);
+    for (const name of designIcons) expect(render(name), name).toMatch(/<(path|circle|rect) /);
   });
 
   test("the gear is a cog with teeth, so it does not look like the sun", () => {

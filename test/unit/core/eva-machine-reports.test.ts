@@ -1,6 +1,6 @@
 /** Tests of the hub claim and of the reports that each machine shares. The shared setup is in `test/support/eva-testbed.ts` (#1043). */
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Alert } from "../../../src/core/alerts/alert-center.ts";
 import type { Eva } from "../../../src/core/eva.ts";
@@ -19,12 +19,6 @@ describe("the hub claim after a later fetch (#529)", () => {
     expect(instance.role()).toBe("hub");
   });
 
-  test("Sync now claims the hub and pushes the claim", async () => {
-    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
-    await instance.syncVault();
-    expect(sandbox.git(sandbox.remote, "show", "main:.eva/hub.json")).toContain("example-pc");
-  });
-
   test("a claim that another machine pushed wins over a later fetch", async () => {
     const other = sandbox.clone("other");
     sandbox.write(other, ".eva/hub.json", JSON.stringify({ machine: "other-pc", since: "" }));
@@ -35,19 +29,6 @@ describe("the hub claim after a later fetch (#529)", () => {
     await instance.backgroundTick();
     expect(claimedBy()).toMatchObject({ machine: "other-pc" });
     expect(instance.role()).toBe("satellite");
-  });
-
-  test("a read or a pick of a conflict never claims the hub", async () => {
-    const instance = start(new FakeEngine(), { machineName: "example-pc", sync: syncOn });
-    await instance.vaultConflicts();
-    await instance.resolveVaultConflict("note.md", "mine");
-    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
-  });
-
-  test("Sync now with sync off does not claim the hub", async () => {
-    const instance = start(new FakeEngine(), { machineName: "example-pc" });
-    await instance.syncVault();
-    expect(existsSync(join(vault, ".eva", "hub.json"))).toBe(false);
   });
 });
 

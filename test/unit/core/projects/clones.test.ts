@@ -127,23 +127,14 @@ describe("clone folders", () => {
     });
     expect(clone).toMatchObject({ name: "clone-0", path: join(project, "repos", "clone-0"), index: 0 });
     expect(clone.repositories.map((repository) => repository.name)).toEqual(["example-api", "remote"]);
+    expect(clone.repositories.map((repository) => repository.path)).toEqual([
+      join(project, "repos", "clone-0", "example-api"),
+      join(project, "repos", "clone-0", "remote"),
+    ]);
     for (const repository of clone.repositories)
       expect(sandbox.git(repository.path, "log", "-1", "--format=%s")).toBe("seed");
     expect(origins.origin(join(clone.path, "remote"))).toEqual({ kind: "cloned", url: sandbox.remote });
     expect(origins.origin(join(clone.path, "example-api"))).toEqual({ kind: "cloned", url: api });
-  });
-
-  test("a project with one repository gets the same form", async () => {
-    const clone = await createClone({
-      projectPath: project,
-      repositoryUrls: [sandbox.remote],
-      runner: systemProcessRunner,
-      environment: gitEnvironment,
-      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
-    });
-    expect(clone.repositories.map((repository) => repository.path)).toEqual([
-      join(project, "repos", "clone-0", "remote"),
-    ]);
   });
 
   test("a repository that fails removes the whole clone folder, and reports why", async () => {

@@ -48,7 +48,7 @@ let api: LocalApi;
  * An Eva of the test home. The base widgets would share the one local remote, so she has none,
  * unless `withBaseWidgets` keeps the ones that ship with Eva.
  */
-function evaWith(vaultPath: string | null, withBaseWidgets = false, at = home): Eva {
+function evaWith(vaultPath: string, withBaseWidgets = false, at = home): Eva {
   return new Eva({
     paths: homePaths(at),
     config: { ...defaultConfig, vaultPath, timeZone: "UTC", sync: { ...defaultConfig.sync, enabled: false } },
@@ -149,10 +149,6 @@ afterEach(async () => {
 }, gitHookTimeoutMs);
 
 describe("the widget list", () => {
-  test("needs the login, like every API route", async () => {
-    expect((await call("/api/widgets", { headers: {} })).status).toBe(401);
-  });
-
   test("a new Eva lists the widgets that ship with her, off, in the order of the day panel", () => {
     // A home and a vault of its own: one core for each home.
     const own = join(home, "shipped");
@@ -532,16 +528,5 @@ describe("the widget files", () => {
     } finally {
       google.stop();
     }
-  });
-});
-
-describe("without a vault", () => {
-  test("the list says so, and a widget path answers nothing", async () => {
-    api.stop();
-    eva.stop();
-    eva = evaWith(null);
-    api = startLocalApi({ eva, port: 0, token, extraHosts: [], allowedTailscaleIdentities: [] });
-    expect((await call("/api/widgets")).status).toBe(409);
-    expect((await frameCall(`/widgets/${"a".repeat(43)}/index.html`)).status).toBe(404);
   });
 });

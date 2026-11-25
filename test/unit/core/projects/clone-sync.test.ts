@@ -350,6 +350,12 @@ describe("reuse (issue 521)", () => {
     expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
   });
 
+  test("an ignored folder, such as installed dependencies, is not local work", async () => {
+    sandbox.write(clone.path, ".git/info/exclude", "node_modules/\n");
+    sandbox.write(clone.path, "node_modules/kept.js", "kept\n");
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(false);
+  });
+
   test("a commit on a branch that no remote has is local work, also after a switch away from it", async () => {
     sandbox.git(clone.path, "checkout", "-q", "-b", "feature");
     sandbox.write(clone.path, "feature.txt", "feature\n");

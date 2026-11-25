@@ -78,10 +78,6 @@ describe("readNavChoice", () => {
     expect(readNavChoice()).toEqual(defaultNavChoice);
   });
 
-  test("gives the defaults when no storage exists", () => {
-    expect(readNavChoice()).toEqual(defaultNavChoice);
-  });
-
   test("gives the defaults for a value that is not a choice", () => {
     for (const stored of ["not json", "42", "null", "[]", '{"computer":"chats"}']) {
       useStorage(new FakeStorage({ [navChoiceKey]: stored }));

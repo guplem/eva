@@ -93,11 +93,6 @@ export const settingsSections: readonly SettingsSection[] = [
 /** The item of the Development section that opens the design reference page instead of a card. */
 export const designReferenceItem = "design";
 
-/** The section that holds each setup step's controls. */
-export function sectionOfStep(step: ProgressStep["key"]): SectionId {
-  return settingsSections.find((section) => section.steps.includes(step))?.id ?? "setup";
-}
-
 /**
  * A place in Settings. In the Setup section, `item` is a step key and opens that step's page.
  * In another section, `item` is the id of a card, and the page scrolls to it.

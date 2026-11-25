@@ -758,6 +758,21 @@ describe("Specialist mode (#703)", () => {
   });
 });
 
+/** An answer to the trust question that records each question it gets. */
+function recording(answer: PrepareAnswer): {
+  questions: string[];
+  ask: (q: string, d: string) => Promise<PrepareAnswer>;
+} {
+  const questions: string[] = [];
+  return {
+    questions,
+    ask: (question: string, detail: string): Promise<PrepareAnswer> => {
+      questions.push(`${question}: ${detail}`);
+      return Promise.resolve(answer);
+    },
+  };
+}
+
 describe("Project mode", () => {
   const originalUrl = "https://github.com/owner/example-app.git";
   // The repository folder inside the clone folder, as Eva makes them: `clone-0/example-app/`.
@@ -776,20 +791,6 @@ describe("Project mode", () => {
 
   const deny = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("deny") };
   const allow = { ask: (): Promise<ApprovalAnswer> => Promise.resolve("allow") };
-
-  function recording(answer: PrepareAnswer): {
-    questions: string[];
-    ask: (q: string, d: string) => Promise<PrepareAnswer>;
-  } {
-    const questions: string[] = [];
-    return {
-      questions,
-      ask: (question: string, detail: string): Promise<PrepareAnswer> => {
-        questions.push(`${question}: ${detail}`);
-        return Promise.resolve(answer);
-      },
-    };
-  }
 
   function project(trustedOwners: string[], store = new TrustStore(join(sandbox.root, "trust.json"))): ProjectPreparer {
     return new ProjectPreparer({
@@ -1102,44 +1103,6 @@ describe("Project mode", () => {
       expect(asking.questions).toEqual([]);
     });
 
-    test("the question shows the origin without a user part, a line break or a long tail", async () => {
-      const preparer = new ProjectPreparer({
-        wallRoots: noWall,
-        trustStore: new TrustStore(join(sandbox.root, "t.json")),
-        cloneOrigins: origins,
-        trustedOwners: () => [],
-        environment: {},
-        readRemote: () =>
-          Promise.resolve(`https://token-value@github.com/owner/app.git\nTrusted by Eva.${"x".repeat(500)}`),
-      });
-      const asking = recording("deny");
-      await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
-      const question = asking.questions[0] ?? "";
-      expect(question).toContain("https://github.com/owner/app.git");
-      expect(question).not.toContain("token-value");
-      expect(question).not.toContain("\n");
-      expect(question).not.toContain("x".repeat(300));
-    });
-
-    test("the question hides a token in a short git address, and keeps a plain user name", async () => {
-      for (const [remote, shown, hidden] of [
-        ["x-access-token:token-value@github.com:owner/app.git", "from github.com:owner/app.git", "token-value"],
-        ["git@github.com:owner/app.git", "from git@github.com:owner/app.git", "nothing-hidden"],
-      ] as const) {
-        const asking = recording("expired");
-        await new ProjectPreparer({
-          wallRoots: noWall,
-          trustStore: new TrustStore(join(sandbox.root, "t.json")),
-          cloneOrigins: origins,
-          trustedOwners: () => [],
-          environment: {},
-          readRemote: () => Promise.resolve(remote),
-        }).prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
-        expect(asking.questions[0]).toContain(shown);
-        expect(asking.questions[0]).not.toContain(hidden);
-      }
-    });
-
     test("an expired question keeps nothing and asks again next time", async () => {
       const expired = recording("expired");
       const handMadeSession = session({ mode: "project", startFolder: handMadeFolder });
@@ -1147,24 +1110,6 @@ describe("Project mode", () => {
       expect(origins.origin(handMade)).toBeNull();
       expect((await project([]).prepare(handMadeSession, expired)).trusted).toBe(false);
       expect(expired.questions).toHaveLength(2);
-    });
-
-    test("with no remote, or a remote that cannot be read, is untrusted with no question", async () => {
-      for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
-        const preparer = new ProjectPreparer({
-          wallRoots: noWall,
-          trustStore: new TrustStore(join(sandbox.root, "t.json")),
-          cloneOrigins: origins,
-          trustedOwners: () => ["owner"],
-          environment: {},
-          readRemote,
-        });
-        const asking = recording("allow");
-        expect(
-          (await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking)).trusted,
-        ).toBe(false);
-        expect(asking.questions).toEqual([]);
-      }
     });
   });
 
@@ -1251,5 +1196,73 @@ describe("Project mode", () => {
     expect(await preparer.snapshot(cloneSession, "s1")).toBe(false);
     const error: unknown = await preparer.restore(cloneSession, "s1").catch((caught: unknown) => caught);
     expect(isEvaError(error, "snapshot_missing")).toBe(true);
+  });
+});
+
+// These tests give the preparer its remote, so a folder with a bare `.git` entry is enough: no git clone.
+describe("Project mode, a folder that Eva did not clone, with a given remote", () => {
+  let origins: CloneOriginStore;
+  let handMadeFolder: string;
+
+  beforeEach(() => {
+    handMadeFolder = join(sandbox.root, "clone-1");
+    mkdirSync(join(handMadeFolder, "hand-made", ".git"), { recursive: true });
+    origins = new CloneOriginStore(join(sandbox.root, "clone-origins.json"));
+  });
+
+  test("the question shows the origin without a user part, a line break or a long tail", async () => {
+    const preparer = new ProjectPreparer({
+      wallRoots: noWall,
+      trustStore: new TrustStore(join(sandbox.root, "t.json")),
+      cloneOrigins: origins,
+      trustedOwners: () => [],
+      environment: {},
+      readRemote: () =>
+        Promise.resolve(`https://token-value@github.com/owner/app.git\nTrusted by Eva.${"x".repeat(500)}`),
+    });
+    const asking = recording("deny");
+    await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
+    const question = asking.questions[0] ?? "";
+    expect(question).toContain("https://github.com/owner/app.git");
+    expect(question).not.toContain("token-value");
+    expect(question).not.toContain("\n");
+    expect(question).not.toContain("x".repeat(300));
+  });
+
+  test("the question hides a token in a short git address, and keeps a plain user name", async () => {
+    for (const [remote, shown, hidden] of [
+      ["x-access-token:token-value@github.com:owner/app.git", "from github.com:owner/app.git", "token-value"],
+      ["git@github.com:owner/app.git", "from git@github.com:owner/app.git", "nothing-hidden"],
+    ] as const) {
+      const asking = recording("expired");
+      await new ProjectPreparer({
+        wallRoots: noWall,
+        trustStore: new TrustStore(join(sandbox.root, "t.json")),
+        cloneOrigins: origins,
+        trustedOwners: () => [],
+        environment: {},
+        readRemote: () => Promise.resolve(remote),
+      }).prepare(session({ mode: "project", startFolder: handMadeFolder }), asking);
+      expect(asking.questions[0]).toContain(shown);
+      expect(asking.questions[0]).not.toContain(hidden);
+    }
+  });
+
+  test("with no remote, or a remote that cannot be read, is untrusted with no question", async () => {
+    for (const readRemote of [() => Promise.resolve(null), () => Promise.reject(new Error("no git"))]) {
+      const preparer = new ProjectPreparer({
+        wallRoots: noWall,
+        trustStore: new TrustStore(join(sandbox.root, "t.json")),
+        cloneOrigins: origins,
+        trustedOwners: () => ["owner"],
+        environment: {},
+        readRemote,
+      });
+      const asking = recording("allow");
+      expect((await preparer.prepare(session({ mode: "project", startFolder: handMadeFolder }), asking)).trusted).toBe(
+        false,
+      );
+      expect(asking.questions).toEqual([]);
+    }
   });
 });

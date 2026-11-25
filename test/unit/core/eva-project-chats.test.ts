@@ -116,24 +116,18 @@ describe("clone reuse (issue 521)", () => {
     expect(instance.sessions.get(first.id).closed).toBe(false);
   });
 
-  test("a reused clone is on the default branch, up to date, keeps ignored files, and gets a new repository", async () => {
+  // clone-sync.test.ts checks the rest: the pull, the kept ignored files, and that they are not local work.
+  test("a reused clone is on the default branch, and gets a new repository", async () => {
     const instance = start(finishingEngine());
     const first = await newChat(instance);
     await instance.sessions.send(first.id, "fix it");
     const repository = join(first.startFolder, "remote");
-    // The work of the old chat: a pushed branch, and dependencies that git ignores.
+    // The work of the old chat: a pushed branch.
     sandbox.git(repository, "checkout", "-q", "-b", "feature");
     sandbox.write(repository, "feature.txt", "feature\n");
     sandbox.git(repository, "add", "-A");
     sandbox.git(repository, "commit", "-q", "-m", "feature");
     sandbox.git(repository, "push", "-q", "-u", "origin", "feature");
-    sandbox.write(repository, ".git/info/exclude", "node_modules/\n");
-    sandbox.write(repository, "node_modules/kept.js", "kept\n");
-    const other = sandbox.clone("elsewhere");
-    sandbox.write(other, "remote.txt", "from elsewhere\n");
-    sandbox.git(other, "add", "-A");
-    sandbox.git(other, "commit", "-q", "-m", "add remote.txt");
-    sandbox.git(other, "push", "-q", "origin", "main");
     sandbox.git(sandbox.root, "clone", "-q", "--bare", sandbox.remote, "example-api.git");
     sandbox.write(
       vault,
@@ -143,9 +137,6 @@ describe("clone reuse (issue 521)", () => {
     const next = await newChat(instance);
     expect(next.clone).toBe("clone-0");
     expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
-    expect(sandbox.git(repository, "log", "-1", "--format=%s")).toBe("add remote.txt");
-    expect(existsSync(join(repository, "feature.txt"))).toBe(false);
-    expect(existsSync(join(repository, "node_modules", "kept.js"))).toBe(true);
     expect(existsSync(join(first.startFolder, "example-api", "AGENTS.md"))).toBe(true);
     expect(instance.sessions.get(first.id).closed).toBe(true);
   });

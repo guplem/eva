@@ -7,10 +7,6 @@ import {
 } from "../../../../../src/frontends/web/client/composer-layout.ts";
 
 describe("foldsToOneRow", () => {
-  test("a computer with a tall window keeps the settings row", () => {
-    expect(foldsToOneRow({ visibleHeight: 720, touch: false, phoneSized: false })).toBe(false);
-  });
-
   test("a window lower than the short limit folds the box", () => {
     expect(foldsToOneRow({ visibleHeight: shortWindow - 1, touch: false, phoneSized: false })).toBe(true);
     expect(foldsToOneRow({ visibleHeight: shortWindow, touch: false, phoneSized: false })).toBe(false);

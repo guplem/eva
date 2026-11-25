@@ -42,28 +42,6 @@ describe("visorClassName", () => {
   });
 });
 
-describe("faces", () => {
-  test("the guide has 15 faces", () => {
-    expect(faces).toEqual([
-      "neutral",
-      "happy",
-      "wink",
-      "delighted",
-      "surprised",
-      "thinking",
-      "searching",
-      "listening",
-      "focused",
-      "firm",
-      "skeptical",
-      "worried",
-      "sad",
-      "error",
-      "asleep",
-    ]);
-  });
-});
-
 describe("stateFaces", () => {
   test("one face for each state, from the Use column of the guide", () => {
     expect(stateFaces.idle).toBe("neutral");

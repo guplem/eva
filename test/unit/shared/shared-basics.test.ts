@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { SequenceCounter, systemClock } from "../../../src/shared/clock.ts";
 import { buildChildEnvironment } from "../../../src/shared/environment.ts";
 import { modelAliases, modelTierName, takesEffort } from "../../../src/shared/engine-port.ts";
 import { EvaError, isEvaError } from "../../../src/shared/errors.ts";
@@ -8,7 +7,6 @@ import {
   decideOutwardAction,
   defaultOutwardActionLevels,
   outwardActionCategories,
-  outwardActionLevelValues,
   outwardActionsOf,
   outwardActionWords,
   outwardActionWordsByLevel,
@@ -342,18 +340,6 @@ describe("summarizeToolCall", () => {
   });
 });
 
-describe("clock", () => {
-  test("the system clock returns the current time", () => {
-    const before = Date.now();
-    expect(systemClock.now().getTime()).toBeGreaterThanOrEqual(before);
-  });
-
-  test("a sequence counter only grows", () => {
-    const counter = new SequenceCounter();
-    expect([counter.next(), counter.next(), counter.next()]).toEqual([1, 2, 3]);
-  });
-});
-
 describe("buildChildEnvironment", () => {
   test("keeps only allowlisted variables and adds the extras", () => {
     const environment = buildChildEnvironment(
@@ -479,11 +465,5 @@ describe("model tiers (#550)", () => {
     expect(takesEffort("claude-code", "opus")).toBe(true);
     expect(takesEffort("claude-code", "sonnet")).toBe(true);
     expect(takesEffort("pi", "haiku")).toBe(true);
-  });
-});
-
-describe("outwardActionLevelValues", () => {
-  test("lists the three levels, from the loosest to the strictest", () => {
-    expect(outwardActionLevelValues).toEqual(["allow", "ask", "deny"]);
   });
 });

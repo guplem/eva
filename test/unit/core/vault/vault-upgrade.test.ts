@@ -220,7 +220,8 @@ describe("finish", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Cases/Photo.jpg");
   });
 
-  test("still refuses a binary archive that holds a token", async () => {
+  // The upgrade reads each file as text from git show, so this is the only test of that path (#809).
+  test("still refuses a binary archive that holds a token (#809)", async () => {
     await upgrade().upgrade.run("start");
     const archive = Buffer.concat([
       Buffer.from("dotfiles/.env"),

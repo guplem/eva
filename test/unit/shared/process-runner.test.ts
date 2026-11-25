@@ -42,6 +42,33 @@ describe("systemProcessRunner", () => {
     expect(Date.now() - started).toBeLessThan(15_000);
   });
 
+  // More than the pipe buffer of about 64 KB, so the write waits for the child to read.
+  const largeStdin = "x".repeat(2_000_000);
+
+  test("gives the result of a child that exits without reading a large stdin", async () => {
+    const result = await systemProcessRunner.run([bun, "-e", "process.stderr.write('no lock'); process.exit(128)"], {
+      cwd: process.cwd(),
+      environment,
+      timeoutMs: 10_000,
+      stdin: largeStdin,
+    });
+    expect(result).toEqual({ exitCode: 128, stdout: "", stderr: "no lock" });
+  });
+
+  test("stops a child that never reads a large stdin when its timeout runs out", async () => {
+    const started = Date.now();
+    const error: unknown = await systemProcessRunner
+      .run([bun, "-e", "setTimeout(() => {}, 60_000)"], {
+        cwd: process.cwd(),
+        environment,
+        timeoutMs: 300,
+        stdin: largeStdin,
+      })
+      .catch((caught: unknown) => caught);
+    expect(isEvaError(error, "process_timeout")).toBe(true);
+    expect(Date.now() - started).toBeLessThan(15_000);
+  });
+
   test("reports a program that cannot start", async () => {
     const error: unknown = await systemProcessRunner
       .run(["eva-program-that-does-not-exist"], { cwd: process.cwd(), environment, timeoutMs: 5_000 })

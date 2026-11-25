@@ -278,6 +278,11 @@
   }
 }
 
+/* The stored copy of a message that the page showed already: a sent message or a running answer (#1053). */
+.message.settled {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .message {
     animation: none;

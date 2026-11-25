@@ -62,11 +62,18 @@ export function statusText(
   ].join("\n");
 }
 
+const terminalLinkHint = "Run `eva link` for every step.";
+
 /**
  * The status for `eva status` and Telegram /status: a verdict first, then the problems, then the details.
  * Telegram gets no terminal: only a running Eva answers there, and a phone cannot open the local page.
+ * So Telegram also passes a `linkHint` that names its /link command.
  */
-export function describeStatusLines(status: EvaStatus, terminal: StatusTerminal | null = null): string[] {
+export function describeStatusLines(
+  status: EvaStatus,
+  terminal: StatusTerminal | null = null,
+  linkHint = terminalLinkHint,
+): string[] {
   const count = status.problems.length;
   return [
     count === 0 ? "All good" : `${String(count)} ${count === 1 ? "problem" : "problems"}`,
@@ -93,7 +100,7 @@ export function describeStatusLines(status: EvaStatus, terminal: StatusTerminal 
     describeLastTurn(status.lastTurn),
     ...(status.update === null ? [] : [describeUpdate(status.update)]),
     ...(terminal === null ? [] : [`Local page: ${terminal.localUrl}`]),
-    ...describeRemoteAccess(status.remoteAccess),
+    ...describeRemoteAccess(status.remoteAccess, linkHint),
   ];
 }
 
@@ -185,12 +192,15 @@ export function describeRole(status: Pick<EvaStatus, "role" | "machine" | "hub">
   return `satellite: the hub is ${status.hub ?? "unknown"}; this machine is ${status.machine}`;
 }
 
-/** The web UI's address for the phone, or the next setup step; nothing when phone access is off. */
-export function describeRemoteAccess(remote: EvaStatus["remoteAccess"]): string[] {
+/**
+ * The web UI's address for the phone, or the next setup step; nothing when phone access is off.
+ * A front end with no terminal, such as Telegram, passes its own `linkHint`.
+ */
+export function describeRemoteAccess(remote: EvaStatus["remoteAccess"], linkHint = terminalLinkHint): string[] {
   if (remote === null) return [];
   if (remote.url !== null) return [`Phone access: ${remote.url}`];
   const next = setupSteps(remote)[0];
-  return [`Phone access: not ready.${next === undefined ? "" : ` ${next.text}`} Run \`eva link\` for every step.`];
+  return [`Phone access: not ready.${next === undefined ? "" : ` ${next.text}`} ${linkHint}`];
 }
 
 /** The running Eva's status. */

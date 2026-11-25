@@ -1228,6 +1228,9 @@ describe("/chats: every chat of the instance (#9)", () => {
     telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 1", 1, 4);
     telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    // The reason ends with a period, so two sentences never run together (#1073).
+    const failure = telegram.sentTexts().find((text) => text.startsWith("Telegram did not open the topic"));
+    expect(failure).toMatch(/[.!?] Press the chat again\.$/);
     telegram.sendText(owner, "still the main chat");
     await settle(bot, () => telegram.sentTexts().includes("answer 3"));
     expect(eva.sessions.get(sessionId).turns).toHaveLength(1);
@@ -2351,6 +2354,17 @@ describe("alerts, logs and restart", () => {
     expect(telegram.sentTexts().find((text) => text.startsWith("1 problem\n"))).toContain(`• ${problem.message}`);
   });
 
+  test("/status names /link, not a terminal command, when phone access is not ready (#1073)", async () => {
+    createEva(undefined, systemProcessRunner, {
+      remoteAccess: fixedRemoteAccess({ url: null, problem: "Turn on HTTPS." }),
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "/status");
+    await settle(bot, () => telegram.sentTexts().length >= 1);
+    expect(telegram.sentTexts()[0]).toContain("Phone access: not ready. Turn on HTTPS. Send /link for every step.");
+    expect(telegram.sentTexts()[0]).not.toContain("eva link");
+  });
+
   test("/logs shows the last warnings and errors, 20 by default, and /logs 2 only two", async () => {
     const folder = homePaths(home).logsFolder;
     mkdirSync(folder, { recursive: true });
@@ -3015,5 +3029,13 @@ describe("schedules (lessons 70, 126)", () => {
     telegram.sendText(owner, "/schedules");
     await settle(bot, () => telegram.sentTexts().length >= 4);
     expect(telegram.sentTexts().at(-1)).toBe("No schedules. Ask Eva to create one.");
+  });
+
+  test("the remove button answers in the topic of its message (#1073)", async () => {
+    writeSchedules([morning]);
+    const bot = createBot();
+    telegram.pressButton(owner, "s:morning", 42);
+    await settle(bot, () => telegram.sentTexts().includes("Removed the schedule morning."));
+    expect(telegram.callsTo("sendMessage").at(-1)?.params["message_thread_id"]).toBe(42);
   });
 });

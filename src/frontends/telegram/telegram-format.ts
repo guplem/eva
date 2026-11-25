@@ -8,7 +8,8 @@
 import { closesFence, openingFencePattern } from "../markdown-fence.ts";
 import { escapeHtml, inlineHtml } from "../markdown-inline.ts";
 
-const headingPattern = /^#{1,6}\s+(.*?)\s*#*\s*$/;
+// As in CommonMark, a closing run of # needs a space before it, so "C#" keeps its #.
+const headingPattern = /^#{1,6}\s+(.*?)(?:\s*(?<=\s)#+)?\s*$/;
 const bulletPattern = /^(\s*)[-*+]\s+(.*)$/;
 const quotePattern = /^>\s?(.*)$/;
 const rulePattern = /^\s*([-*_])(\s*\1){2,}\s*$/;

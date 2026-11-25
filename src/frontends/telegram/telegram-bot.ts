@@ -59,7 +59,13 @@ import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
 import type { OutwardActionCategory } from "../../shared/outward-actions.ts";
-import { alwaysConfirmText, approvalAnswerText, approvalKeyboard, fitProjects } from "./telegram-texts.ts";
+import {
+  alwaysConfirmText,
+  approvalAnswerText,
+  approvalKeyboard,
+  fitProjects,
+  topicNotOpenedText,
+} from "./telegram-texts.ts";
 
 export interface TelegramBotOptions {
   readonly api: TelegramApi;
@@ -614,7 +620,10 @@ export class TelegramBot {
         // A tool can take seconds to give its version, so the other messages do not wait for it.
         this.inBackground(chatId, topicId, async () => {
           const tools = (await this.options.eva.versions()).tools;
-          const lines = [...describeStatusLines(this.options.eva.status()), describeToolVersions(tools)];
+          const lines = [
+            ...describeStatusLines(this.options.eva.status(), null, "Send /link for every step."),
+            describeToolVersions(tools),
+          ];
           await this.send(chatId, topicId, lines.join("\n"));
         });
         return;
@@ -733,8 +742,7 @@ export class TelegramBot {
     } catch (error) {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
       if (!(error instanceof TelegramError && error.code === 400)) {
-        const reason = this.describeError(error).replace(/(?<![.!?])$/, ".");
-        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} ${retry}.`);
+        await this.send(chatId, fromTopicId, topicNotOpenedText(this.describeError(error), retry));
         return null;
       }
       await this.send(
@@ -904,7 +912,11 @@ export class TelegramBot {
       await this.files.sendOffered(chatId, topicOf(query.message), first);
     } else if (kind === "s" && first !== undefined) {
       const removed = this.options.eva.schedules?.remove(first) ?? false;
-      await this.send(chatId, null, removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`);
+      await this.send(
+        chatId,
+        topicOf(query.message),
+        removed ? `Removed the schedule ${first}.` : `No schedule ${first} exists.`,
+      );
     } else if (kind === "c" && first !== undefined && second !== undefined) {
       const topicId = topicOf(query.message);
       this.inBackground(chatId, topicId, () => this.conflicts.pick(chatId, topicId, first, second));

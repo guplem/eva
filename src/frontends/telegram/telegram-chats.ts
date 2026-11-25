@@ -13,6 +13,7 @@ import { TelegramError, type TelegramApi } from "./telegram-api.ts";
 import { keyOf, titleOf } from "./telegram-messages.ts";
 import type { TelegramSender } from "./telegram-sender.ts";
 import { isScheduleTopic, placeOf, targetOf, type BotState } from "./telegram-state.ts";
+import { topicNotOpenedText } from "./telegram-texts.ts";
 import { personWords, reportText } from "../../shared/project-report.ts";
 import { chatKind, chatKindName } from "../../shared/chat-kind.ts";
 
@@ -136,7 +137,7 @@ export class TelegramChats {
     try {
       if (opened.kind === "failed") {
         // A chat with topics must not lose its main chat to a short Telegram problem.
-        await sender.send(chatId, topicId, `Telegram did not open the topic: ${opened.reason} Press the chat again.`);
+        await sender.send(chatId, topicId, topicNotOpenedText(opened.reason, "Press the chat again"));
         return;
       }
       const main = this.options.state.topics[keyOf(chatId, null)];

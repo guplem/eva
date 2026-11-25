@@ -2264,4 +2264,10 @@ describe("describeRemoteAccess", () => {
       "Phone access: not ready. Eva cannot publish her page. See the warnings in her log. Run `eva link` for every step.",
     ]);
   });
+
+  test("a front end with no terminal gives its own hint for every step (#1073)", () => {
+    expect(describeRemoteAccess({ url: null, problem: "Turn on HTTPS." }, "Send /link for every step.")).toEqual([
+      "Phone access: not ready. Turn on HTTPS. Send /link for every step.",
+    ]);
+  });
 });

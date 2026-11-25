@@ -73,18 +73,31 @@ export function restartMethod(
     : "new-copy";
 }
 
+/**
+ * One value of a unit file in double quotes. systemd splits `ExecStart=` and `Environment=` at
+ * white space, so a WSL PATH with `/mnt/c/Program Files` would lose every later folder.
+ * `%` starts a specifier in both settings, and `$` starts a variable only in a command line.
+ */
+export function systemdQuoted(text: string, place: "command" | "environment"): string {
+  const escaped = text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("%", "%%");
+  return `"${place === "command" ? escaped.replaceAll("$", "$$$$") : escaped}"`;
+}
+
 /** `configFolder`: the XDG_CONFIG_HOME of the install, so the service finds the same Evas as the terminal. */
 export function systemdUnit(
   target: ServiceTarget & { readonly path: string; readonly configFolder: string | undefined },
 ): string {
+  const command = [...target.executable, "--instance", target.instance].map((word) => systemdQuoted(word, "command"));
+  const environment = [`PATH=${target.path}`];
+  if (target.configFolder !== undefined) environment.push(`XDG_CONFIG_HOME=${target.configFolder}`);
   return `[Unit]
 Description=Eva, a personal super harness
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=${[...target.executable, "--instance", target.instance].join(" ")}
-Environment=PATH=${target.path}${target.configFolder === undefined ? "" : `\nEnvironment=XDG_CONFIG_HOME=${target.configFolder}`}
+ExecStart=${command.join(" ")}
+${environment.map((variable) => `Environment=${systemdQuoted(variable, "environment")}`).join("\n")}
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=2 3

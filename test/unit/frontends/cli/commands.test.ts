@@ -704,8 +704,9 @@ describe("service install and supervise", () => {
     const host = fakeHost({ userHome });
     expect(await run(host, "service", "install")).toBe(exitCodes.clean);
     const unit = readFileSync(join(userHome, ".config", "systemd", "user", "eva-test.service"), "utf-8");
-    expect(unit).toContain("ExecStart=/usr/bin/bun /opt/eva/src/main.ts --instance test");
-    expect(unit).toContain(`Environment=XDG_CONFIG_HOME=${root}`);
+    expect(unit).toContain('ExecStart="/usr/bin/bun" "/opt/eva/src/main.ts" "--instance" "test"');
+    // A Windows test runner's temporary folder holds backslashes, which the unit escapes.
+    expect(unit).toContain(`Environment="XDG_CONFIG_HOME=${root.replaceAll("\\", "\\\\")}"`);
     expect(host.commands.map((command) => command.join(" "))).toEqual([
       "systemctl --user daemon-reload",
       "systemctl --user enable --now eva-test.service",

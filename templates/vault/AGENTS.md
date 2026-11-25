@@ -67,7 +67,7 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 
 With no tool for that service, tell the person where to put it. Never store it in the vault instead.
 
-**When the person asks what to do now,** find in the calendar the free time before their next event. Ask them only when the calendar leaves it unclear. Then, when the task app can choose the next thing to do, ask it for one that fits that time. When it cannot choose, list the things that fit that time. Prefer the things of `active` projects to the things of `paused` ones.
+**When the person asks what to do now,** find in the calendar the free time before their next event. Ask the person how much time they have only when the calendar leaves it unclear. Then, when the task app can choose the next thing to do, ask it for one that fits that time. When it cannot choose, list the things of the task app that fit that time. In both cases, prefer the things of `active` projects to the things of `paused` ones.
 
 ## Where things go
 

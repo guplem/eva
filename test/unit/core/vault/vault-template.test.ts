@@ -357,7 +357,7 @@ describe("the vault template", () => {
     // A repository keeps its own place for code work, such as its GitHub issues.
     expect(map).toContain("The work on a repository's code goes where that repository's own `AGENTS.md` says");
     expect(map).toContain("**When the person asks what to do now,**");
-    expect(map).toContain("Prefer the things of `active` projects to the things of `paused` ones.");
+    expect(map).toContain("In both cases, prefer the things of `active` projects to the things of `paused` ones.");
     // The cases rule stays: only a deadline gets a task.
     expect(files["Life/Cases/AGENTS.md"]).toContain("Only a `deadline` gets a task. A step never does.");
   });

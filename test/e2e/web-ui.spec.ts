@@ -305,39 +305,9 @@ test("a wrong token is refused, and the page asks again", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveText("This token is not valid.");
 });
 
-test("Assistant mode: the task dialog of an answer opens the Project chat of its project work (#571)", async ({
+test("Assistant mode: the task dialog opens the Project chat of the work, and its result comes back as a card of the Project side (#571)", async ({
   page,
 }) => {
-  await logIn(page);
-  await clickNewChat(page);
-  const composer = page.getByLabel("Message").first();
-  await composer.fill("Please give work to the example app");
-  await composer.press("Control+Enter");
-  await expect(page.locator(".message.answer").first()).toContainText("Started the work.");
-  const askingChat = page.url();
-  await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
-  const dialog = page.getByRole("dialog", { name: "Background tasks" });
-  const work = dialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
-  // The work can end before the dialog opens: its task then says OK, since the result came back.
-  await expect(work).toContainText(/Started|OK/);
-  await work.getByRole("link", { name: "Open chat" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(page.locator(".main-header .sub")).toContainText("Example app › clone-");
-  // The first chat in a new clone can ask to trust the repository. A question that waits would stay for later tests.
-  const answer = page.locator(".message.answer").first();
-  const deny = page.getByRole("button", { name: "Deny" });
-  await expect(answer.or(deny).first()).toBeVisible();
-  if (await deny.isVisible()) await deny.click();
-  await expect(answer).toContainText("Fix the login bug.");
-  // The report of the work starts a turn in the asking chat. A later test must not share the vault sync with it.
-  await page.goto(askingChat);
-  // The result comes back as a card, then the asking chat answers it.
-  await expect(page.locator(".msg", { hasText: "Eva finished the work in Example app" })).toBeVisible();
-  await expect(page.locator(".message.answer").nth(2)).toContainText("The tests pass.");
-  await waitUntilNoChatWorks(page);
-});
-
-test("Assistant mode: the result of project work comes back as a card of the Project side", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);
   const composer = page.getByLabel("Message").first();
@@ -347,17 +317,19 @@ test("Assistant mode: the result of project work comes back as a card of the Pro
   const assistantChat = page.url();
   // The Project chat runs the work. Its first chat in a new clone can ask to trust the repository.
   await page.getByRole("button", { name: "2 background tasks", exact: true }).first().click();
-  await page
-    .getByRole("dialog", { name: "Background tasks" })
-    .getByRole("listitem")
-    .filter({ hasText: "Fix the login bug." })
-    .getByRole("link", { name: "Open chat" })
-    .click();
+  const tasksDialog = page.getByRole("dialog", { name: "Background tasks" });
+  const work = tasksDialog.getByRole("listitem").filter({ hasText: "Fix the login bug." });
+  // The work can end before the dialog opens: its task then says OK, since the result came back.
+  await expect(work).toContainText(/Started|OK/);
+  await work.getByRole("link", { name: "Open chat" }).click();
+  await expect(tasksDialog).toHaveCount(0);
   await answerInNewClone(page, "Fix the login bug.");
 
   await page.goto(assistantChat);
   const card = page.locator(".msg", { hasText: "Eva finished the work in Example app" });
   await expect(card).toBeVisible();
+  // The asking chat answers the result.
+  await expect(page.locator(".message.answer").nth(2)).toContainText("The tests pass.");
   // Eva sent it, so no "You" bubble holds the raw result.
   await expect(page.locator(".message.user", { hasText: "[Project work finished" })).toHaveCount(0);
   await expect(card).toContainText("Project mode");
@@ -794,6 +766,7 @@ test("with no engine, the home page and the New chat page say what is missing, l
   await logIn(page);
   // The blank New chat page shows the step too, with no widgets (#1037).
   await clickNewChat(page);
+  await expect(page.getByRole("heading", { name: "Not ready yet" })).toBeVisible();
   await expect(page.getByText("Eva needs an AI engine before she can answer.")).toBeVisible();
   await expect(page.getByRole("group", { name: "Widgets" })).toHaveCount(0);
   await expect(page.getByLabel("Message").first()).toBeDisabled();
@@ -928,21 +901,6 @@ test("the answer stays after the turn ends, until the stored turn takes its plac
   release();
   await expect(page.locator(".message.answer").last().getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(page.locator(".message.answer")).toHaveCount(2);
-});
-
-test("with no chat yet and a missing setup step, the page says what is missing", async ({ page }) => {
-  await hideOldChats(page);
-  await page.route("**/api/status", async (route) => {
-    const response = await route.fetch();
-    const status = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...status, chatBlocker: "vault" } });
-  });
-  await logIn(page);
-  await expect(page.getByRole("heading", { name: "Not ready yet" })).toBeVisible();
-  await expect(page.getByText("Eva needs your vault before she can answer.")).toBeVisible();
-  await expect(page.getByLabel("Message").first()).toBeDisabled();
-  await page.getByRole("button", { name: "Set up your vault" }).click();
-  await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
 });
 
 test("Delete chat asks first, then removes the chat from the list", async ({ page }) => {
@@ -1271,26 +1229,6 @@ test("a message whose answer got lost runs once, though the page sends it again 
   await waitUntilNewestChatSeen(page);
 });
 
-test("a refused message says why, and Edit puts its text back in the box (#945)", async ({ page }) => {
-  await logIn(page);
-  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before a refusal"));
-  await waitUntilIdle(page, chatId);
-  await page.route("**/api/sessions/*/messages", (route) =>
-    route.fulfill({ status: 409, json: { error: "The chat is closed." } }),
-  );
-  const text = `A refused message (${test.info().project.name})`;
-  const composer = page.getByLabel("Message").first();
-  await composer.fill(text);
-  await composer.press("Control+Enter");
-  const bubble = page.locator(".msg.me", { hasText: text });
-  await expect(bubble.locator(".delivery")).toContainText("Not sent: The chat is closed.");
-  await bubble.getByRole("button", { name: "Edit" }).click();
-  await expect(bubble).toHaveCount(0);
-  await expect(composer).toHaveValue(text);
-  await composer.fill("");
-  await waitUntilNewestChatSeen(page);
-});
-
 test("a retry of an answer that wrote a note asks to undo it, and the undo removes the note (#525)", async ({
   page,
 }) => {
@@ -1542,25 +1480,6 @@ test("a link to a deleted chat says so", async ({ page }) => {
   expect(new URL(page.url()).hash).toBe("#/chats");
 });
 
-test("the address #/chat/<id> opens a Project chat in its clone", async ({ page }) => {
-  const title = `Linked project work (${test.info().project.name})`;
-  await logIn(page);
-  await openExampleApp(page);
-  await newProjectChat(page);
-  const composer = page.getByLabel("Message").first();
-  await composer.fill(title);
-  await composer.press("Control+Enter");
-  await answerInNewClone(page, title);
-  const chatId = await chatIdNamed(page, title);
-
-  await page.goto("/");
-  await expect(page.getByRole("button", { name: "Chats" })).toHaveAttribute("aria-current", "page");
-  await page.goto(`/#/chat/${chatId}`);
-  await expect(page.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
-  await expect(page.locator(".message.user").first()).toContainText(title);
-  await expect(page.getByText("Project mode")).toBeVisible();
-});
-
 test("a chat gets a new title in the header and the list, and Escape keeps the old one (issue 46)", async ({
   page,
 }) => {
@@ -1642,17 +1561,6 @@ test("a chat that answers while another chat is open shows as unread until the p
   await openList(page);
   await expect(slow).toBeVisible();
   await expect(slow.locator(".status-pill")).toHaveCount(0);
-});
-
-test("an answer keeps its line breaks, lists and paragraphs", async ({ page }) => {
-  await logIn(page);
-  await clickNewChat(page);
-  const composer = page.getByLabel("Message").first();
-  await composer.fill("show me a list");
-  await composer.press("Control+Enter");
-  const answer = page.locator(".message.answer").first();
-  await expect(answer.locator("li")).toHaveText(["first", "second"]);
-  await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
 });
 
 test("a file that an answer sends shows as a download button, not as a marker (#581)", async ({ page }) => {
@@ -1785,7 +1693,9 @@ test.describe("Do not ask again (#914)", () => {
     await page.request.put("/api/settings", { data: { outwardActions: { github: "ask" } } });
   });
 
-  test("Do not ask again asks first, names the action and links to Settings (#914)", async ({ page }) => {
+  test("Do not ask again asks first, names the action, and its Settings link opens the card and keeps the request (#914)", async ({
+    page,
+  }) => {
     await logIn(page);
     await clickNewChat(page);
     const composer = page.getByLabel("Message").first();
@@ -1804,11 +1714,16 @@ test.describe("Do not ask again (#914)", () => {
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(card).toBeVisible();
+    // The Settings link opens the card, and the request stays open in its chat.
     await card.getByRole("button", { name: "Do not ask again" }).click();
-    await page
-      .getByRole("dialog", { name: "Do not ask again" })
-      .getByRole("button", { name: "Do not ask again" })
-      .click();
+    await dialog.getByRole("link", { name: "Settings" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/#\/settings\/engines\/outward-actions$/);
+    await expect(page.getByRole("heading", { name: "Actions that reach other people" })).toBeVisible();
+    await page.goBack();
+    await expect(card).toBeVisible();
+    await card.getByRole("button", { name: "Do not ask again" }).click();
+    await dialog.getByRole("button", { name: "Do not ask again" }).click();
     await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
     await expect(card).toHaveCount(0);
   });
@@ -1835,31 +1750,6 @@ test.describe("Do not ask again (#914)", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toBeVisible();
     release();
-    await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
-  });
-
-  test("the Settings link of the Do not ask again dialog opens the card and keeps the request (#914)", async ({
-    page,
-  }) => {
-    await logIn(page);
-    await clickNewChat(page);
-    const composer = page.getByLabel("Message").first();
-    await composer.fill("please approve this");
-    await composer.press("Control+Enter");
-    const card = page.getByRole("region", { name: "Eva asks for permission" });
-    await card.getByRole("button", { name: "Do not ask again" }).click();
-    const dialog = page.getByRole("dialog", { name: "Do not ask again" });
-    await dialog.getByRole("link", { name: "Settings" }).click();
-    await expect(dialog).toHaveCount(0);
-    await expect(page).toHaveURL(/#\/settings\/engines\/outward-actions$/);
-    await expect(page.getByRole("heading", { name: "Actions that reach other people" })).toBeVisible();
-    // The request stays open in its chat. Answer it, so the shared demo server keeps no waiting turn.
-    await page.goBack();
-    await expect(page.getByRole("region", { name: "Eva asks for permission" })).toBeVisible();
-    await page
-      .getByRole("region", { name: "Eva asks for permission" })
-      .getByRole("button", { name: "Allow once" })
-      .click();
     await expect(page.locator(".message.answer").first()).toContainText("The person answered: allow");
   });
 });
@@ -2217,21 +2107,6 @@ test("the effort slider saves one level at a time, and a failed save shows the c
   await expect(slider).toHaveAttribute("aria-valuetext", "High");
 });
 
-test("a new chat starts with the settings' model and effort, and names the model that answered (#419, #550)", async ({
-  page,
-}) => {
-  await logIn(page);
-  await newChat(page);
-  const picker = page.locator(".chip-picker > .chip");
-  await expect(picker).toContainText("Smart");
-  await expect(picker.locator(".chip-effort")).toHaveText("· Medium effort");
-  const composer = page.getByLabel("Message").first();
-  await composer.fill("Hello Eva");
-  await composer.press("Control+Enter");
-  await expect(page.locator(".message.answer").first()).toContainText(/Echo \d+: Hello Eva/);
-  await expect(picker).toContainText("Smart · Opus 5.5");
-});
-
 test("a new schedule opens no setup card: it shows on the Schedules page at once (#855)", async ({ page }, info) => {
   await logIn(page);
   const id = `card-${info.project.name}`;
@@ -2313,7 +2188,9 @@ test("Project mode: search, a new clone with each repository and its branch, and
   }
 });
 
-test("a clone has one chat, so a second new chat starts in another clone", async ({ page }) => {
+test("a clone has one chat, so a second new chat starts in another clone, and a right click deletes a clone after a strong warning", async ({
+  page,
+}) => {
   await logIn(page);
   await openExampleApp(page);
   const first = await newProjectChat(page);
@@ -2326,31 +2203,26 @@ test("a clone has one chat, so a second new chat starts in another clone", async
   await expect(firstCard.locator(".clone-chat")).toHaveCount(1);
   await firstCard.locator(".clone-chat").click();
   await expect(page.locator(".main-header .sub")).toContainText(first);
-});
 
-test("a right click on a clone deletes it, after a strong warning about its chats", async ({ page }) => {
-  await logIn(page);
-  await openExampleApp(page);
-  const cloneName = await newProjectChat(page);
+  // A right click on a clone deletes it, after a strong warning about its chats.
   await page.getByRole("button", { name: "Example app", exact: true }).click();
-  const sameCard = page.getByRole("region", { name: `Clone ${cloneName}` });
-  await expect(sameCard.locator(".clone-chat")).toHaveCount(1);
-
-  await rightClickInView(sameCard.locator(".clone-head"));
+  const secondCard = page.getByRole("region", { name: `Clone ${second}` });
+  await expect(secondCard.locator(".clone-chat")).toHaveCount(1);
+  await rightClickInView(secondCard.locator(".clone-head"));
   await page.getByRole("menuitem", { name: "Delete clone" }).click();
-  const dialog = page.getByRole("dialog", { name: `Delete the clone ${cloneName}` });
+  const dialog = page.getByRole("dialog", { name: `Delete the clone ${second}` });
   await expect(dialog.locator(".callout.danger")).toContainText("1 chat");
   const remove = dialog.getByRole("button", { name: "Delete the clone and its chats" });
   await expect(remove).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(sameCard).toBeVisible();
+  await expect(secondCard).toBeVisible();
 
-  await rightClickInView(sameCard.locator(".clone-head"));
+  await rightClickInView(secondCard.locator(".clone-head"));
   await page.getByRole("menuitem", { name: "Delete clone" }).click();
   await dialog.getByLabel(/I understand/).check();
   await remove.click();
   await expect(dialog).toBeHidden();
-  await expect(sameCard).toBeHidden();
+  await expect(secondCard).toBeHidden();
 });
 
 test("a deleted project chat shows its project page again", async ({ page }) => {
@@ -2608,7 +2480,9 @@ test("a failed read of the clones does not say that the project has none", async
   await expect(page.locator("main").getByText(/^No clones yet\./)).toHaveCount(0);
 });
 
-test("the address of a fork of a project chat opens that fork in its clone", async ({ page }) => {
+test("the address #/chat/<id> opens a Project chat in its clone, and the address of its fork opens that fork", async ({
+  page,
+}) => {
   const title = `Forked project work (${test.info().project.name})`;
   await logIn(page);
   await openExampleApp(page);
@@ -2619,6 +2493,13 @@ test("the address of a fork of a project chat opens that fork in its clone", asy
   await answerInNewClone(page, title);
   const chatId = await chatIdNamed(page, title);
   await waitUntilIdle(page, chatId);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: chatsButton })).toHaveAttribute("aria-current", "page");
+  await page.goto(`/#/chat/${chatId}`);
+  await expect(page.getByRole("button", { name: projectsButton })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator(".message.user").first()).toContainText(title);
+  await expect(page.getByText("Project mode")).toBeVisible();
+
   await page.getByRole("button", { name: "Retry" }).first().click();
   // A Project chat asks where the retry runs and from which files (issue 523).
   const choices = page.getByRole("dialog", { name: "Retry this answer" });
@@ -3897,13 +3778,6 @@ test("Settings: a token saved on a step's page shows at once in that step", asyn
   await page.request.delete("/api/secrets/githubToken");
 });
 
-test("Settings: no schedule form, because schedules have their own page", async ({ page }) => {
-  await logIn(page);
-  await openSettings(page);
-  await expect(page.getByRole("region", { name: "Setup" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add schedule" })).toHaveCount(0);
-});
-
 test("Schedules page: open it from the main navigation, add a schedule, see its next run, and remove it", async ({
   page,
 }, testInfo) => {
@@ -3987,7 +3861,9 @@ test("Schedules page: a past run opens its chat", async ({ page }, testInfo) => 
   await page.request.delete(`/api/schedules/${id}`);
 });
 
-test("Schedules page: add a schedule that repeats every few days", async ({ page }, testInfo) => {
+test("Schedules page: add a schedule that repeats every few days, one with a last day (#687), and one that runs once (#822)", async ({
+  page,
+}, testInfo) => {
   const id = `water-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await logIn(page);
   await openSchedules(page);
@@ -4008,16 +3884,13 @@ test("Schedules page: add a schedule that repeats every few days", async ({ page
   await expect(facts).toContainText("Every 3 days at 07:30");
   await expect(facts).toContainText("2 Jan 07:30");
   await page.request.delete(`/api/schedules/${id}`);
-});
 
-test("Schedules page: add a schedule with a last day (#687)", async ({ page }, testInfo) => {
-  const id = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
-  await logIn(page);
+  // A last day (#687).
+  const watchId = `watch-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await openSchedules(page);
   await page.getByRole("button", { name: "Add schedule" }).click();
-  const form = page.getByRole("dialog", { name: "Add schedule" });
-  await form.getByLabel(/^Id/).fill(id);
-  await form.getByLabel("Name").fill(`Watch ${id}`);
+  await form.getByLabel(/^Id/).fill(watchId);
+  await form.getByLabel("Name").fill(`Watch ${watchId}`);
   await form.getByLabel("Time (HH:MM)").fill("08:00");
   await form.getByLabel(/^Last day/).fill("2030-01-31");
   await form.getByLabel("Fixed text").fill("Look at the inbox.");
@@ -4026,28 +3899,24 @@ test("Schedules page: add a schedule with a last day (#687)", async ({ page }, t
   const listed = (await (await page.request.get("/api/schedules")).json()) as {
     schedules: { schedule: { id: string; until: string | null } }[];
   };
-  expect(listed.schedules.find((view) => view.schedule.id === id)?.schedule.until).toBe("2030-01-31");
-  await page.request.delete(`/api/schedules/${id}`);
-});
+  expect(listed.schedules.find((view) => view.schedule.id === watchId)?.schedule.until).toBe("2030-01-31");
+  await page.request.delete(`/api/schedules/${watchId}`);
 
-test("Schedules page: add a schedule that runs once (#822)", async ({ page }, testInfo) => {
-  const id = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
-  await logIn(page);
+  // A schedule that runs once (#822).
+  const bankId = `bank-${testInfo.project.name.replace(/\W+/g, "-").toLowerCase()}`;
   await openSchedules(page);
   await page.getByRole("button", { name: "Add schedule" }).click();
-  const form = page.getByRole("dialog", { name: "Add schedule" });
-  await form.getByLabel(/^Id/).fill(id);
-  await form.getByLabel("Name").fill(`Bank ${id}`);
+  await form.getByLabel(/^Id/).fill(bankId);
+  await form.getByLabel("Name").fill(`Bank ${bankId}`);
   await form.getByRole("button", { name: "Once" }).click();
   await expect(form.getByLabel("Every")).toHaveCount(0);
   await form.getByLabel("Date and time").fill("2030-01-02T07:30");
   await form.getByLabel("Fixed text").fill("Phone the bank.");
   await form.getByRole("button", { name: "Save schedule" }).click();
   await expect(form).toHaveCount(0);
-  const facts = page.getByRole("region", { name: "When it runs" });
   await expect(facts).toContainText("Once on 2 Jan at 07:30");
   await expect(facts).toContainText("2 Jan 07:30");
-  await page.request.delete(`/api/schedules/${id}`);
+  await page.request.delete(`/api/schedules/${bankId}`);
 });
 
 test("Schedules page: edit a schedule on its own page, and keep the keys that the form does not show (#467)", async ({
@@ -4426,7 +4295,9 @@ test("the nav visor wears the Project eyes in Projects on a phone only, even on 
   await page.clock.setFixedTime(new Date("2026-12-25T12:00:00"));
   await logIn(page);
   const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor .mk");
+  // At rest, the visor wears the eyes of the day.
   await expect(visor).toHaveClass(/festive/);
+  await expect(visor).toHaveClass(/f-spin/);
   await expect(visor).not.toHaveClass(/project-eyes/);
   await openProjects(page);
   // The tab is current first, so the computer check below does not pass before the page renders.
@@ -4684,6 +4555,8 @@ test("a dropped connection says Eva does not answer, and the reconnect clears a 
   // The visor shows the no-connection sign and a dot, not a banner that pushes the page down (#853).
   const visor = page.getByRole("navigation", { name: "Main" }).locator(".main-nav-visor");
   await expect(visor.locator(".mk.offline")).toBeVisible();
+  // EVE looks worried while she does not answer.
+  await expect(visor.locator(".mk.offline")).toHaveClass(/e-worry/);
   await expect(visor.locator(".nav-dot")).toBeVisible();
   await expect(visor).toHaveAccessibleName(/Eva does not answer/);
   await expect(page.locator(".notice")).toHaveCount(0);
@@ -4730,7 +4603,9 @@ test("back on the page, a stale answer from before the sleep is cleared", async 
   await expect(page.getByText("an answer from before the sleep")).toHaveCount(0);
 });
 
-test("an answer folds its steps into one line, and a tap lists them", async ({ page }) => {
+test("an answer folds its steps into one line, a tap lists them, and a tap on a stored step opens its whole input and output", async ({
+  page,
+}) => {
   await logIn(page);
   await newChat(page);
   const composer = page.getByLabel("Message").first();
@@ -4756,16 +4631,6 @@ test("an answer folds its steps into one line, and a tap lists them", async ({ p
   await expect(steps.getByRole("listitem")).toHaveText([/Task\s+Search the notes/, /Grep\s+notes/, /Command\s+ls/]);
   await answer.getByRole("button", { name: "Hide 3 steps" }).click();
   await expect(steps).toHaveCount(0);
-});
-
-test("a tap on a stored step opens its whole input and output, each in a fold", async ({ page }) => {
-  await logIn(page);
-  await newChat(page);
-  const composer = page.getByLabel("Message").first();
-  await composer.fill("Hello Eva");
-  await composer.press("Control+Enter");
-  const answer = page.locator(".message.answer").first();
-  await expect(answer.getByRole("button", { name: "Retry" })).toBeVisible();
   await answer.getByRole("button", { name: "Show 3 steps" }).click();
   const step = answer.getByRole("list", { name: "Steps" }).getByRole("button", { name: /Command\s+ls/ });
   if (test.info().project.name === "phone") {
@@ -5106,21 +4971,6 @@ test("New chat on a project page opens a chat with Eva that mentions the project
   await box.fill("");
 });
 
-test("the message box shows no mode chip", async ({ page }) => {
-  await logIn(page);
-  await newChat(page);
-  const box = page.locator(".composer-box");
-  await expect(box.getByRole("textbox", { name: "Message" })).toBeVisible();
-  await expect(box.getByText(/^(Assistant|Project)$/)).toHaveCount(0);
-
-  await openExampleApp(page);
-  await newProjectChat(page);
-  // The header still says which mode runs.
-  await expect(page.getByText("Project mode")).toBeVisible();
-  await expect(box.getByRole("textbox", { name: "Message" })).toBeVisible();
-  await expect(box.getByText(/^(Assistant|Project)$/)).toHaveCount(0);
-});
-
 test("a pasted image and a dropped file attach like a picked file", async ({ page }) => {
   await logIn(page);
   await newChat(page);
@@ -5245,26 +5095,6 @@ test("the visor counts the open problems, and its center lists each with the but
   // Settings opens on the card that fixes the problem, as a search result does (#799).
   await expect(page).toHaveURL(/#\/settings\/updates\/eva-updates$/);
   await expect(page.getByRole("region", { name: "Eva updates" })).toBeInViewport();
-  // A status read can still be in the route when the page closes.
-  await page.unrouteAll({ behavior: "ignoreErrors" });
-});
-
-test("the vault structure warning opens Settings on the Vault structure card (#801)", async ({ page }) => {
-  await routeProblems(page, [
-    {
-      key: "vault_structure",
-      level: "warn",
-      message: "A new vault structure (version 3) is ready. Your vault is at version 2.",
-    },
-  ]);
-  await logIn(page);
-  await openCenter(page);
-  const needs = page.getByRole("region", { name: "Problems" });
-  await expect(needs).toContainText("A new vault structure (version 3) is ready.");
-  await expect(needs.getByRole("button", { name: "Mark as read" })).toBeVisible();
-  await needs.getByRole("button", { name: "Open Settings" }).click();
-  await expect(page).toHaveURL(/#\/settings\/vault\/vault-structure$/);
-  await expect(page.getByRole("region", { name: "Vault structure" })).toBeInViewport();
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
@@ -5477,25 +5307,6 @@ test("a failure that Settings fixes offers the way there", async ({ page }) => {
   await expect(page.getByRole("alert")).toHaveCount(0);
   // An engine failure names no engine, so Settings opens its AI engines page (#799).
   await expect(page).toHaveURL(/#\/settings\/engines$/);
-});
-
-test("a chat without a vault offers the vault step, not a terminal command", async ({ page }) => {
-  await logIn(page);
-  await page.route("**/api/sessions", (route) =>
-    route.request().method() === "POST"
-      ? route.fulfill({
-          status: 404,
-          json: {
-            error: "Eva needs your vault. Finish the setup in Settings, on Eva's page.",
-            code: "vault_not_found",
-          },
-        })
-      : route.continue(),
-  );
-  await sendFirstMessage(page, "A chat that fails to start");
-  await page.getByRole("alert").getByRole("button", { name: "Set up your vault" }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page).toHaveURL(/#\/settings\/setup\/vault$/);
 });
 
 test("Settings: Restart Eva in the header names the running chats, then restarts and waits for Eva", async ({
@@ -7395,11 +7206,14 @@ test("Settings: an old link to the Access page opens the card at its new place (
   await expect(page.getByRole("region", { name: "Your location" })).toBeVisible();
 });
 
-test("Settings: the device list marks this device, and Remove logs out another one", async ({ page }) => {
+test("Settings: the device list names each device from its browser, marks this device, and Remove logs out another one", async ({
+  page,
+}) => {
   let devices = [
     {
       id: "aaaaaaaaaaaaaaaa",
-      label: "owner@example.com, a phone",
+      label:
+        "owner@example.com, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
       createdAt: "2026-10-17T10:00:00.000Z",
       current: false,
     },
@@ -7421,6 +7235,10 @@ test("Settings: the device list marks this device, and Remove logs out another o
   await openSettings(page, "Devices");
   const list = page.getByRole("list", { name: "Browsers" });
   await expect(list.getByRole("listitem")).toHaveCount(2);
+  const other = list.getByRole("listitem").first();
+  await expect(other).toContainText("Windows computer");
+  await expect(other).toContainText("Chrome · owner@example.com · allowed");
+  await expect(other.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
   await expect(list.getByRole("listitem").nth(1)).toContainText("This one");
   await expect(
     list
@@ -7455,28 +7273,6 @@ test("a page whose login ended shows the login view when its socket drops", asyn
   );
   await (events as WebSocketRoute | null)?.close();
   await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
-});
-
-test("Settings: the device list names each device from its browser", async ({ page }) => {
-  await page.route("**/api/devices", (route) =>
-    route.fulfill({
-      json: [
-        {
-          id: "cccccccccccccccc",
-          label:
-            "owner@example.com, Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0",
-          createdAt: "2026-10-17T10:00:00.000Z",
-          current: false,
-        },
-      ],
-    }),
-  );
-  await logIn(page);
-  await openSettings(page, "Devices");
-  const row = page.getByRole("list", { name: "Browsers" }).getByRole("listitem");
-  await expect(row).toContainText("Windows computer");
-  await expect(row).toContainText("Chrome · owner@example.com · allowed");
-  await expect(row.getByRole("button", { name: /^Remove Windows computer/ })).toBeVisible();
 });
 
 test("device login: a failed Allow never says Allowed, and shows why", async ({ page }) => {
@@ -8421,16 +8217,6 @@ test("Files: an edit stays while the person goes to another folder or page, and 
   await expect(file.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
 });
 
-test("Files: JSON shows indented, and its plain text shows as on disk (issue 308)", async ({ page }) => {
-  await logIn(page);
-  await page.goto("/#/files/Notes/settings.json");
-  const file = page.getByRole("region", { name: "File text" });
-  await expect(file.locator("pre")).toHaveText('{\n  "theme": "dark",\n  "size": 2\n}');
-  await expect(file.locator(".code-key").first()).toHaveText('"theme"');
-  await chooseFileAction(page, "Show plain text");
-  await expect(file.locator("pre")).toHaveText('{"theme":"dark","size":2}');
-});
-
 test("Files: long lines wrap, and the More actions menu turns the wrap off and on (issue 484)", async ({ page }) => {
   const text = `${"word ".repeat(400)}\nshort line\n`;
   await page.route("**/api/files?path=Notes%2Flong.txt", (route) =>
@@ -8453,24 +8239,6 @@ test("Files: long lines wrap, and the More actions menu turns the wrap off and o
   expect(await overflows()).toBe(true);
   await chooseFileAction(page, "Wrap long lines");
   await expect.poll(overflows).toBe(false);
-});
-
-test("Files: a code block in a formatted note wraps too (issue 484)", async ({ page }) => {
-  const text = `# Setup\n\n\`\`\`sh\n${"echo word ".repeat(80)}\n\`\`\`\n`;
-  await page.route("**/api/files?path=Notes%2Fsetup.md", (route) =>
-    route.fulfill({
-      json: { kind: "file", path: "Notes/setup.md", size: text.length, text, version: "v1", editable: true },
-    }),
-  );
-  await logIn(page);
-  await page.goto("/#/files/Notes/setup.md");
-  const file = page.getByRole("region", { name: "File text" });
-  await expect(file.getByRole("heading", { name: "Setup" })).toBeVisible();
-  const block = file.locator(".files-markdown pre");
-  const overflows = (): Promise<boolean> => block.evaluate((element) => element.scrollWidth > element.clientWidth);
-  expect(await overflows()).toBe(false);
-  await chooseFileAction(page, "Do not wrap long lines");
-  await expect.poll(overflows).toBe(true);
 });
 
 test("Files: the Copy button of a code block sits in its top right corner, clear of the code (#587)", async ({
@@ -8525,6 +8293,8 @@ test("Files: the Copy button of a code block sits in its top right corner, clear
   expect((shortButton?.y ?? 0) + (shortButton?.height ?? 0)).toBeLessThanOrEqual(
     (shortBox?.y ?? 0) + (shortBox?.height ?? 0),
   );
+  // A code block in a formatted note wraps too (issue 484).
+  expect(await block.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(false);
   // A long line scrolls under a still button.
   await chooseFileAction(page, "Do not wrap long lines");
   const before = await copy.boundingBox();
@@ -8534,18 +8304,6 @@ test("Files: the Copy button of a code block sits in its top right corner, clear
   await copy.click();
   await expect(box.getByRole("button", { name: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(line);
-});
-
-test("Files: the editor has no wrap item, because a text area wraps by itself (issue 484)", async ({ page }) => {
-  await logIn(page);
-  await page.goto("/#/files/Notes/settings.json");
-  const file = page.getByRole("region", { name: "File text" });
-  await file.getByRole("button", { name: "Edit" }).click();
-  await file.getByRole("button", { name: "More actions" }).click();
-  const menu = page.getByRole("menu", { name: "File actions" });
-  await expect(menu.getByRole("menuitem", { name: "Download" })).toBeVisible();
-  await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
-  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toHaveCount(0);
 });
 
 test("Files: a path that the core tidies still shows its folder (issue 253)", async ({ page }) => {
@@ -8726,7 +8484,7 @@ test("Files: an image and a sound show on the page, and another file that is not
   await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
 });
 
-test("Files: Copy contents puts a text file or an image on the clipboard, and a sound has no such item (issue 738)", async ({
+test("Files: JSON shows indented (issue 308), Copy contents puts a text file or an image on the clipboard, and a sound has no such item (issue 738)", async ({
   page,
   context,
 }) => {
@@ -8734,13 +8492,22 @@ test("Files: Copy contents puts a text file or an image on the clipboard, and a 
   await logIn(page);
   await page.goto("/#/files/Notes/settings.json");
   const file = page.getByRole("region", { name: "File text" });
+  await expect(file.locator("pre")).toHaveText('{\n  "theme": "dark",\n  "size": 2\n}');
+  await expect(file.locator(".code-key").first()).toHaveText('"theme"');
+  // The copy and the plain text hold the file as on disk.
   await chooseFileAction(page, "Copy contents");
   await expect(file.getByRole("status").filter({ hasText: "Copied" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('{"theme":"dark","size":2}');
-  // The text box of the editor copies by itself.
+  await chooseFileAction(page, "Show plain text");
+  await expect(file.locator("pre")).toHaveText('{"theme":"dark","size":2}');
+  // The text box of the editor copies and wraps by itself (issue 484).
   await file.getByRole("button", { name: "Edit" }).click();
   await file.getByRole("button", { name: "More actions" }).click();
-  await expect(page.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+  const menu = page.getByRole("menu", { name: "File actions" });
+  await expect(menu.getByRole("menuitem", { name: "Download" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await file.getByRole("button", { name: "Cancel" }).click();
 

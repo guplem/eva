@@ -162,7 +162,10 @@ test("a widget asks Eva after a tap: its text goes in the message box, and a pat
   await expect(page.locator(".widget-full")).toHaveCount(0);
 });
 
-test("a widget's message with no tap before it does nothing (#696)", async ({ page }) => {
+test("a widget's message with no tap does nothing (#696), the widget has no origin, and its address alone shows nothing", async ({
+  page,
+  context,
+}) => {
   await logIn(page);
   const frame = await habitsFrame(page);
   // The widget sends the ask by itself, with no tap of the person.
@@ -178,40 +181,8 @@ test("a widget's message with no tap before it does nothing (#696)", async ({ pa
   );
   expect(answer).toEqual({ eva: "widget", id: 990, ok: false, reason: "no-tap" });
   await expect(page).toHaveURL(/#\/home$/);
-});
 
-test("a tap in the habits widget in full screen marks a habit", async ({ page }) => {
-  await logIn(page);
-  await habitsFrame(page);
-  // The small card shows only the count, so the tap happens in full screen.
-  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
-  const widget = page.frameLocator(".widget-full iframe");
-  const first = widget.locator(".habit-check").first();
-  const before = await first.getAttribute("aria-pressed");
-  await first.click();
-  await expect(first).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
-  // The widget wrote the file in the vault: the Files page reads the check of today.
-  const today = await page.evaluate(() => {
-    const now = new Date();
-    return `${String(now.getFullYear())}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  });
-  const checkedToday = async (): Promise<boolean> => {
-    const texts = await Promise.all(
-      ["meditate", "read", "walk"].map(async (habit) => {
-        const answer = await page.request.get(`/api/files?path=${encodeURIComponent(`Life/Habits/${habit}.json`)}`);
-        return ((await answer.json()) as { text?: string }).text ?? "";
-      }),
-    );
-    return texts.some((text) => text.includes(`"${today}"`));
-  };
-  await expect.poll(checkedToday).toBe(before !== "true");
-  await first.click();
-  await expect(first).toHaveAttribute("aria-pressed", before ?? "false");
-});
-
-test("a widget has no origin: it cannot read Eva's API, the cookie or the page", async ({ page }) => {
-  await logIn(page);
-  const frame = await habitsFrame(page);
+  // A widget has no origin: it cannot read Eva's API, the cookie or the page.
   const reach = await frame.evaluate(async () => {
     const tryRead = async (address: string): Promise<string> => {
       try {
@@ -258,15 +229,41 @@ test("a widget has no origin: it cannot read Eva's API, the cookie or the page",
     storage: "blocked",
     origin: "null",
   });
+
+  // A widget address opened as a page of its own shows nothing.
+  const alone = await context.newPage();
+  const aloneAnswer = await alone.goto(frame.url());
+  expect(aloneAnswer?.status()).toBe(403);
+  await alone.close();
 });
 
-test("a widget address opened as a page of its own shows nothing", async ({ page, context }) => {
+test("a tap in the habits widget in full screen marks a habit", async ({ page }) => {
   await logIn(page);
-  const frame = await habitsFrame(page);
-  const alone = await context.newPage();
-  const answer = await alone.goto(frame.url());
-  expect(answer?.status()).toBe(403);
-  await alone.close();
+  await habitsFrame(page);
+  // The small card shows only the count, so the tap happens in full screen.
+  await page.getByRole("button", { name: "Open Habits in full screen" }).click();
+  const widget = page.frameLocator(".widget-full iframe");
+  const first = widget.locator(".habit-check").first();
+  const before = await first.getAttribute("aria-pressed");
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
+  // The widget wrote the file in the vault: the Files page reads the check of today.
+  const today = await page.evaluate(() => {
+    const now = new Date();
+    return `${String(now.getFullYear())}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  });
+  const checkedToday = async (): Promise<boolean> => {
+    const texts = await Promise.all(
+      ["meditate", "read", "walk"].map(async (habit) => {
+        const answer = await page.request.get(`/api/files?path=${encodeURIComponent(`Life/Habits/${habit}.json`)}`);
+        return ((await answer.json()) as { text?: string }).text ?? "";
+      }),
+    );
+    return texts.some((text) => text.includes(`"${today}"`));
+  };
+  await expect.poll(checkedToday).toBe(before !== "true");
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", before ?? "false");
 });
 
 test("the corner button opens the widget in full screen inside Eva, and its close button closes it", async ({

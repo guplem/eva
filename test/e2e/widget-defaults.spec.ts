@@ -91,8 +91,10 @@ function field(page: Page, label: string): ReturnType<Page["locator"]> {
   return page.getByRole("dialog", { name: "Turn on Defaults" }).locator(".field").filter({ hasText: label });
 }
 
-test("a folder default that exists is one tap away, and the tap picks it", async ({ page }) => {
-  await openTurnOn(page);
+test("a folder default that exists is one tap away, a missing one is created only after the tap, and a closed one has no button", async ({
+  page,
+}) => {
+  const { created } = await openTurnOn(page);
   const habits = field(page, "Habits folder (required)");
   await expect(habits.locator(".widget-picked")).toHaveText("Nothing picked");
   const use = habits.getByRole("button", { name: "Use the default folder" });
@@ -104,10 +106,7 @@ test("a folder default that exists is one tap away, and the tap picks it", async
   await expect(habits.locator(".widget-picked")).toHaveText("Life/Habits");
   await expect(use).toHaveCount(0);
   await expect(page.getByRole("dialog")).toContainText("Reads the folder Life/Habits");
-});
 
-test("a folder default that is missing is created and picked only after the tap", async ({ page }) => {
-  const { created } = await openTurnOn(page);
   const sleep = field(page, "Sleep folder");
   const create = sleep.getByRole("button", { name: "Create the default folder" });
   await expect(create).toHaveAttribute(
@@ -119,10 +118,7 @@ test("a folder default that is missing is created and picked only after the tap"
   await create.click();
   await expect(sleep.locator(".widget-picked")).toHaveText("Life/Health/Sleep");
   expect(created).toEqual(["Life/Health/Sleep"]);
-});
 
-test("a default in a closed place shows no button", async ({ page }) => {
-  await openTurnOn(page);
   const closed = field(page, "Closed folder");
   await expect(closed.getByRole("button", { name: "Pick a folder" })).toBeVisible();
   await expect(closed.getByRole("button", { name: /default folder/ })).toHaveCount(0);

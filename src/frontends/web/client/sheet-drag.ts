@@ -80,6 +80,11 @@ export class SheetDrag {
     return (last.y - first.y) / (last.at - first.at);
   }
 
+  /** The speed at a release: a finger that held still before it let go has none. */
+  speedAt(at: number): number {
+    return at - this.last.at > speedWindowMs ? 0 : this.velocity;
+  }
+
   private get last(): { y: number; at: number } {
     return this.samples[this.samples.length - 1] ?? { y: this.startY, at: 0 };
   }

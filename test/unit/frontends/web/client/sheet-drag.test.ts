@@ -77,3 +77,19 @@ describe("SheetDrag", () => {
     expect(drag.velocity).toBe(0);
   });
 });
+
+describe("SheetDrag.speedAt", () => {
+  test("a release right after the last move keeps the speed of the flick", () => {
+    const drag = new SheetDrag(0, 0);
+    drag.move(30, 30);
+    drag.move(60, 60);
+    expect(drag.speedAt(70)).toBeCloseTo(1);
+  });
+
+  test("a fast drag that holds still before the release has no speed", () => {
+    const drag = new SheetDrag(0, 0);
+    drag.move(30, 30);
+    drag.move(60, 60);
+    expect(drag.speedAt(2060)).toBe(0);
+  });
+});

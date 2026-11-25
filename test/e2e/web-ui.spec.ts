@@ -7459,6 +7459,41 @@ test("Settings: a first location that fails ends the wait and says why (issue 10
   await card.getByRole("button", { name: "Stop sending from this device" }).click();
 });
 
+test("Settings: a later location that fails shows no notice, since nobody waits for it", async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    const holder = window as unknown as { fails?: boolean; asked?: number };
+    navigator.geolocation.getCurrentPosition = (found, failed) => {
+      holder.asked = (holder.asked ?? 0) + 1;
+      if (holder.fails === true)
+        failed?.({ code: 2, PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError);
+      else found({ coords: { latitude: 1, longitude: 2, accuracy: 10 }, timestamp: Date.now() } as GeolocationPosition);
+    };
+  });
+  await page.route("**/api/location", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 204 }) : route.fallback(),
+  );
+  await logIn(page);
+  await page.evaluate(() => (window.location.hash = "#/settings/access/location"));
+  const card = page.getByRole("region", { name: "Your location" });
+  await card.getByRole("button", { name: "Send this device's location while Eva is open" }).click();
+  await expect(card.getByRole("button", { name: "Stop sending from this device" })).toBeVisible();
+  await expect(card.getByText("Waiting for the first location")).toHaveCount(0);
+  const asked = (): Promise<number> => page.evaluate(() => (window as unknown as { asked: number }).asked);
+  const before = await asked();
+
+  // The next try comes 15 minutes later, while the person only reads the page.
+  await page.evaluate(() => ((window as unknown as { fails: boolean }).fails = true));
+  await page.clock.fastForward("16:00");
+  await expect.poll(asked).toBeGreaterThan(before);
+  // A notice can show a moment after the failed try, so one look is not enough.
+  for (let look = 0; look < 15; look += 1) {
+    expect(await page.getByText("could not find its location").count()).toBe(0);
+    await page.waitForTimeout(100);
+  }
+  await card.getByRole("button", { name: "Stop sending from this device" }).click();
+});
+
 test("Settings: the device list names each device from its browser, marks this device, and Remove logs out another one", async ({
   page,
 }) => {

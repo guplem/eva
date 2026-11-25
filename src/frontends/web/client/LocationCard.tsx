@@ -2,7 +2,7 @@
  * The person's location for scripts such as a weather forecast (#371): what Eva knows, how to share
  * a live location in Telegram, and this device's choice to send its location while Eva is open.
  */
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { api, type CurrentPlaceView } from "./api.ts";
 import { ProgressBar } from "./Loading.tsx";
 import { placeWords, readShareChoice, shareEveryMs, shareLocationKey } from "./location-words.ts";
@@ -98,6 +98,12 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
   const sharing = useShareChoice();
   /** True from a yes until the first point arrives. */
   const [waiting, setWaiting] = useState(false);
+  /** The same fact, at once: a browser can answer before the next draw. */
+  const isWaiting = useRef(false);
+  const setWait = useCallback((value: boolean): void => {
+    isWaiting.current = value;
+    setWaiting(value);
+  }, []);
   const { notify } = context;
 
   const load = useCallback((): void => {
@@ -110,15 +116,17 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
 
   useEffect(() => {
     const sent = (): void => {
-      setWaiting(false);
+      setWait(false);
       load();
     };
     const blocked = (): void => {
-      setWaiting(false);
+      setWait(false);
       notify("This browser blocks its location. Allow it in the browser's settings for this site, then try again.");
     };
     const failed = (event: Event): void => {
-      setWaiting(false);
+      // A try fails again every 15 minutes while the cause lasts. Only the person who waits for the first point reads why.
+      if (!isWaiting.current) return;
+      setWait(false);
       notify((event as CustomEvent<string>).detail);
     };
     window.addEventListener(locationSent, sent);
@@ -129,14 +137,14 @@ export function LocationCard({ context }: { readonly context: SettingsContext })
       window.removeEventListener(locationBlocked, blocked);
       window.removeEventListener(locationFailed, failed);
     };
-  }, [load, notify]);
+  }, [load, notify, setWait]);
 
   const toggle = (): void => {
     if (!sharing && !("geolocation" in navigator)) {
       notify("This browser cannot give its location.");
       return;
     }
-    setWaiting(!sharing);
+    setWait(!sharing);
     saveChoice(!sharing);
   };
 

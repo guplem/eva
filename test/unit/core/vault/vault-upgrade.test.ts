@@ -220,6 +220,20 @@ describe("finish", () => {
     expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Life/Cases/Photo.jpg");
   });
 
+  // The upgrade reads each file as text from git show, so this is the only test of that path (#809).
+  test("still refuses a binary archive that holds a token (#809)", async () => {
+    await upgrade().upgrade.run("start");
+    const archive = Buffer.concat([
+      Buffer.from("dotfiles/.env"),
+      Buffer.alloc(100),
+      Buffer.from(`ghp_${"f".repeat(36)}`),
+    ]);
+    writeFileSync(join(vault, "Life/Car/backup.tar"), archive);
+    sandbox.git(vault, "add", "Life/Car/backup.tar");
+    sandbox.git(vault, "commit", "-q", "-m", "An archive", "--", "Life/Car/backup.tar");
+    expect(await refusal(upgrade().upgrade.run("finish"))).toContain("Life/Car/backup.tar");
+  });
+
   test("still refuses a plain binary file at a secret-file path", async () => {
     await upgrade().upgrade.run("start");
     writeFileSync(join(vault, "Life/Car/Key.bin"), Buffer.from([0x00, 0x01, 0x02]));

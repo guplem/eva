@@ -1563,6 +1563,17 @@ test("a chat that answers while another chat is open shows as unread until the p
   await expect(slow.locator(".status-pill")).toHaveCount(0);
 });
 
+test("an answer keeps its line breaks, lists and paragraphs (#37)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("show me a list");
+  await composer.press("Control+Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.locator("li")).toHaveText(["first", "second"]);
+  await expect(answer.locator("p")).toHaveText(["Two steps:", "Done."]);
+});
+
 test("a file that an answer sends shows as a download button, not as a marker (#581)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);
@@ -5095,6 +5106,26 @@ test("the visor counts the open problems, and its center lists each with the but
   // Settings opens on the card that fixes the problem, as a search result does (#799).
   await expect(page).toHaveURL(/#\/settings\/updates\/eva-updates$/);
   await expect(page.getByRole("region", { name: "Eva updates" })).toBeInViewport();
+  // A status read can still be in the route when the page closes.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("the vault structure warning opens Settings on the Vault structure card (#801)", async ({ page }) => {
+  await routeProblems(page, [
+    {
+      key: "vault_structure",
+      level: "warn",
+      message: "A new vault structure (version 3) is ready. Your vault is at version 2.",
+    },
+  ]);
+  await logIn(page);
+  await openCenter(page);
+  const needs = page.getByRole("region", { name: "Problems" });
+  await expect(needs).toContainText("A new vault structure (version 3) is ready.");
+  await expect(needs.getByRole("button", { name: "Mark as read" })).toBeVisible();
+  await needs.getByRole("button", { name: "Open Settings" }).click();
+  await expect(page).toHaveURL(/#\/settings\/vault\/vault-structure$/);
+  await expect(page.getByRole("region", { name: "Vault structure" })).toBeInViewport();
   // A status read can still be in the route when the page closes.
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

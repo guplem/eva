@@ -490,6 +490,16 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain(".eva/scratch/");
   });
 
+  test("keeps a scratch folder in another case out too, as Windows and macOS ignore the case", async () => {
+    sandbox.write(vault, ".gitignore", "Scratch/\n");
+    sandbox.write(vault, "scratch/received/statement.pdf", "A bank statement.\n");
+    sandbox.write(vault, ".eva/Scratch/received/photo.jpg", "A photo.\n");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+    await createSync(vault).save();
+    expect(remoteFiles()).toContain("Methods/New.md");
+    expect(remoteFiles().toLowerCase()).not.toContain("scratch/");
+  });
+
   test("commits the removal of a Scratch/ file that an old commit holds", async () => {
     sandbox.write(vault, "Scratch/old.txt", "Old.\n");
     sandbox.git(vault, "add", "Scratch/old.txt");

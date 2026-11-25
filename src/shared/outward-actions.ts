@@ -16,8 +16,13 @@ const pushCodePattern = new RegExp(
   String.raw`\bgit(?:\.exe)?(?:\s+(?:-[Cc]\s+\S+|${gitSpacedValueOption}(?:=|\s+)\S+|(?!${gitSpacedValueOption})--[\w-]+(?:=\S+)?))*\s+push\b`,
   "i",
 );
+/** gh, then its global flags, such as `--repo a/b`, then the space before its command. */
+const ghPrefix = String.raw`\bgh(?:\.exe)?(?:\s+-\S+(?:\s+(?:'[^']*'|"[^"]*"|[^\s'"-]\S*))?)*?\s+`;
 /** Shell commands that publish on GitHub. */
-const githubPattern = /\bgh\s+(issue|pr|release|gist)\s+(create|comment|edit|close|merge)/i;
+const githubPattern = new RegExp(
+  String.raw`${ghPrefix}(issue|pr|release|gist)\s+(create|comment|edit|close|merge)`,
+  "i",
+);
 /**
  * The rest of one command: it stops at an unquoted `|`, `;`, `&` or new line, so a flag of the
  * next command does not count. A continued line, an escaped character, a redirect such as `2>&1`,
@@ -46,9 +51,8 @@ const curlSends = {
     "y",
   ),
 };
-// gh takes global flags, such as `--repo`, before `api`.
 const ghApiSends = {
-  start: /\bgh(?:\.exe)?(?:\s+-\S+(?:\s+(?:'[^']*'|"[^"]*"|[^\s'"-]\S*))?)*?\s+api\b/g,
+  start: new RegExp(String.raw`${ghPrefix}api\b`, "g"),
   flag: new RegExp(
     String.raw`${commandRest}${flagStart}(?:-[A-Za-z]*[fF]|--(?:field|raw-field|input)(?=[\s=]|$)|${shortMethodFlag}|--method(?:=|\s+)${sendingMethod})`,
     "y",

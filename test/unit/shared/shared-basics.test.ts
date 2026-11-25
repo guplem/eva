@@ -90,6 +90,27 @@ describe("outwardActionsOf", () => {
     }
   });
 
+  test("gh.exe and gh's global flags may stand before a GitHub command", () => {
+    for (const command of [
+      "gh pr create --fill",
+      "gh --repo a/b pr create --fill",
+      "gh -R a/b issue comment 3 -b hi",
+      "gh.exe pr create --fill",
+      "gh.exe --repo 'a b' release create v1",
+    ]) {
+      expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({
+        command,
+        categories: ["github"],
+      });
+    }
+    for (const command of ["gh pr list", "gh --repo a/b pr view 3", "echo gh; echo pr create"]) {
+      expect({ command, categories: outwardActionsOf("Bash", { command }) }).toEqual({ command, categories: [] });
+    }
+    const start = performance.now();
+    expect(outwardActionsOf("Bash", { command: "gh --repo x ".repeat(2000) })).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
   test("many git options do not make the push check slow", () => {
     const start = performance.now();
     expect(outwardActionsOf("Bash", { command: "git -c a=b ".repeat(2000) })).toEqual([]);

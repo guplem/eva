@@ -331,13 +331,13 @@ export function normalizedPath(requested: string): string {
     .join("/");
 }
 
-/** Any part named `.git`, in any case: Windows and macOS read `.GIT` as the same folder. */
 /** True when the list names the file, by the path asked for or by its real path (#707). */
 function isSecretPath(root: string, path: string, resolved: string): boolean {
   const matcher = secretMatcherOf(root);
   return matcher.matches(path) || matcher.matches(relative(root, resolved).split(sep).join("/"));
 }
 
+/** Any part named `.git`, in any case: Windows and macOS read `.GIT` as the same folder. */
 export function isGitData(root: string, resolved: string): boolean {
   return relative(root, resolved)
     .split(sep)

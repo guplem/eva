@@ -55,7 +55,9 @@ export function onReconnect(listener: () => void): () => void {
 /**
  * The policy that narrows the page's frames to the widget paths, so a widget cannot move its
  * frame to another page, of Eva or of another site. `index.html` already allows only Eva herself.
+ * Chromium shows a PDF of the Files page in a frame, also inside `<object>`, so `blob:` stays
+ * allowed (#1064). A widget gains nothing from it: a `blob:` page that it makes keeps its sandbox and policy.
  */
 export function framePolicy(origin: string): string {
-  return `frame-src ${origin}/widgets/`;
+  return `frame-src ${origin}/widgets/ blob:`;
 }

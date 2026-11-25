@@ -8734,6 +8734,89 @@ test("Files: an image and a sound show on the page, and another file that is not
   await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
 });
 
+test("Files: a PDF shows in the browser's viewer, or offers Open in a browser without one (#1064)", async ({
+  page,
+}) => {
+  await logIn(page);
+  // The test browser has no PDF viewer, so the page offers Open.
+  await page.goto("/#/files/Media/report.pdf");
+  const preview = page.getByRole("region", { name: "File preview" });
+  await expect(preview.getByRole("status")).toHaveText(
+    "This browser cannot show a PDF inside the page. Tap Open to read it.",
+  );
+  // A PDF in a new tab downloads in the test browser, so the test reads the address that the page opens.
+  await page.evaluate(() => {
+    const opened: string[] = [];
+    (window as unknown as { opened: string[] }).opened = opened;
+    window.open = (address?: string | URL) => {
+      opened.push(String(address));
+      return null;
+    };
+  });
+  await preview.getByRole("button", { name: "Open" }).click();
+  expect(await page.evaluate(() => (window as unknown as { opened: string[] }).opened)).toEqual([
+    expect.stringMatching(/^blob:/),
+  ]);
+  await preview.getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // A browser with a viewer shows the PDF inside the page.
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "pdfViewerEnabled", { get: () => true });
+  });
+  await page.reload();
+  const pdf = page.getByRole("region", { name: "File preview" }).locator("object");
+  await expect(pdf).toHaveAttribute("type", "application/pdf");
+  await expect(pdf).toHaveAttribute("data", /^blob:/);
+  // The test browser has no PDF viewer to open a frame, so a frame of its own checks the policy.
+  const framed = await page.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        document.addEventListener("securitypolicyviolation", () => resolve("blocked"), { once: true });
+        const frame = document.createElement("iframe");
+        frame.src = URL.createObjectURL(new Blob(["<p>PDF</p>"], { type: "text/html" }));
+        frame.onload = () => resolve("loaded");
+        document.body.append(frame);
+      }),
+  );
+  expect(framed).toBe("loaded");
+
+  // A larger PDF keeps its message and its Download button only.
+  await page.route("**/api/files?path=Media%2Freport.pdf", (route) =>
+    route.fulfill({
+      json: {
+        kind: "unreadable",
+        path: "Media/report.pdf",
+        size: 60 * 1024 * 1024,
+        reason: "This file is larger than 1 MB, so Eva does not show it.",
+        downloadable: true,
+      },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByText("This file is larger than 1 MB, so Eva does not show it.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "File preview" })).toHaveCount(0);
+});
+
+test("Files: an SVG shows as an image, and its text shows and edits as before (#1064)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Media/logo.svg");
+  const file = page.getByRole("region", { name: "File text" });
+  const image = file.getByRole("img", { name: "logo.svg" });
+  await expect(image).toBeVisible();
+  await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(40);
+  await chooseFileAction(page, "Show plain text");
+  await expect(file.locator("pre")).toContainText('<rect width="40"');
+  await chooseFileAction(page, "Show image");
+  await expect(image).toBeVisible();
+  await file.getByRole("button", { name: "Edit" }).click();
+  await expect(file.getByRole("textbox", { name: "Text of Media/logo.svg" })).toContainText("<svg");
+  await file.getByRole("button", { name: "Cancel" }).click();
+});
+
 test("Files: JSON shows indented (issue 308), Copy contents puts a text file or an image on the clipboard, and a sound has no such item (issue 738)", async ({
   page,
   context,

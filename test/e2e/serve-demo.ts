@@ -97,6 +97,13 @@ mkdirSync(join(vault, "Media"), { recursive: true });
 writeFileSync(join(vault, "Media/landscape.png"), readFileSync(join(import.meta.dir, "demo-landscape.png")));
 writeFileSync(join(vault, "Media/silence.wav"), silentWave());
 writeFileSync(join(vault, "Media/data.bin"), new Uint8Array([0, 159, 146, 150, 255, 0, 1]));
+// A PDF shows in the browser's viewer, and an SVG shows as an image (#1064).
+sandbox.write(vault, "Media/report.pdf", demoPdf());
+sandbox.write(
+  vault,
+  "Media/logo.svg",
+  '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="teal"/></svg>\n',
+);
 // The vault has a key, so the demo shows no "no password" notice. The tests unlock it with this password.
 const vaultKey = await createVaultKey("a long demo password", { logN: 10 });
 sandbox.write(vault, ".eva/vault-key.json", `${JSON.stringify(vaultKey, null, 2)}\n`);
@@ -554,6 +561,19 @@ setInterval(() => void eva.schedules?.tick(), 300);
 Bun.serve({ hostname: "127.0.0.1", port: galleryPort, routes: { "/": visorGallery }, development: false });
 startLocalApi({ eva, port: demoPort, token: demoToken, extraHosts: [], allowedTailscaleIdentities: [] });
 process.stdout.write(`Eva demo ready on http://127.0.0.1:${String(demoPort)}\n`);
+
+/** A PDF of one empty page, in plain letters only, so the core reads it as text. The page shows it as a PDF still. */
+function demoPdf(): string {
+  return [
+    "%PDF-1.1",
+    "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj",
+    "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj",
+    "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj",
+    "trailer<</Root 1 0 R>>",
+    "%%EOF",
+    "",
+  ].join("\n");
+}
 
 /** A tenth of a second of silence: a WAV file of 8 kHz, 8-bit mono samples. */
 function silentWave(): Uint8Array {

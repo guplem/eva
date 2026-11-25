@@ -4,7 +4,7 @@
  * tokens are plain text, so React escapes them, and no file text ever becomes HTML.
  */
 
-export type FileView = "markdown" | "json" | "code" | "plain";
+export type FileView = "markdown" | "json" | "image" | "code" | "plain";
 
 export type TokenKind = "plain" | "comment" | "string" | "number" | "keyword" | "key" | "tag";
 
@@ -112,6 +112,7 @@ export function viewOf(path: string): FileView {
   const extension = extensionOf(path);
   if (extension === "md" || extension === "markdown") return "markdown";
   if (extension === "json") return "json";
+  if (extension === "svg") return "image";
   return extension in grammarOfExtension ? "code" : "plain";
 }
 

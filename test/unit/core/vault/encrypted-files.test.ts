@@ -98,6 +98,18 @@ describe("reading and saving an encrypted file (#707)", () => {
     for (const path of ["../outside.pem", "Notes/link.pem", "Notes/plain.md", "Notes/missing.pem", ".git/config"])
       expect(isEvaError(await failure(() => readEncryptedFile(vault, path, unlocked)))).toBe(true);
   });
+
+  test("an encrypted file outside the vault is refused, even when it exists (#1069)", async () => {
+    writeFileSync(join(root, "outside.pem"), encryptFile(new TextEncoder().encode("secret"), key, "outside.pem"));
+    expect(
+      isEvaError(await failure(() => readEncryptedFile(vault, "../outside.pem", unlocked)), "file_not_found"),
+    ).toBe(true);
+  });
+
+  test("an encrypted vault file whose name starts with `..` opens (#1069)", () => {
+    writeEncrypted("..draft.pem", "secret");
+    expect(readEncryptedFile(vault, "..draft.pem", unlocked)).toMatchObject({ kind: "text", text: "secret" });
+  });
 });
 
 describe("a confirmed removal and a new key (#707)", () => {

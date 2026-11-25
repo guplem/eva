@@ -94,6 +94,11 @@ describe("resolveSendableFile (lesson 72)", () => {
     });
   });
 
+  test("a vault file whose name starts with `..` can be sent (#1069)", () => {
+    write("..draft.md", "draft");
+    expect(resolveSendableFile(vault, "..draft.md")).toMatchObject({ ok: true, relativePath: "..draft.md" });
+  });
+
   test("an absolute path is refused", () => {
     expect(resolveSendableFile(vault, join(vault, "Methods", "Plan.md")).ok).toBe(false);
   });

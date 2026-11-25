@@ -197,7 +197,6 @@ test("a path of another entity links to its page, in the text and in the facts",
 });
 
 test("a page with no entry in the navigation opens by its address", async ({ page }) => {
-  test.skip(test.info().project.name !== "desktop", "The phone has its own test in web-ui.spec.ts (#911).");
   // Each form shows only Chats and Projects, so Periods is hidden on a computer and on a phone.
   await page.evaluate(() => {
     localStorage.setItem("eva.navigation", JSON.stringify({ computer: ["chats", "projects"], phone: ["chats"] }));

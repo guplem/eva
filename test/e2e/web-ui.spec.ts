@@ -8538,7 +8538,8 @@ test("Files: JSON shows indented (issue 308), Copy contents puts a text file or 
   await expect(menu.getByRole("menuitem", { name: "Download" })).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Copy contents" })).toHaveCount(0);
   await expect(menu.getByRole("menuitem", { name: /wrap/ })).toHaveCount(0);
-  await expect(menu.getByRole("menuitem", { name: "Show plain text" })).toHaveCount(0);
+  // The plain view is still on from above, so the item would read "Show formatted".
+  await expect(menu.getByRole("menuitem", { name: /Show (plain text|formatted)/ })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await file.getByRole("button", { name: "Cancel" }).click();
 

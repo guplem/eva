@@ -116,7 +116,7 @@ describe("clone reuse (issue 521)", () => {
     expect(instance.sessions.get(first.id).closed).toBe(false);
   });
 
-  // `resetToDefault` in clone-sync.test.ts checks the rest of the reset: the pull and the ignored files.
+  // clone-sync.test.ts checks the rest: the pull, the kept ignored files, and that they are not local work.
   test("a reused clone is on the default branch, and gets a new repository", async () => {
     const instance = start(finishingEngine());
     const first = await newChat(instance);

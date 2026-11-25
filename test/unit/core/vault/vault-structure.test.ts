@@ -98,6 +98,13 @@ describe("the CHANGELOG", () => {
     expect(changelog).toContain("A note that is already in `Life/Health/` stays where it is.");
   });
 
+  test("v14 offers the cloud drive rules for files needed away from Eva or shared, and moves nothing alone (#1065)", () => {
+    const v14 = structureChanges.find((change) => change.version === 14);
+    expect(v14?.summary).toStartWith("Files you need in a hurry");
+    expect(v14?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(14);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { isInside } from "../../shared/path-area.ts";
 import { isScratchPath } from "../files/scratch-folders.ts";
 import type { SecretMatcher } from "./secret-files.ts";
 import {
@@ -163,14 +164,18 @@ function encryptedPath(vaultPath: string, relativePath: string): string {
   const notFound = (): EvaError => new EvaError("file_not_found", `${relativePath} is not an encrypted file.`);
   if (isAbsolute(relativePath)) throw notFound();
   const path = join(vaultPath, relativePath);
-  let inside: string;
+  let root: string;
+  let real: string;
   try {
-    inside = relative(realpathSync(vaultPath), realpathSync(path));
+    root = realpathSync(vaultPath);
+    real = realpathSync(path);
   } catch {
     throw notFound();
   }
-  if (inside.startsWith("..") || isAbsolute(inside) || inside.split(sep).some((part) => part.toLowerCase() === ".git"))
-    throw notFound();
+  // A name such as `..draft.pem` is inside the vault: only a `..` part leaves it (#1069).
+  if (!isInside(root, real)) throw notFound();
+  const parts = relative(root, real).split(sep);
+  if (parts.some((part) => part.toLowerCase() === ".git")) throw notFound();
   // A link is never followed: its target could be Eva's own file, or outside the vault.
   if (!lstatSync(path).isFile() || encryptedState(readHead(path)) !== "encrypted") throw notFound();
   return path;

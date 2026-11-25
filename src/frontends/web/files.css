@@ -778,6 +778,13 @@ a.files-entry[aria-current="true"] {
   width: 100%;
 }
 
+/* The browser's PDF viewer has no size of its own, so it takes the width and most of the screen. */
+.files-pdf > object {
+  width: 100%;
+  height: 75vh;
+  border-radius: var(--radius-input);
+}
+
 .files-media > .progress {
   flex: 1;
 }

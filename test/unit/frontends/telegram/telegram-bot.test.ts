@@ -11,6 +11,7 @@ import { TelegramBot, type TelegramBotOptions } from "../../../../src/frontends/
 import type { LogLevel } from "../../../../src/shared/logger.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { FakeEngine, type FakeTurnScript } from "../../../support/fake-engine.ts";
+import { fakeGh } from "../../../support/fake-gh.ts";
 import type { EngineEventPayload } from "../../../../src/shared/events.ts";
 import { FakeTelegram } from "../../../support/fake-telegram.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
@@ -36,7 +37,9 @@ let logs: { level: LogLevel; message: string }[];
 
 function createEva(
   script?: FakeTurnScript,
-  runner: ProcessRunner = systemProcessRunner,
+  // A real gh asks GitHub about the local test remote, so a project work report waited up to its
+  // 20-second timeout on a slow Windows runner, and the test that waits for the report failed.
+  runner: ProcessRunner = fakeGh(systemProcessRunner),
   extra: Partial<EvaOptions> = {},
   vaultPath: string | null = sandbox.root + "/vault",
 ): void {
@@ -1391,7 +1394,7 @@ describe("project work from a Telegram chat (#9)", () => {
     const group = -1001234;
     createEva(
       (request) => FakeEngine.answer(request, request.mode === "project" ? "Fixed it." : "Noted."),
-      systemProcessRunner,
+      fakeGh(systemProcessRunner),
       { remoteAccess: fixedRemoteAccess({ url: "https://eva.example.ts.net", problem: null }) },
     );
     eva.sessions.subscribe((event) => {

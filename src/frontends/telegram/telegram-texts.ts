@@ -51,3 +51,8 @@ export function alwaysConfirmText(categories: readonly OutwardActionCategory[]):
     "You can change this any time in Settings > AI engines > Actions that reach other people."
   );
 }
+
+/** The answer when Telegram refuses a new topic. A reason often ends with no period, so it gets one. */
+export function topicNotOpenedText(reason: string, retry: string): string {
+  return `Telegram did not open the topic: ${reason.replace(/(?<![.!?])$/, ".")} ${retry}.`;
+}

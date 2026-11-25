@@ -59,7 +59,13 @@ import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
 import type { OutwardActionCategory } from "../../shared/outward-actions.ts";
-import { alwaysConfirmText, approvalAnswerText, approvalKeyboard, fitProjects } from "./telegram-texts.ts";
+import {
+  alwaysConfirmText,
+  approvalAnswerText,
+  approvalKeyboard,
+  fitProjects,
+  topicNotOpenedText,
+} from "./telegram-texts.ts";
 
 export interface TelegramBotOptions {
   readonly api: TelegramApi;
@@ -733,8 +739,7 @@ export class TelegramBot {
     } catch (error) {
       // Only a 400 means "no topics" (lesson 61); a short Telegram problem must not reset the main chat.
       if (!(error instanceof TelegramError && error.code === 400)) {
-        const reason = this.describeError(error).replace(/(?<![.!?])$/, ".");
-        await this.send(chatId, fromTopicId, `Telegram did not open the topic: ${reason} ${retry}.`);
+        await this.send(chatId, fromTopicId, topicNotOpenedText(this.describeError(error), retry));
         return null;
       }
       await this.send(

@@ -1228,6 +1228,9 @@ describe("/chats: every chat of the instance (#9)", () => {
     telegram.failNext("createForumTopic", 429, "Too Many Requests: retry after 1", 1, 4);
     telegram.pressButton(owner, `o:${sessionId}`);
     await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("Telegram did not open the topic")));
+    // The reason ends with a period, so two sentences never run together (#1073).
+    const failure = telegram.sentTexts().find((text) => text.startsWith("Telegram did not open the topic"));
+    expect(failure).toMatch(/[.!?] Press the chat again\.$/);
     telegram.sendText(owner, "still the main chat");
     await settle(bot, () => telegram.sentTexts().includes("answer 3"));
     expect(eva.sessions.get(sessionId).turns).toHaveLength(1);

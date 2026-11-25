@@ -1,17 +1,15 @@
 /**
- * An image, a sound or a film of the vault on the Files page (issue 737). The core does not show a
- * file that is not text, but a browser shows these formats by itself. So the page reads the bytes
- * through the download route, which keeps every check of the explorer, and shows them.
+ * An image, a sound, a film or a PDF of the vault on the Files page (issues 737 and 1064). The core
+ * does not show a file that is not text, but a browser shows these formats by itself. So the page
+ * reads the bytes through the download route, which keeps every check of the explorer, and shows them.
  */
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api } from "./api.ts";
 import { DownloadWait, saveBlob, useDownload } from "./DownloadButton.tsx";
 import { FileBar } from "./FileBar.tsx";
 import type { Media } from "./file-kinds.ts";
+import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-
-/** The browser holds the whole file in memory, so a larger file keeps its Download button only. */
-export const maxMediaBytes = 50 * 1024 * 1024;
 
 type Bytes =
   | { readonly state: "loading"; readonly share: number | null }
@@ -60,6 +58,8 @@ export function MediaPreview({
   }, [path, media.type]);
 
   const name = path.split("/").pop() ?? path;
+  // Chrome on Android has no PDF viewer inside a page, and says so here. An older browser has no answer.
+  const [pdfInside] = useState<boolean>(() => navigator.pdfViewerEnabled);
   // A browser puts an image on the clipboard only on a secure page, and only as a PNG.
   const canCopy =
     media.kind === "image" &&
@@ -89,7 +89,20 @@ export function MediaPreview({
           },
         ]}
         copy={canCopy ? copy : null}
-      />
+      >
+        {/* Only a PDF: an SVG that opens as a page of Eva's address could run its scripts. */}
+        {media.kind === "pdf" && (
+          <button
+            aria-disabled={bytes.state === "shown" ? undefined : true}
+            onClick={() => {
+              if (bytes.state === "shown") window.open(bytes.address, "_blank", "noopener");
+            }}
+          >
+            <Icon name="external" />
+            Open
+          </button>
+        )}
+      </FileBar>
       <div className="files-wait">
         <DownloadWait download={download} folder={false} />
       </div>
@@ -108,7 +121,21 @@ export function MediaPreview({
           This browser cannot show this file. Download it to open it in another app.
         </div>
       )}
-      {bytes.state === "shown" && !unplayable && (
+      {bytes.state === "shown" && media.kind === "pdf" && !pdfInside && (
+        <div role="status" className="callout files-problem">
+          This browser cannot show a PDF inside the page. Tap Open to read it.
+        </div>
+      )}
+      {bytes.state === "shown" && media.kind === "pdf" && pdfInside && (
+        <div className="files-media files-pdf">
+          <object data={bytes.address} type={media.type} aria-label={name}>
+            <div role="status" className="callout files-problem">
+              This browser cannot show this PDF inside the page. Tap Open to read it.
+            </div>
+          </object>
+        </div>
+      )}
+      {bytes.state === "shown" && media.kind !== "pdf" && !unplayable && (
         <div className="files-media">
           {media.kind === "image" ? (
             <img ref={picture} src={bytes.address} alt={name} onError={() => setUnplayable(true)} />

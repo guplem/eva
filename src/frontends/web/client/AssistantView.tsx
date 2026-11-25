@@ -123,6 +123,12 @@ export function AssistantView({
       roots.find((chat) => chat.id === selectedId) ??
       active[0] ??
       chats[0]);
+  // The chat that the first message on the New chat page made. That page has no panel, so this chat's panel slides
+  // in. A panel that appears in one frame pushes the chat aside with a jump (#1053). Once the person leaves the chat,
+  // its panel shows at once again.
+  const [madeChatId, setMadeChatId] = useState<string | null>(null);
+  if (madeChatId !== null && !drafting && selected !== undefined && selected.id !== madeChatId) setMadeChatId(null);
+  const panelEnters = madeChatId !== null && madeChatId === selected?.id;
   const listedTree = selected === undefined ? [] : chatTree(selected, sessions);
   const openedTree = useOpenedTree(listedTree);
   // Until the turns arrive, the facts of the list stand in with no turns, and the chat shows its skeleton.
@@ -215,6 +221,7 @@ export function AssistantView({
     await onChanged();
     // The chat takes the place of the New chat page, so Back does not open the page again.
     setSelectedId(chat.id);
+    setMadeChatId(chat.id);
     replaceAddress(assistantChatAddressOf(chat.id));
     clearAction();
     // A new chat goes first in the list. Show it, because the list can be scrolled down.
@@ -361,7 +368,12 @@ export function AssistantView({
       </main>
       {/* The inspector is about one chat, so a new chat draft has none. */}
       {selected !== undefined &&
-        (openedTree === null ? panelShown && <ChatPanelLoading /> : <ChatPanel shown={panelShown} {...chat} />)}
+        (openedTree === null ? (
+          // A panel that slides in skips its skeleton, so it slides only once.
+          panelShown && !panelEnters && <ChatPanelLoading />
+        ) : (
+          <ChatPanel shown={panelShown} enters={panelEnters} {...chat} />
+        ))}
     </div>
   );
 }

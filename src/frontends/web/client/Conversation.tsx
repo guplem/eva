@@ -33,6 +33,7 @@ import { endedProjectWork, tasksOfTurn, tasksStillRun } from "./chat-details.ts"
 import { Composer, storedChoices, unsentTexts } from "./Composer.tsx";
 import { FullChatNotice } from "./FullChatNotice.tsx";
 import { isGliding, markFollowing } from "./send-glide.ts";
+import { answerKey, noteShown, sentKey, takeShown } from "./shown-messages.ts";
 import {
   answerFiles,
   wholeMessages,
@@ -405,7 +406,13 @@ function Branch({
       </span>
       {/* After the turn ends, its answer stays without the clock until the stored turn takes its place. */}
       {(working || answerSteps !== null) && (
-        <LiveAnswer steps={answerSteps ?? []} mode={session.mode} startedAt={working ? startedAt : null} />
+        <LiveAnswer
+          sessionId={session.id}
+          turnCount={turnCount}
+          steps={answerSteps ?? []}
+          mode={session.mode}
+          startedAt={working ? startedAt : null}
+        />
       )}
       {/* A message sent during a turn waits for that turn to end, so it shows below the running answer. */}
       {ownPending
@@ -548,11 +555,19 @@ export function UserMessage({
   readonly delivery?: Delivery | null;
 }): ReactElement {
   const { props, parts } = useMessageMenu(text, fromEva ? "Actions of Eva's message" : "Actions of your message");
+  // A sent message gets a new bubble up to three times: on the chat's own page, in the running turn, and in the stored
+  // turn. The person saw it already, so each new bubble takes the place of the last one with no fade (#1053).
+  const [settled] = useState(() => takeShown(sentKey(text)));
+  // Only a stored turn has a key. A bubble without one waits for the bubble that takes its place.
+  const waits = turnKey === undefined;
+  useEffect(() => {
+    if (waits) noteShown(sentKey(text));
+  }, [waits, text]);
   return (
     <div className={`msg me${delivery === null ? "" : ` ${delivery.state}`}`} data-turn={turnKey}>
       {parts}
       {/* The menu key and Shift+F10 open the menu, so a keyboard reaches Copy too. */}
-      <div className="message user" tabIndex={0} {...props}>
+      <div className={`message user${settled ? " settled" : ""}`} tabIndex={0} {...props}>
         <div className="who">{senderName(fromEva)}</div>
         {text}
       </div>
@@ -661,6 +676,7 @@ function EvaMessage({
   mode,
   turnKey,
   menu,
+  settled = false,
   children,
 }: {
   readonly face: Face;
@@ -669,12 +685,14 @@ function EvaMessage({
   readonly turnKey?: string | undefined;
   /** The context menu of a stored answer. A running answer has none. */
   readonly menu?: ContextMenuProps;
+  /** The page showed this answer already, so it does not fade in. */
+  readonly settled?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   return (
     <div className="msg" data-turn={turnKey}>
       <Visor size={28} face={face} projectEyes={mode === "project"} />
-      <div className="message answer" {...menu}>
+      <div className={`message answer${settled ? " settled" : ""}`} {...menu}>
         {children}
       </div>
     </div>
@@ -698,6 +716,8 @@ function StoredAnswer({
   readonly onFork: () => void;
 }): ReactElement {
   const shown = useShownAnswer(turn.steps, turn.answerText, false);
+  // The answer that ran in this page takes this place at the turn end. It does not fade in again (#1053).
+  const [settled] = useState(() => takeShown(answerKey(owner.id)));
   // A closed chat takes no new turn, so it offers no way to start one.
   const { retry: canRetry, fork: canFork } = answerActions(owner, turn);
   const { props, parts } = useMessageMenu(shown.body, "Actions of Eva's answer", [
@@ -707,7 +727,7 @@ function StoredAnswer({
   return (
     <>
       {parts}
-      <EvaMessage face={stateFaces.idle} mode={owner.mode} menu={props}>
+      <EvaMessage face={stateFaces.idle} mode={owner.mode} menu={props} settled={settled}>
         <AnswerBody
           shown={shown}
           sessionId={owner.id}
@@ -839,10 +859,15 @@ function AnswerBody({
 
 /** A running turn keeps the same window of steps as a stored one, so both show the same lines. */
 function LiveAnswer({
+  sessionId,
+  turnCount,
   steps,
   mode,
   startedAt,
 }: {
+  readonly sessionId: string;
+  /** The stored turns. A queued message starts the next turn in the same element, so each turn notes its answer. */
+  readonly turnCount: number;
   /** The steps so far, with the block that the engine writes now as the last message. */
   readonly steps: readonly TurnStep[];
   readonly mode: SessionRecord["mode"];
@@ -861,6 +886,10 @@ function LiveAnswer({
   );
   const hasText = steps.some((step) => step.kind === "message");
   const answer = useShownAnswer(shown.steps, wholeAnswer, true);
+  // The stored answer takes its place at the turn end.
+  useEffect(() => {
+    noteShown(answerKey(sessionId));
+  }, [sessionId, turnCount]);
   return (
     <EvaMessage face={liveFace(hasText, mode)} mode={mode}>
       <AnswerBody

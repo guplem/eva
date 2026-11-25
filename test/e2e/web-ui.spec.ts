@@ -744,6 +744,58 @@ test("a send turns the box into the new bubble, and reduced motion plays no morp
   expect(await morphsSeen()).toBe(0);
 });
 
+test("the first message of a new chat slides its panel in, and its stored turn does not fade in again (#1053)", async ({
+  page,
+}) => {
+  await logIn(page);
+  await clickNewChat(page);
+  // The classes of the panel when it comes, and of each bubble the stored turn draws. A watcher sees each one, even
+  // when a slow machine skips the polls.
+  await page.evaluate(() => {
+    const seen = { panel: [] as string[], bubbles: [] as string[], answers: [] as string[] };
+    Object.assign(window, { sendSeen: seen });
+    new MutationObserver((changes) => {
+      for (const change of changes)
+        for (const added of change.addedNodes) {
+          if (!(added instanceof HTMLElement)) continue;
+          const panel = added.matches(".chat-panel-frame") ? added : added.querySelector(".chat-panel-frame");
+          if (panel !== null) seen.panel.push(panel.className);
+          // Only a stored turn gives its bubble a turn key. Each answer counts: the running one comes first.
+          for (const [list, stored] of [
+            [seen.bubbles, ".msg.me[data-turn] .message.user"],
+            [seen.answers, ".message.answer"],
+          ] as const)
+            for (const message of [added, ...added.querySelectorAll(stored)])
+              if (message.matches(stored)) list.push(message.className);
+        }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  interface Seen {
+    panel: string[];
+    bubbles: string[];
+    answers: string[];
+  }
+  const seen = (): Promise<Seen> => page.evaluate(() => (window as unknown as { sendSeen: Seen }).sendSeen);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("A first message");
+  await box.press("Control+Enter");
+  await expect(page.locator(".message.user").first()).toContainText("A first message");
+  // A phone has no panel column: its header opens the details in a sheet.
+  if (test.info().project.name !== "phone") {
+    await expect.poll(async () => (await seen()).panel.length).toBeGreaterThan(0);
+    expect((await seen()).panel[0]).toContain("opening");
+    await expect(page.locator(".chat-panel-frame")).toHaveClass(/\bopen\b/);
+  }
+  await expect.poll(async () => (await seen()).bubbles.length).toBeGreaterThan(0);
+  for (const name of (await seen()).bubbles) expect(name).toContain("settled");
+  // The running answer showed first, so its stored copy takes its place with no fade.
+  await expect(page.locator(".message.answer").first()).toContainText("Echo");
+  await expect(page.locator(".message.answer .answer-actions").first()).toBeVisible();
+  const answers = (await seen()).answers;
+  expect(answers.length).toBeGreaterThan(1);
+  expect(answers.at(-1)).toContain("settled");
+});
+
 test("a send glides the chat down to the new bubble, and the bubble lands above the box", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await logIn(page);

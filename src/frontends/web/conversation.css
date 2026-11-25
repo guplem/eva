@@ -278,6 +278,11 @@
   }
 }
 
+/* The stored copy of a message that the page showed already: a sent message or a running answer (#1053). */
+.message.settled {
+  animation: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .message {
     animation: none;
@@ -1058,10 +1063,22 @@ button.ghost .icon {
 }
 
 .send-morph-box,
-.send-morph-bubble {
+.send-morph-shade,
+.send-morph-bubble,
+.composer.send-morph-holder {
   position: absolute;
   inset: 0;
+}
+
+.send-morph-box {
   overflow: hidden;
+}
+
+/* The holder only gives the chips their look. The composer's padding and fade would paint a band across the copy. */
+.composer.send-morph-holder {
+  margin: 0;
+  padding: 0;
+  background: none;
 }
 
 /* The copy lives in a closed shadow root, so these rules name no ancestor. They outweigh the usual box and bubble. */

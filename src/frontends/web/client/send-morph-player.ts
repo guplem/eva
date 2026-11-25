@@ -4,7 +4,17 @@
  * chat scrolls, or when React puts the stored message in the place of the sent one.
  */
 import { isFollowing, startGlide } from "./send-glide.ts";
-import { boxAt, cornersAt, crossFade, durationMs, springAt, type Box, type Corners } from "./send-morph.ts";
+import {
+  boxAt,
+  colourAt,
+  cornersAt,
+  crossFade,
+  durationMs,
+  returnDelay,
+  springAt,
+  type Box,
+  type Corners,
+} from "./send-morph.ts";
 
 /** A morph that waits for the new bubble. `cancel` stops it, such as after a send that failed. */
 export interface SendMorph {
@@ -99,9 +109,13 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
   const from = boxOf(shell);
   const style = getComputedStyle(shell);
   const fromCorners = cornersOf(style);
+  const fromColour = style.backgroundColor;
   const surface = layer("send-morph-box");
-  surface.style.background = style.backgroundColor;
-  surface.style.boxShadow = style.boxShadow;
+  surface.style.background = fromColour;
+  // The shadow has its own layer, so it fades while the surface keeps its colour. A layer with no background shows
+  // only the part of the shadow outside it.
+  const shade = layer("send-morph-shade");
+  shade.style.boxShadow = style.boxShadow;
   const copy = shell.cloneNode(true) as HTMLElement;
   // The copy is a picture: it takes no focus, no id and no click, and a screen reader skips it.
   copy.inert = true;
@@ -111,10 +125,10 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
   const field = shell.querySelector("textarea");
   const copiedField = copy.querySelector("textarea");
   if (field !== null && copiedField !== null) copiedField.value = field.value;
-  // The box's chips take their look from the .composer around it, so the copy gets one too.
-  const holder = layer("composer");
+  // The box's chips take their look from the .composer around it, so the copy gets one too. The holder paints nothing:
+  // the composer's padding and fade would show as a band across the copy (#1053).
+  const holder = layer("composer send-morph-holder");
   holder.append(copy);
-  surface.append(holder);
   let cancelled = false;
   let frame = 0;
   // The finish of this morph only: a cancel must not end the morph of a later send.
@@ -155,14 +169,16 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       inside.adoptedStyleSheets = [styles];
       const face = layer("send-morph-bubble");
       const bubbleStyle = getComputedStyle(first);
-      face.style.background = bubbleStyle.backgroundColor;
       const toCorners = cornersOf(bubbleStyle);
+      const toColour = bubbleStyle.backgroundColor;
       const words = first.cloneNode(true) as HTMLElement;
       words.inert = true;
       words.removeAttribute("tabindex");
       words.classList.add("send-morph-words");
       face.append(words);
-      inside.append(surface, face);
+      // The surface clips both texts to its corners while they cross-fade.
+      surface.append(holder, face);
+      inside.append(shade, surface);
       document.body.append(ghost);
       if (field !== null) copy.querySelector("textarea")?.scrollTo({ top: field.scrollTop });
 
@@ -190,6 +206,23 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
       // A hidden tab stops the frames, so the bubble must not stay hidden after the morph.
       const guard = setTimeout(finish, duration + 500);
       const started = performance.now();
+      let returning = shell;
+      // The empty box comes back once the copy has left most of its place. Sooner, the two boxes would overlap.
+      const bringBack = (box: HTMLElement): void => {
+        returning = box;
+        box.animate(
+          [
+            { opacity: 0, transform: "translateY(12px) scale(0.97)" },
+            { opacity: 1, transform: "none" },
+          ],
+          {
+            duration: milliseconds("--dur-slow", 400),
+            delay: Math.max(0, returnDelay(duration) - (performance.now() - started)),
+            easing: token("--ease-out", "ease-out"),
+            fill: "backwards",
+          },
+        );
+      };
       const step = (now: number): void => {
         // The morph keeps its bubble. It looks again only when React swaps it for the stored one, so a message
         // from another device that comes meanwhile does not take its place.
@@ -200,6 +233,11 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
           return;
         }
         hide(bubble);
+        // The first message of a new chat moves to the chat's own page, and that page has a box of its own.
+        if (!returning.isConnected) {
+          const box = document.querySelector<HTMLElement>(".composer .composer-box");
+          if (box !== null) bringBack(box);
+        }
         const time = Math.min(1, (now - started) / duration);
         const to = boxOf(bubble);
         const share = springAt(time);
@@ -213,29 +251,18 @@ export function startSendMorph(shell: HTMLElement): SendMorph | null {
         });
         const corners = cornersAt(fromCorners, toCorners, share);
         surface.style.borderRadius = corners;
-        face.style.borderRadius = corners;
+        shade.style.borderRadius = corners;
         words.style.width = `${String(to.width)}px`;
         const fade = crossFade(time);
-        surface.style.opacity = String(fade.box);
+        surface.style.background = colourAt(fromColour, toColour, fade.colour);
+        shade.style.opacity = String(fade.shadow);
         copy.style.opacity = String(fade.boxText);
-        face.style.opacity = String(fade.bubble);
+        face.style.opacity = String(fade.bubbleText);
         if (time < 1) frame = requestAnimationFrame(step);
         else finish();
       };
+      bringBack(shell);
       step(started);
-      // The empty box comes in under the copy, so the person sees a new box where the old one left.
-      shell.animate(
-        [
-          { opacity: 0, transform: "translateY(12px) scale(0.97)" },
-          { opacity: 1, transform: "none" },
-        ],
-        {
-          duration: milliseconds("--dur-slow", 400),
-          delay: milliseconds("--dur-fast", 150),
-          easing: token("--ease-out", "ease-out"),
-          fill: "backwards",
-        },
-      );
     });
   };
 

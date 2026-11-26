@@ -112,6 +112,18 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(15);
   });
 
+  test("v16 offers the rule for where each secret goes, and its detection lines are in the template (#1095)", () => {
+    const v16 = structureChanges.find((change) => change.version === 16);
+    expect(v16?.summary).toStartWith("Eva knows where each kind of secret goes");
+    expect(v16?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(16);
+    // A reworded line would make the upgrade miss a vault that already has v16.
+    const files = vaultTemplateFiles({ name: "Sam", notesLanguage: "English", topics: [] });
+    expect(files["AGENTS.md"]).toContain("**Where a secret goes.**");
+    expect(files["AGENTS.md"]).toContain("Does it open or recover the password manager itself?");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("**The password manager is an item too.**");
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

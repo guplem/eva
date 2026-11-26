@@ -214,13 +214,13 @@ describe("the vault template", () => {
     expect(files["AGENTS.md"]).toContain("every other `AGENTS.md` in the vault");
     expect(files["AGENTS.md"]).not.toContain("offer status `gone`");
     expect(files["Life/Inventory/AGENTS.md"]).toContain("A finished repair → a dated line here.");
-    expect(files["Life/Inventory/AGENTS.md"]).toContain("An online-banking login goes in the password manager.");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("A login, the recovery codes of an account, a card PIN");
     expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
     expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
     expect(files["Life/Inventory/AGENTS.md"]).toContain(
       "**Closing:** when the person sells it, loses it, throws it away or ends its contract",
     );
-    expect(files["AGENTS.md"]).toContain("any service, except the person's password manager.");
+    expect(files["AGENTS.md"]).toContain("or in the person's password manager. _Where a secret goes_ says which.");
   });
 
   test("a provider has its own folder, apart from the people behind it, and a place to visit goes to the maps app (#934)", () => {
@@ -341,10 +341,34 @@ describe("the vault template", () => {
     expect(map).toContain("**Some files go to the cloud drive at any size,**");
     // An agent that reads only the Inventory rules still finds where a passport scan goes.
     expect(files["Life/Inventory/AGENTS.md"]).toContain("needed in a hurry");
-    // A PIN is needed in a hurry too, but it stays encrypted.
+    // A PIN is needed in a hurry too, but it never goes in the cloud drive.
     expect(files["Life/Inventory/AGENTS.md"]).toContain(
-      "A key, a PIN or a full card number still goes in its `.secrets` file.",
+      "A key, a PIN or a full card number still goes where _Where a secret goes_ says.",
     );
+  });
+
+  test("three questions in order say where each secret goes (#1095)", () => {
+    const files = vaultTemplateFiles(answers);
+    const map = files["AGENTS.md"] ?? "";
+    const inventory = files["Life/Inventory/AGENTS.md"] ?? "";
+    expect(map).toContain("**Where a secret goes.**");
+    // A recovery kit inside its own manager is lost with the master password.
+    expect(map).toContain("1. Does it recover the password manager itself?");
+    expect(map).toContain("never inside the manager");
+    // Eva cannot read a secret file, so what the person needs away from Eva goes to the manager.
+    expect(map).toContain("2. Does the person use it to log in, to pay, or in a hurry away from Eva?");
+    expect(map).toContain("the recovery codes of an account");
+    expect(map).toContain("3. Otherwise, it goes in a secret file beside its item or project");
+    // The note still leads to everything about its subject.
+    expect(map).toContain("The note of the item or the project says where its secret is");
+    // Eva keeps a plain `.env` plain, so a key that code reads goes in `.env.local`.
+    expect(map).toContain("never in a plain `.env`");
+    expect(map).toContain("| A secret that the person uses to log in, to pay, or in a hurry away from Eva");
+    expect(map).not.toContain("or the master password");
+    expect(inventory).toContain("_Where a secret goes_ in the root `AGENTS.md`");
+    expect(inventory).toContain("`Recovery kit.secrets`");
+    expect(inventory).toContain("`Item.md` says where the paper copy is.");
+    expect(inventory).not.toContain("`Wi-Fi.secrets`");
   });
 
   test("a project links its list in the task app, and the task app picks what to do now (#1093)", () => {

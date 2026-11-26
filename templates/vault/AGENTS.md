@@ -63,7 +63,7 @@ Each role has its own service. _Personal rules_ names the person's app for each 
 | Code with its own repository | GitHub |
 | A place to visit some day, such as a restaurant to try or a city to see | The maps app |
 | Something else to watch, read or try some day | Its app, or the task app |
-| Logins for websites and apps, a password export, or the master password | The password manager, if the person has one |
+| A secret that the person uses to log in, to pay, or in a hurry away from Eva, such as a login, the recovery codes of an account or a card PIN. Also a password export. | The password manager, if the person has one. _Where a secret goes_ says where each other secret goes. |
 
 With no tool for that service, tell the person where to put it. Never store it in the vault instead.
 
@@ -90,7 +90,12 @@ Then:
 - **When the meaning is unclear, ask.** Never guess.
 - **Judge the rigor of a source before you file it as a fact.** A rigorous source is serious, studied and well made: research supports its method. The person's own word about their life, such as their diet, a goal, a symptom or a known allergy, needs no other source. A diagnosis that they make for themselves, such as "I have ADHD", still needs one. A folder that states more facts about the person needs a stronger source. `Life/Health/` needs the strongest: a clinic, a doctor, a lab, a measuring device or a validated test, each used as designed. File the result that the source gives, such as a score, never a diagnosis that it does not make. Put a result from a weaker source in `Life/Diary/`, on the day of the test. The entry says what the person did, the result, and that the source is not validated. For example, an online IQ quiz goes to the diary, and an IQ test at a professional clinic goes to `Life/Health/`. In a knowledge folder, such as `Library/`, write a weak claim as what its source says, not as a fact. When you cannot judge the rigor, or a result may not be worth keeping, ask the person: file it, put it in the diary, or drop it.
 - **Nothing moves when it ends.** Close it as its folder's `AGENTS.md` says: a status, a `closed` or `to` day, or its summary.
-- **A password or a key of something in the vault,** such as the Wi-Fi, a software licence key or a project's API key, goes in a `.secrets` file beside what it opens, which the vault stores encrypted. Never in a note or a notes app.
+- **Where a secret goes.** A secret is a password, a key, a PIN or a code. Ask these three questions in order, and stop at the first yes:
+  1. Does it recover the password manager itself? Such as its recovery kit or its emergency kit. It goes on paper and in `Recovery kit.secrets` beside the password manager's `Item.md` in `Life/Inventory/`, never inside the manager. The manager would lock it in with a lost master password.
+  2. Does the person use it to log in, to pay, or in a hurry away from Eva? Such as a login, the recovery codes of an account, a card PIN, the Wi-Fi password or a door code. It goes to the password manager. When the person has none, it goes in a secret file, as question 3 says.
+  3. Otherwise, it goes in a secret file beside its item or project, such as a software licence key in `Licence.secrets`, a certificate, a wallet file, or a key that code uses. Eva encrypts each secret file. A key that code reads goes in `.env.local`, never in a plain `.env`: Eva syncs a plain `.env` as plain text.
+
+  The note of the item or the project says where its secret is, such as "The Wi-Fi password is in the password manager." Never write the secret itself in a note or a notes app.
 - **When the person asks for something that breaks a rule,** name the rule and ask once. Their answer wins.
 - **Before deleting anything, confirm,** and offer to close it instead, as its folder's `AGENTS.md` says.
 
@@ -184,7 +189,7 @@ The project's notes sit loose beside its `AGENTS.md`. Create a subfolder, such a
 - **Decide by group, not by file.** A folder, or a group of files of one kind, stays together, such as progress captures, logo variants, the files of one video or a set of photos. When such a group holds a file over about 10 MB, the whole group goes to the cloud drive. The note links that folder and says what it holds. A small file outside such a group, such as a document, a spreadsheet or a note, still goes to the vault, unless the rule "Some files go to the cloud drive at any size" sends it there.
 - **Keep a small file, even when the web has a copy.** Sites close, free kits disappear and versions change. Fonts always stay with their design. A copy on the web never sends a file to the cloud drive. A link to the source can go beside the file, but it never replaces the file.
 - **Some files go to the cloud drive at any size,** with their link in the note they belong to. A scan of a document or a card needed in a hurry on a device without Eva goes there, such as an ID. A file that other people open or edit in a shared place goes there too. A copy that the person only sent to someone, such as a contract emailed to a landlord, stays in the vault. Eva is not reachable from every device, and nobody else can open her notes.
-- **Secrets** live only in encrypted secret files, such as `Wi-Fi.secrets` or `.env.local`. Never copy a secret into a note, a chat or any service, except the person's password manager.
+- **Secrets** live only in encrypted secret files, such as `Licence.secrets` or `.env.local`, or in the person's password manager. _Where a secret goes_ says which. Never copy a secret into a note, a chat or any other service.
 - **`.eva/` is Eva's configuration, not notes.** `.eva/AGENTS.md` says what each part holds.
 - **This file is the map of the vault. Keep it true.** When a folder in the root or in `Life/` is created, renamed or removed, update _What is where_ in the same turn.
 - **Agent files** are this file, each other `AGENTS.md` and each skill in `.eva/skills/`. Fix one yourself when it is simply wrong, such as a path that moved. Propose and wait when you only prefer it different. When the person asks for a change, make it. Never add an `@` import to one.

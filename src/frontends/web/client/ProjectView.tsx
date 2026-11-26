@@ -19,7 +19,8 @@ import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatState, unreadChats, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
 import { latestId, type LiveState } from "./live-state.ts";
-import { seenPart } from "./branch-path.ts";
+import { seenPart, showsLastTurn } from "./branch-path.ts";
+import { LeaveMarkedChat } from "./mark-unread.ts";
 import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { useShowError } from "./error-toast.tsx";
@@ -599,279 +600,299 @@ export function ProjectView({
     setFilter(listFilterOf(count));
   };
 
+  /** Leaves a chat that the person marked as unread for its project page, so the page does not see it again (#1101). */
+  const leaveMarked = (sessionId: string): void => {
+    // The newest page, not this render: the person may have opened another page while the request ran.
+    const now = pageRef.current;
+    if (page?.kind !== "chat" || chat === undefined || now?.kind !== "chat" || now.chatId !== page.chatId) return;
+    if (sessionId !== chat.id && (branch.id === null || !showsLastTurn(tree, branch.id, sessionId))) return;
+    clearAction();
+    const above: Page = { kind: "project", project: page.project };
+    opening.current = above;
+    leaveFor(projectAddressOf(routeOfPage(above)), () => setRoute(routeOfPage(above)));
+  };
+
   return (
-    <div className={`layout${page === null && !statsShown ? " list-home" : ""}`}>
-      <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Projects">
-        <div className="list-title-row">
-          <h2 className="list-title">Projects</h2>
-          <div className="list-title-actions">
-            <button
-              className="icon-button"
-              aria-label="Statistics"
-              data-tooltip="Statistics"
-              aria-current={statsShown ? "page" : undefined}
-              onClick={openStats}
-            >
-              <Icon name="chart" />
-            </button>
-            <button
-              className="primary"
-              aria-label="New project"
-              data-tooltip="New project"
-              onClick={() => setCreating(true)}
-            >
-              <Icon name="plus" />
-            </button>
-          </div>
-        </div>
-        {page === null && allProjects !== null && (
-          <NeedsYouCard
-            className="phone-only"
-            chats={roots}
-            projects={allProjects}
-            stateOf={stateOf}
-            onOpenChat={openHomeChat}
-          />
-        )}
-        <input
-          className="project-search"
-          aria-label="Search projects"
-          placeholder="Search projects"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <FilterRowChips
-          row={statusRow}
-          picked={filter.statuses}
-          onTap={(status) => setFilter({ ...filter, statuses: toggledChip(filter.statuses, status, statusRow) })}
-        />
-        <FilterRowChips
-          row={inUseRow}
-          picked={filter.inUse}
-          onTap={(choice) => setFilter({ ...filter, inUse: toggledChip(filter.inUse, choice, inUseRow) })}
-        />
-        {allTags.length > 0 && (
-          <div className="filter-chips" role="group" aria-label="Tag">
-            {tagChips.shown.map((candidate) => (
+    <LeaveMarkedChat.Provider value={leaveMarked}>
+      <div className={`layout${page === null && !statsShown ? " list-home" : ""}`}>
+        <nav className={`sidebar${sidebarOpen ? " open" : ""}`} aria-label="Projects">
+          <div className="list-title-row">
+            <h2 className="list-title">Projects</h2>
+            <div className="list-title-actions">
               <button
-                key={candidate}
-                className="filter-chip"
-                aria-pressed={tag === candidate}
-                onClick={() => setTag(tag === candidate ? "" : candidate)}
+                className="icon-button"
+                aria-label="Statistics"
+                data-tooltip="Statistics"
+                aria-current={statsShown ? "page" : undefined}
+                onClick={openStats}
               >
-                #{candidate}
+                <Icon name="chart" />
               </button>
-            ))}
-            {(tagsOpen || tagChips.hidden > 0) && (
-              <button className="filter-chip more" aria-expanded={tagsOpen} onClick={() => setTagsOpen(!tagsOpen)}>
-                {tagsOpen ? "Fewer tags" : `+${tagChips.hidden} more`}
+              <button
+                className="primary"
+                aria-label="New project"
+                data-tooltip="New project"
+                onClick={() => setCreating(true)}
+              >
+                <Icon name="plus" />
               </button>
-            )}
+            </div>
           </div>
-        )}
-        {projects === null && <ListSkeleton label="Loading the projects…" rows={3} shape="projects" />}
-        {projects === "failed" && (
-          <div className="muted" role="status">
-            Eva could not read the projects.{" "}
-            <button
-              onClick={() => {
-                setProjects(null);
-                setListVersion((version) => version + 1);
-              }}
-            >
-              Try again
-            </button>
-          </div>
-        )}
-        {Array.isArray(shownProjects) && shownProjects.length === 0 && (
-          <span className="muted">No project matches.</span>
-        )}
-        {Array.isArray(shownProjects) &&
-          shownProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              chatCount={chatCount(project)}
-              unread={unreadProjects.has(project.id)}
-              isOpen={page?.project.id === project.id}
-              onOpen={(kind) => open({ kind, project })}
-              onNewClone={() => {
-                cloneOnOpen.current = project;
-                open({ kind: "project", project });
-              }}
+          {page === null && allProjects !== null && (
+            <NeedsYouCard
+              className="phone-only"
+              chats={roots}
+              projects={allProjects}
+              stateOf={stateOf}
+              onOpenChat={openHomeChat}
             />
-          ))}
-      </nav>
-      {creating && (
-        <NewProjectDialog
-          onClose={() => setCreating(false)}
-          onCreated={(projectId, chatId) => void openCreated(projectId, chatId)}
-        />
-      )}
-      {sidebarOpen && page !== null && (
-        <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
-      )}
-      <main className="main">
-        {statsShown ? (
-          <ProjectStatsPage
-            projects={allProjects}
-            range={range}
-            onRangeChange={setRange}
-            onBack={() => goUp(projectAddressOf({ kind: "list" }))}
-            onOpenProject={(project) => open({ kind: "project", project })}
-            onFilterStatus={(chosen) => {
-              filterList(chosen);
-              goUp(projectAddressOf({ kind: "list" }));
-            }}
+          )}
+          <input
+            className="project-search"
+            aria-label="Search projects"
+            placeholder="Search projects"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
           />
-        ) : page === null ? (
-          <ProjectsHome
-            range={range}
-            onRangeChange={setRange}
-            projects={allProjects}
-            chats={roots}
-            stateOf={stateOf}
-            onOpenChat={openHomeChat}
-            onOpenProject={(project) => open({ kind: "project", project })}
-            onFilterStatus={filterList}
+          <FilterRowChips
+            row={statusRow}
+            picked={filter.statuses}
+            onTap={(status) => setFilter({ ...filter, statuses: toggledChip(filter.statuses, status, statusRow) })}
           />
-        ) : page.kind === "details" ? (
-          <ProjectDetailsEditor
-            key={page.project.id}
-            projectId={page.project.id}
-            onSaved={() => void reloadProject(page.project.id)}
-            onBack={() => openUp({ kind: "project", project: page.project })}
+          <FilterRowChips
+            row={inUseRow}
+            picked={filter.inUse}
+            onTap={(choice) => setFilter({ ...filter, inUse: toggledChip(filter.inUse, choice, inUseRow) })}
           />
-        ) : page.kind === "setup" ? (
-          <RepositorySetup
-            key={page.project.id}
-            projectId={page.project.id}
-            title={page.project.title}
-            onBack={() => openUp({ kind: "project", project: page.project })}
-            onFix={(request) => startChatAbout(page.project.id, request)}
-          />
-        ) : page.kind === "chat" && chat !== undefined ? (
-          <>
-            <ChatHeader
-              key={actionRequest.headerProps(chat.id).key}
-              startWith={actionRequest.headerProps(chat.id).startWith}
-              chat={chat}
-              details={chatDetails}
-              subtitle={
-                <span className="crumbs">
-                  <button className="crumb" onClick={() => openUp({ kind: "project", project: page.project })}>
-                    {page.project.title}
-                  </button>
-                  {page.clone !== null && <>{" › "}</>}
-                  {page.clone?.name}
-                  {pageRepositories.map((repository) =>
-                    repository.branch === null ? null : (
-                      <span key={repository.path} className="crumb-detail">
-                        {" · "}
-                        {pageRepositories.length > 1 && `${repository.name}: `}
-                        <span className="mono">{repository.branch}</span>
-                      </span>
-                    ),
-                  )}
-                </span>
-              }
-              extra={
-                <>
-                  {pageRepositories.map((repository) =>
-                    repository.pullRequest === null ? null : (
-                      <span key={repository.path} className="pill idle">
-                        {pageRepositories.length > 1 && `${repository.name} `}PR #{repository.pullRequest}
-                      </span>
-                    ),
-                  )}
-                  {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
-                  <span className="mode-chip soft">
-                    <Icon name="briefcase" />{" "}
-                    <span className="mode-chip-label">
-                      {page.clone === null ? chatKindName("specialist", page.project.frontMatter.type) : "Project mode"}
-                    </span>
-                  </span>
-                  <BranchesButton tree={tree} shown={branch} states={branchStates} />
-                </>
-              }
-              back={{
-                label: "Back to the project",
-                onClick: () => openUp({ kind: "project", project: page.project }),
-              }}
-              panelShown={panelShown}
-              onTogglePanel={togglePanel}
-              onChanged={onChanged}
-            />
-            {openedTree === null ? (
-              <ChatSkeleton />
-            ) : (
-              <Conversation
-                root={tree[0] ?? { ...chat, turns: [] }}
-                tree={tree}
-                shown={branch}
-                sessions={sessions}
-                live={live}
-                onChanged={onChanged}
-                approvals={approvals}
-                blocker={blocker}
-                voiceNotes={voiceNotes}
-                projectTitle={page.project.title}
+          {allTags.length > 0 && (
+            <div className="filter-chips" role="group" aria-label="Tag">
+              {tagChips.shown.map((candidate) => (
+                <button
+                  key={candidate}
+                  className="filter-chip"
+                  aria-pressed={tag === candidate}
+                  onClick={() => setTag(tag === candidate ? "" : candidate)}
+                >
+                  #{candidate}
+                </button>
+              ))}
+              {(tagsOpen || tagChips.hidden > 0) && (
+                <button className="filter-chip more" aria-expanded={tagsOpen} onClick={() => setTagsOpen(!tagsOpen)}>
+                  {tagsOpen ? "Fewer tags" : `+${tagChips.hidden} more`}
+                </button>
+              )}
+            </div>
+          )}
+          {projects === null && <ListSkeleton label="Loading the projects…" rows={3} shape="projects" />}
+          {projects === "failed" && (
+            <div className="muted" role="status">
+              Eva could not read the projects.{" "}
+              <button
+                onClick={() => {
+                  setProjects(null);
+                  setListVersion((version) => version + 1);
+                }}
+              >
+                Try again
+              </button>
+            </div>
+          )}
+          {Array.isArray(shownProjects) && shownProjects.length === 0 && (
+            <span className="muted">No project matches.</span>
+          )}
+          {Array.isArray(shownProjects) &&
+            shownProjects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                chatCount={chatCount(project)}
+                unread={unreadProjects.has(project.id)}
+                isOpen={page?.project.id === project.id}
+                onOpen={(kind) => open({ kind, project })}
+                onNewClone={() => {
+                  cloneOnOpen.current = project;
+                  open({ kind: "project", project });
+                }}
               />
-            )}
-          </>
-        ) : (
-          <ProjectPage
-            project={page.project}
-            clones={clones}
-            chatsOf={chatsOf}
-            stateOf={stateOf}
-            isWorking={isWorking}
-            error={error}
-            clonesFailed={clonesFailed}
-            onBackToList={() => openUp(null)}
-            onDetails={() => open({ kind: "details", project: page.project })}
-            onSetup={() => open({ kind: "setup", project: page.project })}
-            onNewClone={() => void newClone(page.project)}
-            specialistChats={specialistChats(page.project)}
-            onOpenChat={(clone, picked, action) => {
-              if (action === undefined) clearAction();
-              else actionRequest.ask(picked.id, action);
-              open({ kind: "chat", project: page.project, clone, chatId: picked.id });
-            }}
-            onNewChat={() => void startChat(page.project)}
-            onAskEva={() => startChatAbout(page.project.id)}
-            startingChat={startingChat}
-            onDeleteClone={(clone) => deleteClone(page.project, clone)}
-            syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
-            pulling={pulling}
-            onCheckRemotes={() =>
-              void syncAll(page.project.id, "Eva checks the remote of each clone.", () =>
-                api.fetchClones(page.project.id),
-              )
-            }
-            onPullAll={() =>
-              void syncAll(page.project.id, "Eva pulls each clone that is behind.", () =>
-                api.pullClones(page.project.id),
-              )
-            }
-            onPull={(clone, repository) => void pullOne(page.project, clone, repository)}
-            onPush={(clone, repository) => setPushing({ clone, repository })}
+            ))}
+        </nav>
+        {creating && (
+          <NewProjectDialog
+            onClose={() => setCreating(false)}
+            onCreated={(projectId, chatId) => void openCreated(projectId, chatId)}
           />
         )}
-        {pushing !== null && page?.kind === "project" && (
-          <PushCloneDialog
-            cloneName={pushing.clone.name}
-            repository={pushing.repository}
-            onClose={() => setPushing(null)}
-            onPush={(note) => pushOne(page.project, pushing.clone, pushing.repository, note)}
-          />
+        {sidebarOpen && page !== null && (
+          <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />
         )}
-        {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}
-      </main>
-      {/* The inspector is about one chat, so a project page has none. */}
-      {chat !== undefined &&
-        (openedTree === null ? panelShown && <ChatPanelLoading /> : <ChatPanel shown={panelShown} {...chatDetails} />)}
-    </div>
+        <main className="main">
+          {statsShown ? (
+            <ProjectStatsPage
+              projects={allProjects}
+              range={range}
+              onRangeChange={setRange}
+              onBack={() => goUp(projectAddressOf({ kind: "list" }))}
+              onOpenProject={(project) => open({ kind: "project", project })}
+              onFilterStatus={(chosen) => {
+                filterList(chosen);
+                goUp(projectAddressOf({ kind: "list" }));
+              }}
+            />
+          ) : page === null ? (
+            <ProjectsHome
+              range={range}
+              onRangeChange={setRange}
+              projects={allProjects}
+              chats={roots}
+              stateOf={stateOf}
+              onOpenChat={openHomeChat}
+              onOpenProject={(project) => open({ kind: "project", project })}
+              onFilterStatus={filterList}
+            />
+          ) : page.kind === "details" ? (
+            <ProjectDetailsEditor
+              key={page.project.id}
+              projectId={page.project.id}
+              onSaved={() => void reloadProject(page.project.id)}
+              onBack={() => openUp({ kind: "project", project: page.project })}
+            />
+          ) : page.kind === "setup" ? (
+            <RepositorySetup
+              key={page.project.id}
+              projectId={page.project.id}
+              title={page.project.title}
+              onBack={() => openUp({ kind: "project", project: page.project })}
+              onFix={(request) => startChatAbout(page.project.id, request)}
+            />
+          ) : page.kind === "chat" && chat !== undefined ? (
+            <>
+              <ChatHeader
+                key={actionRequest.headerProps(chat.id).key}
+                startWith={actionRequest.headerProps(chat.id).startWith}
+                chat={chat}
+                details={chatDetails}
+                subtitle={
+                  <span className="crumbs">
+                    <button className="crumb" onClick={() => openUp({ kind: "project", project: page.project })}>
+                      {page.project.title}
+                    </button>
+                    {page.clone !== null && <>{" › "}</>}
+                    {page.clone?.name}
+                    {pageRepositories.map((repository) =>
+                      repository.branch === null ? null : (
+                        <span key={repository.path} className="crumb-detail">
+                          {" · "}
+                          {pageRepositories.length > 1 && `${repository.name}: `}
+                          <span className="mono">{repository.branch}</span>
+                        </span>
+                      ),
+                    )}
+                  </span>
+                }
+                extra={
+                  <>
+                    {pageRepositories.map((repository) =>
+                      repository.pullRequest === null ? null : (
+                        <span key={repository.path} className="pill idle">
+                          {pageRepositories.length > 1 && `${repository.name} `}PR #{repository.pullRequest}
+                        </span>
+                      ),
+                    )}
+                    {/* Eva adds no prompt and no skill here: the chip only says which mode runs. */}
+                    <span className="mode-chip soft">
+                      <Icon name="briefcase" />{" "}
+                      <span className="mode-chip-label">
+                        {page.clone === null
+                          ? chatKindName("specialist", page.project.frontMatter.type)
+                          : "Project mode"}
+                      </span>
+                    </span>
+                    <BranchesButton tree={tree} shown={branch} states={branchStates} />
+                  </>
+                }
+                back={{
+                  label: "Back to the project",
+                  onClick: () => openUp({ kind: "project", project: page.project }),
+                }}
+                panelShown={panelShown}
+                onTogglePanel={togglePanel}
+                onChanged={onChanged}
+              />
+              {openedTree === null ? (
+                <ChatSkeleton />
+              ) : (
+                <Conversation
+                  root={tree[0] ?? { ...chat, turns: [] }}
+                  tree={tree}
+                  shown={branch}
+                  sessions={sessions}
+                  live={live}
+                  onChanged={onChanged}
+                  approvals={approvals}
+                  blocker={blocker}
+                  voiceNotes={voiceNotes}
+                  projectTitle={page.project.title}
+                />
+              )}
+            </>
+          ) : (
+            <ProjectPage
+              project={page.project}
+              clones={clones}
+              chatsOf={chatsOf}
+              stateOf={stateOf}
+              isWorking={isWorking}
+              error={error}
+              clonesFailed={clonesFailed}
+              onBackToList={() => openUp(null)}
+              onDetails={() => open({ kind: "details", project: page.project })}
+              onSetup={() => open({ kind: "setup", project: page.project })}
+              onNewClone={() => void newClone(page.project)}
+              specialistChats={specialistChats(page.project)}
+              onOpenChat={(clone, picked, action) => {
+                if (action === undefined) clearAction();
+                else actionRequest.ask(picked.id, action);
+                open({ kind: "chat", project: page.project, clone, chatId: picked.id });
+              }}
+              onNewChat={() => void startChat(page.project)}
+              onAskEva={() => startChatAbout(page.project.id)}
+              startingChat={startingChat}
+              onDeleteClone={(clone) => deleteClone(page.project, clone)}
+              syncWork={syncWork?.projectId === page.project.id ? syncWork.label : null}
+              pulling={pulling}
+              onCheckRemotes={() =>
+                void syncAll(page.project.id, "Eva checks the remote of each clone.", () =>
+                  api.fetchClones(page.project.id),
+                )
+              }
+              onPullAll={() =>
+                void syncAll(page.project.id, "Eva pulls each clone that is behind.", () =>
+                  api.pullClones(page.project.id),
+                )
+              }
+              onPull={(clone, repository) => void pullOne(page.project, clone, repository)}
+              onPush={(clone, repository) => setPushing({ clone, repository })}
+            />
+          )}
+          {pushing !== null && page?.kind === "project" && (
+            <PushCloneDialog
+              cloneName={pushing.clone.name}
+              repository={pushing.repository}
+              onClose={() => setPushing(null)}
+              onPush={(note) => pushOne(page.project, pushing.clone, pushing.repository, note)}
+            />
+          )}
+          {pushed !== null && <Toast message={pushed} onClose={() => setPushed(null)} />}
+        </main>
+        {/* The inspector is about one chat, so a project page has none. */}
+        {chat !== undefined &&
+          (openedTree === null ? (
+            panelShown && <ChatPanelLoading />
+          ) : (
+            <ChatPanel shown={panelShown} {...chatDetails} />
+          ))}
+      </div>
+    </LeaveMarkedChat.Provider>
   );
 }
 

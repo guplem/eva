@@ -333,6 +333,8 @@ export const api = {
     ),
   markSeen: (sessionId: string, turnCount: number): Promise<SessionRecord> =>
     request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/seen`, { turnCount }),
+  markUnread: (sessionId: string): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/unread`),
   pendingApprovals: (): Promise<PendingApproval[]> => request("GET", "/api/approvals", undefined, { limit: quickRead }),
   backgroundTasks: (): Promise<TaskSnapshot> => request("GET", "/api/tasks", undefined, { limit: quickRead }),
   runningTurns: (): Promise<TurnSnapshot> => request("GET", "/api/turns", undefined, { limit: quickRead }),

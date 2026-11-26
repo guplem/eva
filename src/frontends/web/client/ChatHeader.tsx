@@ -1,6 +1,6 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Rename automatically, Chat info, Compact, Archive and Delete chat. Rename, Compact and Delete chat ask
+ * Rename automatically, Chat info, Compact, Mark as unread, Archive and Delete chat. Rename, Compact and Delete chat ask
  * in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows the chat details
  * column. On a phone, a tap on the title opens the chat details.
  */
@@ -14,6 +14,7 @@ import { ProgressBar } from "./Loading.tsx";
 import { Toast } from "./Toast.tsx";
 import { BackButton, ShowListButton } from "./MainNav.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
+import { useMarkUnreadItem } from "./mark-unread.ts";
 import { compactLabel, SummaryChatQuestion } from "./SummaryChatQuestion.tsx";
 import { useLeaveGuard } from "./UnsavedChangesDialog.tsx";
 import { useEscape } from "./back-layer-hook.ts";
@@ -53,18 +54,18 @@ export function useChatActionRequest(): {
 }
 
 /**
- * The context menu of a chat in a list: the actions that need no open chat first. A list that
- * keeps archived chats apart gives the Archive item.
+ * The context menu of a chat in a list: the actions that need no open chat first. `extra` comes after
+ * Rename, such as Mark as unread, and Archive in a list that keeps archived chats apart.
  */
 export function chatListItems(
   onOpen: () => void,
   onAction: (action: ChatAction) => void,
-  archive?: MenuItem,
+  extra: readonly MenuItem[] = [],
 ): MenuItem[] {
   return [
     { label: "Open", icon: "chat", onChoose: onOpen },
     { label: "Rename", icon: "pen", onChoose: () => onAction("rename") },
-    ...(archive === undefined ? [] : [archive]),
+    ...extra,
     { label: "Delete chat", icon: "trash", danger: true, onChoose: () => onAction("delete") },
   ];
 }
@@ -163,6 +164,7 @@ export function ChatHeader({
   };
 
   const autoRename = useAutoRename(onChanged);
+  const markUnreadItem = useMarkUnreadItem();
   const items: MenuItem[] = [
     { label: "Rename", icon: "pen", onChoose: () => setRenaming(true) },
     // The branch on screen, as for Compact: a chat often ends far from where it began.
@@ -172,6 +174,9 @@ export function ChatHeader({
   if (isPhone) items.push({ label: "Chat info", icon: "chat", onChoose: () => openInfo(moreButton.current) });
   // Every chat has it, open or closed: a long chat can also confuse the model (issue 522).
   items.push({ label: compactLabel, icon: "chat", onChoose: () => setSummarizing(true) });
+  // The branch on screen: its last answer is the one that the person just read.
+  const shown = details.tree.find((session) => session.id === (details.shownId ?? chat.id));
+  if (shown !== undefined) items.push(...markUnreadItem({ ...shown, turnCount: shown.turns.length }));
   if (onArchived !== undefined) items.push(archiveItem(chat));
   items.push({ label: "Delete chat", icon: "trash", danger: true, onChoose: () => setAsking(true) });
 

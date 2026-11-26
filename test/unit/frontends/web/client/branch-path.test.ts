@@ -3,12 +3,14 @@ import {
   branchMap,
   branchNames,
   branchStates,
+  canMarkUnread,
   branchesAfter,
   branchesAtStart,
   firstShownBranch,
   pathOf,
   pickedBranch,
   seenPart,
+  showsLastTurn,
   type BranchSession,
 } from "../../../../../src/frontends/web/client/branch-path.ts";
 
@@ -292,5 +294,28 @@ describe("pickedBranch", () => {
     const rows = branchMap([main, fresh], "fresh").rows;
     expect(rows[2]).toMatchObject({ sessionId: "main", onPath: true, tip: true });
     expect(rows[1]?.tip).toBe(false);
+  });
+});
+
+describe("showsLastTurn (#1101)", () => {
+  test("the page shows the last answer of the shown branch, and of a parent that it continues from its end", () => {
+    const tip = session("tip", [turn("four", "t1")], { parentId: "main", at: "m3" });
+    expect(showsLastTurn([...tree, tip], "fork1", "fork1")).toBe(true);
+    expect(showsLastTurn([...tree, tip], "tip", "main")).toBe(true);
+  });
+
+  test("a parent that goes on after the fork point, and a branch off the path, keep their mark", () => {
+    expect(showsLastTurn(tree, "fork1", "main")).toBe(false);
+    expect(showsLastTurn(tree, "fork1", "fork2")).toBe(false);
+    expect(showsLastTurn(tree, "missing", "main")).toBe(false);
+  });
+});
+
+describe("canMarkUnread (#1101)", () => {
+  test("only a branch with a turn, no unseen turn and no other chat to report to", () => {
+    expect(canMarkUnread({ turnCount: 2, seenTurns: 2 })).toBe(true);
+    expect(canMarkUnread({ turnCount: 0, seenTurns: 0 })).toBe(false);
+    expect(canMarkUnread({ turnCount: 2, seenTurns: 1 })).toBe(false);
+    expect(canMarkUnread({ turnCount: 2, seenTurns: 2, reportsTo: "asker" })).toBe(false);
   });
 });

@@ -507,6 +507,7 @@ test("a right click on any row of the branch map gives the actions of its turn a
     "Fork",
     "Rename",
     "Rename automatically",
+    "Mark as unread",
     "Delete fork",
   ]);
 
@@ -1730,6 +1731,44 @@ test("a chat that answers while another chat is open shows as unread until the p
   await openList(page);
   await expect(slow).toBeVisible();
   await expect(slow.locator(".status-pill")).toHaveCount(0);
+});
+
+test("a read chat marked as unread leaves the page and shows as unread in the list (#1101)", async ({ page }) => {
+  await logIn(page);
+  // Both screen sizes share one demo server, so each size has its own chat.
+  const message = `a reminder to read again on the ${test.info().project.name}`;
+  await sendFirstMessage(page, message);
+  await expect(page.locator(".message.answer").first()).toContainText(message);
+  await waitUntilNewestChatSeen(page);
+  const id = page.url().replace(/^.*#\/chats\//, "");
+
+  // The menu of the open chat marks the branch on screen, and the page leaves for the New chat page.
+  await chooseFromMore(page, "Mark as unread");
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await openList(page);
+  const item = page.locator(".sidebar .list-item", { hasText: message });
+  await expect(item.locator(".status-pill")).toHaveText("Unread");
+  // An unread chat has nothing left to mark.
+  await rightClickInView(item);
+  const listMenu = page.getByRole("menu", { name: /^Actions of/ });
+  await expect(listMenu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+  await expect(listMenu.getByRole("menuitem", { name: "Mark as unread" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // The person reads it, then marks it again from the list, where no chat leaves.
+  await item.click();
+  await waitUntilNewestChatSeen(page);
+  await clickNewChat(page);
+  await openList(page);
+  await expect(item.locator(".status-pill")).toHaveCount(0);
+  await rightClickInView(item);
+  await listMenu.getByRole("menuitem", { name: "Mark as unread" }).click();
+  await expect(item.locator(".status-pill")).toHaveText("Unread");
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+
+  // Mark it as seen, so the shared demo keeps no unread chat.
+  await page.request.post(`/api/sessions/${id}/seen`, { data: { turnCount: 1 } });
 });
 
 test("an answer keeps its line breaks, lists and paragraphs (#37)", async ({ page }) => {

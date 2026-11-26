@@ -291,6 +291,24 @@ export function hasUnseenTurns(session: UnseenFacts): boolean {
 }
 
 /**
+ * Whether "Mark as unread" can change a branch (#1101): it needs an answer, and no unseen one. A chat that
+ * reports to another chat never shows as unread, so the mark would change nothing that the person sees.
+ */
+export function canMarkUnread(session: UnseenFacts): boolean {
+  return (session.reportsTo ?? null) === null && session.turnCount > 0 && !hasUnseenTurns(session);
+}
+
+/**
+ * Whether the page of the shown branch shows the last answer of a session. The page would then mark a
+ * branch that the person marked as unread as seen again at once, so it must leave the chat (#1101).
+ */
+export function showsLastTurn(tree: readonly BranchSession[], shownId: string, sessionId: string): boolean {
+  const session = tree.find((candidate) => candidate.id === sessionId);
+  const part = seenPart(tree, shownId).find((candidate) => candidate.id === sessionId);
+  return session !== undefined && part?.turns.length === session.turns.length;
+}
+
+/**
  * The state of each branch that waits for the person, runs a turn, or has an answer that the
  * person did not see. A request comes first, as it stops the turn. The shown branch is never
  * unread: the page shows its answers.

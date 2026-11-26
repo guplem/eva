@@ -24,6 +24,8 @@ export interface FakeGoogle {
   /** The tasks of each task list, by its id, in Google's format. One page holds at most `taskPageSize`. */
   readonly tasks: Map<string, unknown[]>;
   taskPageSize: number;
+  /** The task lists that Google no longer has: a read of their tasks answers 404. */
+  readonly missingTaskLists: Set<string>;
   /** The name of each Drive folder that Eva created. */
   readonly driveFolders: string[];
   /** A broken answer to a new Drive folder: a dropped connection, or a body that is not JSON. */
@@ -63,6 +65,7 @@ export function fakeGoogle(): FakeGoogle {
     taskLists: [],
     tasks: new Map(),
     taskPageSize: 100,
+    missingTaskLists: new Set(),
     driveFolders: [],
     driveFailure: null,
     email: "person@example.com",
@@ -125,6 +128,8 @@ export function fakeGoogle(): FakeGoogle {
         return page(fake.calendarEvents.get(decodeURIComponent(events[1] ?? "")) ?? [], url, fake.eventPageSize);
       if (url.pathname === "/tasks/v1/users/@me/lists") return page(fake.taskLists, url, fake.taskPageSize);
       const tasks = /^\/tasks\/v1\/lists\/([^/]+)\/tasks$/.exec(url.pathname);
+      if (tasks !== null && fake.missingTaskLists.has(decodeURIComponent(tasks[1] ?? "")))
+        return Response.json({ error: { code: 404 } }, { status: 404 });
       if (tasks !== null) return page(fake.tasks.get(decodeURIComponent(tasks[1] ?? "")) ?? [], url, fake.taskPageSize);
       return Response.json({ items: [] });
     },

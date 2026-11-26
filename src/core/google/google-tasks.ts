@@ -59,7 +59,7 @@ export class GoogleTasks implements TasksSource {
   async lists(): Promise<readonly WidgetTaskList[] | null> {
     const inputs = this.options.inputs();
     if (!isTasksOn(inputs)) return null;
-    return this.cache.cached(`lists|${inputs.config.email ?? ""}`, async () => {
+    return this.cache.cached(listsKey(inputs), async () => {
       const access = await googleAccessToken(inputs);
       if ("problem" in access) return null;
       return readLists(inputs, access.accessToken);
@@ -74,8 +74,15 @@ export class GoogleTasks implements TasksSource {
       if (lists === null) return null;
       const access = await googleAccessToken(inputs);
       if ("problem" in access) return null;
-      const read = await Promise.all(lists.map((list) => readTasks(inputs, access.accessToken, list.id, from, to)));
-      // The lists come in Google's order, and each list is sorted by its position, so a stable sort by day keeps both.
+      let read: PlacedTask[][];
+      try {
+        read = await Promise.all(lists.map((list) => readTasks(inputs, access.accessToken, list.id, from, to)));
+      } catch (error) {
+        // A list that the person deleted fails until Eva reads the lists again: the next draw does.
+        this.cache.forget(listsKey(inputs));
+        throw error;
+      }
+      // The lists come in Google's order, and each list is sorted by its own order, so a stable sort by day keeps both.
       return read
         .flat()
         .sort((first, second) => compare(first.task.dueDate, second.task.dueDate))
@@ -89,6 +96,10 @@ export const noTasks: TasksSource = {
   lists: () => Promise.resolve(null),
   tasks: () => Promise.resolve(null),
 };
+
+function listsKey(inputs: GoogleTasksInputs): string {
+  return `lists|${inputs.config.email ?? ""}`;
+}
 
 function isTasksOn(inputs: GoogleTasksInputs): boolean {
   return inputs.config.services.includes("tasks") && inputs.config.email !== null;
@@ -120,12 +131,14 @@ interface GoogleTask {
   readonly completed?: unknown;
   readonly deleted?: unknown;
   readonly position?: unknown;
+  readonly parent?: unknown;
   readonly webViewLink?: unknown;
 }
 
 interface PlacedTask {
   readonly task: WidgetTask;
-  readonly position: string;
+  /** The place in the list: the position of the task, or of its parent, then the position of a subtask. */
+  readonly place: readonly [string, string];
 }
 
 async function readTasks(
@@ -145,18 +158,36 @@ async function readTasks(
       // The widget shows a completed task struck through. A hidden task is one that the person cleared after it was done.
       showCompleted: "true",
       showHidden: "true",
+      // A task that someone assigned from a Google Doc or Chat shows in the person's Tasks too.
+      showAssigned: "true",
       maxResults: String(pageSize),
     }),
   );
-  const placed = items.flatMap((item) => {
+  const positions = new Map(items.map((item) => [item.id, text(item.position) ?? ""]));
+  const placed = items.flatMap((item): PlacedTask[] => {
     const task = contractTask(item, listId);
     // Eva checks the day herself: Google's docs do not say whether `dueMax` is inclusive.
     if (task === null || task.dueDate < from || task.dueDate > to) return [];
-    return [{ task, position: text(item.position) ?? "" }];
+    return [{ task, place: placeInList(item, positions) }];
   });
   return placed.sort(
-    (first, second) => compare(first.position, second.position) || compare(first.task.id, second.task.id),
+    (first, second) =>
+      compare(first.place[0], second.place[0]) ||
+      compare(first.place[1], second.place[1]) ||
+      compare(first.task.id, second.task.id),
   );
+}
+
+/**
+ * Google numbers a subtask only among the subtasks of its parent. So a subtask comes right after its
+ * parent, and a subtask whose parent is not in the window comes after the other tasks of the list.
+ */
+function placeInList(item: GoogleTask, positions: ReadonlyMap<unknown, string>): readonly [string, string] {
+  const position = text(item.position) ?? "";
+  const parent = text(item.parent);
+  if (parent === null) return [position, ""];
+  // A position is digits, and "~" sorts after each digit.
+  return [positions.get(parent) ?? `~${parent}`, `~${position}`];
 }
 
 /** The task in the contract's shape, or null for a deleted task, a task with no due day, or one that Eva cannot read. */
@@ -173,7 +204,8 @@ function contractTask(item: GoogleTask, listId: string): WidgetTask | null {
     dueDate,
     completed,
     completedAt: completed ? text(item.completed) : null,
-    notes: notes === null ? null : notes.slice(0, maxNotesLength),
+    // By code point, so a cut never splits a character such as an emoji.
+    notes: notes === null ? null : Array.from(notes).slice(0, maxNotesLength).join(""),
     link: httpsLink(item.webViewLink),
   };
 }

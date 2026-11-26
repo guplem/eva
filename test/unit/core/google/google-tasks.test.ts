@@ -192,10 +192,45 @@ describe("the tasks", () => {
     ]);
   });
 
-  test("cut long notes", async () => {
-    google.tasks.set(home.id, [{ id: "long", due: "2026-11-18T00:00:00.000Z", notes: "x".repeat(2500) }]);
-    const [task] = (await tasks.tasks("2026-11-18", "2026-11-18")) ?? [];
-    expect(task?.notes).toHaveLength(2000);
+  test("put each subtask after its parent, and a subtask whose parent is not in the window after the others", async () => {
+    const due = "2026-11-18T00:00:00.000Z";
+    google.taskLists = [home];
+    google.tasks.set(home.id, [
+      { id: "p2-child", parent: "p2", due, position: "00000000000000000000" },
+      { id: "p1-child-b", parent: "p1", due, position: "00000000000000000001" },
+      { id: "orphan", parent: "elsewhere", due, position: "00000000000000000000" },
+      { id: "p2", due, position: "00000000000000000002" },
+      { id: "p1-child-a", parent: "p1", due, position: "00000000000000000000" },
+      { id: "p1", due, position: "00000000000000000001" },
+    ]);
+    expect((await tasks.tasks("2026-11-18", "2026-11-18"))?.map((task) => task.id)).toEqual([
+      "p1",
+      "p1-child-a",
+      "p1-child-b",
+      "p2",
+      "p2-child",
+      "orphan",
+    ]);
+  });
+
+  test("cut long notes, never inside a character", async () => {
+    google.tasks.set(home.id, [
+      { id: "long", due: "2026-11-18T00:00:00.000Z", notes: "x".repeat(2500) },
+      { id: "emoji", due: "2026-11-18T00:00:00.000Z", notes: `${"x".repeat(1999)}😀😀` },
+    ]);
+    const read = (await tasks.tasks("2026-11-18", "2026-11-18")) ?? [];
+    expect(read.find((task) => task.id === "long")?.notes).toHaveLength(2000);
+    expect(read.find((task) => task.id === "emoji")?.notes).toBe(`${"x".repeat(1999)}😀`);
+  });
+
+  test("a list that fails makes the read fail once, and the next read asks Google for the lists again", async () => {
+    await tasks.tasks("2026-11-18", "2026-11-18");
+    // The person deletes a list while Eva keeps the old lists.
+    google.taskLists = [home];
+    google.missingTaskLists.add(work.id);
+    expect(await failure(tasks.tasks("2026-11-19", "2026-11-19"))).toContain("HTTP 404");
+    expect(await tasks.tasks("2026-11-19", "2026-11-19")).toEqual([]);
+    expect(await tasks.lists()).toEqual([{ id: "home-list", name: "Home" }]);
   });
 
   test("ask Google for completed and hidden tasks of whole UTC days, since a task keeps only its day", async () => {
@@ -205,6 +240,8 @@ describe("the tasks", () => {
     expect(query?.get("dueMax")).toBe("2026-11-20T00:00:00.000Z");
     expect(query?.get("showCompleted")).toBe("true");
     expect(query?.get("showHidden")).toBe("true");
+    // A task that someone assigned from a Google Doc or Chat shows in the person's Tasks too.
+    expect(query?.get("showAssigned")).toBe("true");
     expect(taskQueries()).toHaveLength(2);
   });
 

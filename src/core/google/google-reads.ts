@@ -92,6 +92,11 @@ export class GoogleAnswerCache {
     if (this.entries.size > maxCacheEntries && oldest !== undefined) this.entries.delete(oldest);
     return value;
   }
+
+  /** Drops a kept answer, so the next call asks Google again. */
+  forget(key: string): void {
+    this.entries.delete(key);
+  }
 }
 
 /** A text of Google, or null for a missing or empty one. */

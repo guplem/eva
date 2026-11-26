@@ -160,7 +160,7 @@ An `eva-google-tasks` input gives the widget the person's Google Tasks. Eva call
 - `eva/google-tasks/tasks.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the tasks of each list whose due day is in the window. `to` is inclusive. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`, as for the events.
 - A task holds only a due day, never a time: Google Tasks keeps only the day of a due date. So a task has no time span and no time zone. Show it on its day, such as with the all-day events.
 - A task with no due day does not come.
-- The order: by due day, then by the order of the lists, then by the order of the tasks in a list.
+- The order: by due day, then by the order of the lists, then by the order of the tasks in a list. A subtask comes right after its parent. A subtask whose parent is not in the answer, such as a parent due on another day, comes after the other tasks of its list.
 
   ```json
   [

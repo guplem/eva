@@ -699,6 +699,28 @@ test("Settings makes Enter send, and Shift+Enter then starts a new line (#1061)"
   await expect(box).toHaveValue("");
 });
 
+test("Settings turns every send key off, and then only the send button sends (#1097)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/settings/personalize/send-key");
+  const choices = page.getByRole("region", { name: "Send key", exact: true }).getByRole("group", { name: "Send with" });
+  const shiftEnter = choices.getByRole("button", { name: "Shift+Enter" });
+  await shiftEnter.click();
+  await expect(shiftEnter).toHaveAttribute("aria-pressed", "true");
+  await expect(choices.getByRole("button", { name: "Ctrl+Enter" })).toHaveAttribute("aria-pressed", "true");
+  await shiftEnter.click();
+  await choices.getByRole("button", { name: "Ctrl+Enter" }).click();
+  for (const chip of await choices.getByRole("button").all())
+    await expect(chip).toHaveAttribute("aria-pressed", "false");
+  await newChat(page);
+  const box = page.getByRole("textbox", { name: "Message" });
+  await box.fill("Only the button");
+  await box.press("Control+Enter");
+  await box.press("Enter");
+  await expect(page.locator(".message.user")).toHaveCount(0);
+  await page.getByRole("button", { name: "Send" }).click();
+  await expect(page.locator(".message.user").first()).toContainText("Only the button");
+});
+
 test("a send turns the box into the new bubble, and reduced motion plays no morph (#943)", async ({ page }) => {
   await logIn(page);
   await newChat(page);

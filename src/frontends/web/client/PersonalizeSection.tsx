@@ -1,5 +1,5 @@
 /**
- * The personalize page: this browser's look, navigation, sounds and send key, the person's rules for Eva, the widgets, then the location, the time
+ * The personalize page: this browser's look, navigation, sounds and send keys, the person's rules for Eva, the widgets, then the location, the time
  * zone, the language and formats, the rules for chat names, and the message box menu. The text fields wait for Save; the choices of this browser
  * apply at once. Each item of the message box menu saves on its own.
  */
@@ -10,7 +10,7 @@ import { ComposerMenuCard } from "./ComposerMenuCard.tsx";
 import { LocationCard } from "./LocationCard.tsx";
 import { WidgetsCard } from "./WidgetsCard.tsx";
 import { readAppearance, saveAppearance, type Appearance } from "./appearance.ts";
-import { readSendKey, saveSendKey, type SendKey } from "./send-key.ts";
+import { readSendKeys, saveSendKeys, sendKeyHint, sendKeyLabels, sendKeyOrder, type SendKey } from "./send-key.ts";
 import {
   canVibrate,
   cues,
@@ -504,34 +504,29 @@ const paletteChoices: readonly { value: PaletteId; label: string; icon: IconName
   icon: palette.icon,
 }));
 
-const sendKeyChoices: readonly { value: SendKey; label: string }[] = [
-  { value: "ctrl-enter", label: "Ctrl+Enter" },
-  { value: "enter", label: "Enter" },
-  { value: "shift-enter", label: "Shift+Enter" },
-];
+const sendKeyChoices: readonly { value: SendKey; label: string }[] = sendKeyOrder.map((key) => ({
+  value: key,
+  label: sendKeyLabels[key],
+}));
 
-const newLineHints: Record<SendKey, string> = {
-  "ctrl-enter": "Ctrl+Enter sends, or Cmd+Enter on a Mac. Enter and Shift+Enter add a new line.",
-  enter: "Enter sends. Shift+Enter adds a new line. A phone keyboard then has no key for a new line.",
-  "shift-enter": "Shift+Enter sends. Enter adds a new line.",
-};
-
+/** The person can choose several keys, or none: then only the send button sends (#1097). */
 function SendKeyCard(): ReactElement {
-  const [sendKey, setSendKey] = useState<SendKey>(readSendKey);
+  const [sendKeys, setSendKeys] = useState<readonly SendKey[]>(readSendKeys);
   return (
     <Card
       item="send-key"
       title="Send key"
-      description="The key that sends a message in a chat. This browser keeps its own key."
+      description="The keys that send a message in a chat. Choose any number of keys, or none. This browser keeps its own keys."
     >
       <ChoiceChips
         label="Send with"
-        value={sendKey}
+        multiple
+        value={sendKeys}
         choices={sendKeyChoices}
-        hint={newLineHints[sendKey]}
+        hint={sendKeyHint(sendKeys)}
         onChange={(next) => {
-          setSendKey(next);
-          saveSendKey(next);
+          setSendKeys(next);
+          saveSendKeys(next);
         }}
       />
     </Card>

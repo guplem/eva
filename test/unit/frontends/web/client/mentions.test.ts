@@ -207,18 +207,30 @@ describe("mentionProjectOf", () => {
 
 describe("picksMention", () => {
   test("Enter and Tab pick the mention, and Shift+Enter adds a line", () => {
-    expect(picksMention({ key: "Enter", shiftKey: false }, "ctrl-enter")).toBe(true);
-    expect(picksMention({ key: "Tab", shiftKey: false }, "ctrl-enter")).toBe(true);
-    expect(picksMention({ key: "Enter", shiftKey: true }, "ctrl-enter")).toBe(false);
-    expect(picksMention({ key: "Enter", shiftKey: true }, "enter")).toBe(false);
+    expect(picksMention({ key: "Enter", shiftKey: false }, ["ctrl-enter"])).toBe(true);
+    expect(picksMention({ key: "Tab", shiftKey: false }, ["ctrl-enter"])).toBe(true);
+    expect(picksMention({ key: "Enter", shiftKey: true }, ["ctrl-enter"])).toBe(false);
+    expect(picksMention({ key: "Enter", shiftKey: true }, ["enter"])).toBe(false);
   });
 
   test("with Shift+Enter to send, Shift+Enter picks the mention instead of sending a half-typed @", () => {
-    expect(picksMention({ key: "Enter", shiftKey: true }, "shift-enter")).toBe(true);
-    expect(picksMention({ key: "Tab", shiftKey: true }, "shift-enter")).toBe(false);
+    expect(picksMention({ key: "Enter", shiftKey: true }, ["shift-enter"])).toBe(true);
+    expect(picksMention({ key: "Tab", shiftKey: true }, ["shift-enter"])).toBe(false);
   });
 
   test("another key picks nothing", () => {
-    expect(picksMention({ key: "a", shiftKey: false }, "enter")).toBe(false);
+    expect(picksMention({ key: "a", shiftKey: false }, ["enter"])).toBe(false);
+  });
+});
+
+describe("picksMention with several send keys or none (#1097)", () => {
+  test("Shift+Enter picks the mention when it is one of the send keys", () => {
+    expect(picksMention({ key: "Enter", shiftKey: true }, ["ctrl-enter", "shift-enter"])).toBe(true);
+    expect(picksMention({ key: "Enter", shiftKey: true }, ["ctrl-enter", "enter"])).toBe(false);
+  });
+
+  test("with no send key, Enter picks the mention and Shift+Enter adds a line", () => {
+    expect(picksMention({ key: "Enter", shiftKey: false }, [])).toBe(true);
+    expect(picksMention({ key: "Enter", shiftKey: true }, [])).toBe(false);
   });
 });

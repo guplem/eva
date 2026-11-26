@@ -147,10 +147,13 @@ export function busyProjects(
 }
 
 /**
- * True when a key press in the open `@` list picks the marked mention. Shift+Enter adds a new line, unless it is
- * the send key: then a half-typed `@` would go out with the message.
+ * True when a key press in the open `@` list picks the marked mention. Shift+Enter adds a new line, unless it is one of
+ * the send keys: then a half-typed `@` would go out with the message.
  */
-export function picksMention(press: { readonly key: string; readonly shiftKey: boolean }, sendKey: SendKey): boolean {
+export function picksMention(
+  press: { readonly key: string; readonly shiftKey: boolean },
+  sendKeys: readonly SendKey[],
+): boolean {
   if (press.key === "Tab") return !press.shiftKey;
-  return press.key === "Enter" && (!press.shiftKey || sendKey === "shift-enter");
+  return press.key === "Enter" && (!press.shiftKey || sendKeys.includes("shift-enter"));
 }

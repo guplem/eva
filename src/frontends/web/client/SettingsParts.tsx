@@ -404,20 +404,35 @@ export function SelectField<T extends string>({
   );
 }
 
-/** A choice of few values as a row of chips that saves at once. The pressed chip is the current value. */
+/** The value of a row of chips: one choice, or with `multiple` any number of choices, none included. */
+type ChipValue<T extends string> =
+  | { readonly multiple?: false; readonly value: T; readonly onChange: (value: T) => void }
+  | { readonly multiple: true; readonly value: readonly T[]; readonly onChange: (value: readonly T[]) => void };
+
+/**
+ * A choice of few values as a row of chips that saves at once. Each pressed chip is a current value. With `multiple`,
+ * a press turns a chip on or off, and the new value keeps the order of the chips.
+ */
 export function ChoiceChips<T extends string>({
   label,
-  value,
   choices,
   hint,
-  onChange,
+  ...chosen
 }: {
   readonly label: string;
-  readonly value: T;
   readonly choices: readonly { readonly value: T; readonly label: string; readonly icon?: IconName }[];
   readonly hint?: ReactNode;
-  readonly onChange: (value: T) => void;
-}): ReactElement {
+} & ChipValue<T>): ReactElement {
+  const isOn = (value: T): boolean =>
+    chosen.multiple === true ? chosen.value.includes(value) : chosen.value === value;
+  const press = (value: T): void => {
+    if (chosen.multiple !== true) {
+      chosen.onChange(value);
+      return;
+    }
+    const next = isOn(value) ? chosen.value.filter((item) => item !== value) : [...chosen.value, value];
+    chosen.onChange(choices.map((choice) => choice.value).filter((item) => next.includes(item)));
+  };
   return (
     <div className="field">
       <span className="field-label">{label}</span>
@@ -429,10 +444,10 @@ export function ChoiceChips<T extends string>({
             // A chip in a form must never send the form.
             type="button"
             className="choice-chip"
-            aria-pressed={choice.value === value}
-            onClick={() => onChange(choice.value)}
+            aria-pressed={isOn(choice.value)}
+            onClick={() => press(choice.value)}
           >
-            {choice.value === value && <Icon name="check" className="choice-tick" />}
+            {isOn(choice.value) && <Icon name="check" className="choice-tick" />}
             {choice.icon !== undefined && <Icon name={choice.icon} />}
             {choice.label}
           </button>

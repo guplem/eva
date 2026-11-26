@@ -213,6 +213,21 @@ describe("the tasks", () => {
     ]);
   });
 
+  test("place a subtask the same way in each window, also when its parent is due on another day", async () => {
+    google.taskLists = [home];
+    google.tasks.set(home.id, [
+      { id: "parent", due: "2026-11-18T00:00:00.000Z", position: "00000000000000000001" },
+      { id: "child", parent: "parent", due: "2026-11-19T00:00:00.000Z", position: "00000000000000000000" },
+      { id: "task", due: "2026-11-19T00:00:00.000Z", position: "00000000000000000002" },
+    ]);
+    expect((await tasks.tasks("2026-11-18", "2026-11-19"))?.map((task) => task.id)).toEqual([
+      "parent",
+      "task",
+      "child",
+    ]);
+    expect((await tasks.tasks("2026-11-19", "2026-11-19"))?.map((task) => task.id)).toEqual(["task", "child"]);
+  });
+
   test("cut long notes, never inside a character", async () => {
     google.tasks.set(home.id, [
       { id: "long", due: "2026-11-18T00:00:00.000Z", notes: "x".repeat(2500) },

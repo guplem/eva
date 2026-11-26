@@ -78,7 +78,7 @@ export class GoogleTasks implements TasksSource {
       try {
         read = await Promise.all(lists.map((list) => readTasks(inputs, access.accessToken, list.id, from, to)));
       } catch (error) {
-        // A list that the person deleted fails until Eva reads the lists again: the next draw does.
+        // The next draw reads the lists again, so a list that the person deleted fails only once.
         this.cache.forget(listsKey(inputs));
         throw error;
       }
@@ -163,13 +163,14 @@ async function readTasks(
       maxResults: String(pageSize),
     }),
   );
-  const positions = new Map(items.map((item) => [item.id, text(item.position) ?? ""]));
-  const placed = items.flatMap((item): PlacedTask[] => {
+  const kept = items.flatMap((item) => {
     const task = contractTask(item, listId);
     // Eva checks the day herself: Google's docs do not say whether `dueMax` is inclusive.
     if (task === null || task.dueDate < from || task.dueDate > to) return [];
-    return [{ task, place: placeInList(item, positions) }];
+    return [{ item, task }];
   });
+  const byId = new Map(kept.map((each) => [each.task.id, each]));
+  const placed = kept.map(({ item, task }): PlacedTask => ({ task, place: placeInList(item, task, byId) }));
   return placed.sort(
     (first, second) =>
       compare(first.place[0], second.place[0]) ||
@@ -180,14 +181,21 @@ async function readTasks(
 
 /**
  * Google numbers a subtask only among the subtasks of its parent. So a subtask comes right after its
- * parent, and a subtask whose parent is not in the window comes after the other tasks of the list.
+ * parent on the same day. A subtask whose parent is on another day, or not in the answer, comes after
+ * the other tasks of its day in the list: so the order of a day never depends on the window.
  */
-function placeInList(item: GoogleTask, positions: ReadonlyMap<unknown, string>): readonly [string, string] {
+function placeInList(
+  item: GoogleTask,
+  task: WidgetTask,
+  byId: ReadonlyMap<string, { readonly item: GoogleTask; readonly task: WidgetTask }>,
+): readonly [string, string] {
   const position = text(item.position) ?? "";
-  const parent = text(item.parent);
-  if (parent === null) return [position, ""];
+  const parentId = text(item.parent);
+  if (parentId === null) return [position, ""];
+  const parent = byId.get(parentId);
   // A position is digits, and "~" sorts after each digit.
-  return [positions.get(parent) ?? `~${parent}`, `~${position}`];
+  if (parent?.task.dueDate !== task.dueDate) return [`~${parentId}`, `~${position}`];
+  return [text(parent.item.position) ?? "", `~${position}`];
 }
 
 /** The task in the contract's shape, or null for a deleted task, a task with no due day, or one that Eva cannot read. */

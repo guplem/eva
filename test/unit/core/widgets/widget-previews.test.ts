@@ -8,6 +8,7 @@ import { WidgetCopies } from "../../../../src/core/widgets/widget-copies.ts";
 import { readWidgetList } from "../../../../src/core/widgets/widget-list.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 import type { CalendarSource } from "../../../../src/core/google/google-calendar.ts";
+import type { TasksSource } from "../../../../src/core/google/google-tasks.ts";
 import { PreviewGrants } from "../../../../src/core/widgets/widget-previews.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
@@ -213,6 +214,40 @@ describe("the preview of a clone", () => {
         .token ?? "";
     expect((await get(mine, "eva/google-calendar/calendars.json")).body).toContain('"name":"Work"');
     expect(await get(mine, "eva/google-calendar/events.json?from=2026-01-01&to=2026-01-31")).toEqual({
+      status: 200,
+      body: "[]",
+    });
+  });
+
+  test("the tasks answer 404 with example data, and the person's tasks with My data", async () => {
+    const source: TasksSource = {
+      lists: () => Promise.resolve([{ id: "home", name: "Home" }]),
+      tasks: () => Promise.resolve([]),
+    };
+    widgets = new Widgets({ ...options, tasks: source });
+    const tasks = {
+      id: "tasks",
+      type: "eva-google-tasks",
+      access: "read",
+      label: "Tasks",
+      description: "Your Google Tasks.",
+      why: "The widget shows your tasks.",
+      required: false,
+    };
+    write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 4, inputs: [habits, tasks] }));
+    write(clone, "example/google-tasks/lists.json", "[]");
+    const paths = ["eva/google-tasks/lists.json", "eva/google-tasks/tasks.json?from=2026-01-01&to=2026-01-31"];
+    const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
+    for (const path of paths)
+      expect({ path, status: (await get(example, path)).status }).toEqual({ path, status: 404 });
+    expect((await get(example, "example/google-tasks/lists.json")).body).toBe("[]");
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    expect(asked.ask?.added).toEqual(["Read your Google Tasks."]);
+    const mine =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    expect((await get(mine, "eva/google-tasks/lists.json")).body).toBe('[{"id":"home","name":"Home"}]');
+    expect(await get(mine, "eva/google-tasks/tasks.json?from=2026-01-01&to=2026-01-31")).toEqual({
       status: 200,
       body: "[]",
     });

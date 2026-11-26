@@ -300,6 +300,9 @@ machine state/widget-approvals.json approvals[].entry
 machine state/widget-approvals.json approvals[].googleCalendar
 machine state/widget-approvals.json approvals[].googleCalendar=read
 machine state/widget-approvals.json approvals[].googleCalendar=write
+machine state/widget-approvals.json approvals[].googleTasks
+machine state/widget-approvals.json approvals[].googleTasks=read
+machine state/widget-approvals.json approvals[].googleTasks=write
 machine state/widget-approvals.json approvals[].hosts
 machine state/widget-approvals.json approvals[].location
 machine state/widget-approvals.json approvals[].name
@@ -335,6 +338,9 @@ machine state/widget-previews.json previews[].folder
 machine state/widget-previews.json previews[].googleCalendar
 machine state/widget-previews.json previews[].googleCalendar=read
 machine state/widget-previews.json previews[].googleCalendar=write
+machine state/widget-previews.json previews[].googleTasks
+machine state/widget-previews.json previews[].googleTasks=read
+machine state/widget-previews.json previews[].googleTasks=write
 machine state/widget-previews.json previews[].hosts
 machine state/widget-previews.json previews[].location
 machine state/widget-previews.json previews[].paths

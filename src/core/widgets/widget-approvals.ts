@@ -37,6 +37,8 @@ export const approvalSchema = z.object({
   location: z.boolean(),
   /** The access of an `eva-google-calendar` input, or null. A record from before the field reads as "no calendar". */
   googleCalendar: z.enum(["read", "write"]).nullable().default(null),
+  /** The access of an `eva-google-tasks` input (contract 4), or null. A record from before the field reads as "no tasks". */
+  googleTasks: z.enum(["read", "write"]).nullable().default(null),
   /** True for an `eva-cases` input. A record from before the field reads as "no cases". */
   cases: z.boolean().default(false),
   /** The approved asks of contract 3, such as `chat`. A record from before the field reads as "no asks". */

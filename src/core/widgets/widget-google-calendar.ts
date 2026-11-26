@@ -44,7 +44,8 @@ export async function calendarAnswer(
   }
 }
 
-function isWindow(from: string, to: string): boolean {
+/** True for a window of real days, `to` not before `from`, of at most `maxCalendarDays` days. */
+export function isWindow(from: string, to: string): boolean {
   if (!isDay(from) || !isDay(to) || to < from) return false;
   const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / dayMs + 1;
   return days <= maxCalendarDays;

@@ -214,13 +214,15 @@ describe("the vault template", () => {
     expect(files["AGENTS.md"]).toContain("every other `AGENTS.md` in the vault");
     expect(files["AGENTS.md"]).not.toContain("offer status `gone`");
     expect(files["Life/Inventory/AGENTS.md"]).toContain("A finished repair → a dated line here.");
-    expect(files["Life/Inventory/AGENTS.md"]).toContain("A login, the recovery codes of an account, a card PIN");
+    expect(files["Life/Inventory/AGENTS.md"]).toContain("a login, the recovery codes of an account, a card PIN");
     expect(files[".eva/AGENTS.md"]).toContain("`settings/chat-names.md`");
     expect(files[".eva/AGENTS.md"]).toContain("`eva settings set`");
     expect(files["Life/Inventory/AGENTS.md"]).toContain(
       "**Closing:** when the person sells it, loses it, throws it away or ends its contract",
     );
-    expect(files["AGENTS.md"]).toContain("or in the person's password manager. _Where a secret goes_ says which.");
+    expect(files["AGENTS.md"]).toContain(
+      "in the person's password manager, or on paper. _Where a secret goes_ says which.",
+    );
   });
 
   test("a provider has its own folder, apart from the people behind it, and a place to visit goes to the maps app (#934)", () => {
@@ -353,8 +355,8 @@ describe("the vault template", () => {
     const inventory = files["Life/Inventory/AGENTS.md"] ?? "";
     expect(map).toContain("**Where a secret goes.**");
     // A recovery kit inside its own manager is lost with the master password.
-    expect(map).toContain("1. Does it recover the password manager itself?");
-    expect(map).toContain("never inside the manager");
+    expect(map).toContain("1. Does it open or recover the password manager itself?");
+    expect(map).toContain("It never goes inside the manager");
     // Eva cannot read a secret file, so what the person needs away from Eva goes to the manager.
     expect(map).toContain("2. Does the person use it to log in, to pay, or in a hurry away from Eva?");
     expect(map).toContain("the recovery codes of an account");
@@ -363,8 +365,13 @@ describe("the vault template", () => {
     expect(map).toContain("The note of the item or the project says where its secret is");
     // Eva keeps a plain `.env` plain, so a key that code reads goes in `.env.local`.
     expect(map).toContain("never in a plain `.env`");
-    expect(map).toContain("| A secret that the person uses to log in, to pay, or in a hurry away from Eva");
+    expect(map).toContain("| A secret used to log in, to pay, or in a hurry away from Eva");
     expect(map).not.toContain("or the master password");
+    // The vault password opens every secret file, so a secret file cannot hold it.
+    expect(map).toContain("Eva's vault password opens every secret file, so it never goes in one.");
+    // With no password manager, "never store it in the vault" must not block a secret.
+    expect(map).toContain("A secret is the exception: _Where a secret goes_ says where it goes.");
+    expect(inventory).toContain("When the person has no password manager, they go in a `.secrets` file");
     expect(inventory).toContain("_Where a secret goes_ in the root `AGENTS.md`");
     expect(inventory).toContain("`Recovery kit.secrets`");
     expect(inventory).toContain("`Item.md` says where the paper copy is.");

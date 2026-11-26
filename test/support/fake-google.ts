@@ -1,6 +1,6 @@
 /**
  * A fake Google for tests: the token endpoint, one cheap read of each service, a Drive folder, and
- * the calendar list and events of Google Calendar, at `baseUrl`. A test sets an error to see how Eva names the step to fix.
+ * the calendar list and events of Google Calendar, and the task lists and tasks of Google Tasks, at `baseUrl`. A test sets an error to see how Eva names the step to fix.
  */
 import type { Server } from "bun";
 
@@ -19,6 +19,11 @@ export interface FakeGoogle {
   /** The events of each calendar, by its id, in Google's format. One page holds at most `eventPageSize`. */
   readonly calendarEvents: Map<string, unknown[]>;
   eventPageSize: number;
+  /** The task lists, in Google's format. */
+  taskLists: unknown[];
+  /** The tasks of each task list, by its id, in Google's format. One page holds at most `taskPageSize`. */
+  readonly tasks: Map<string, unknown[]>;
+  taskPageSize: number;
   /** The name of each Drive folder that Eva created. */
   readonly driveFolders: string[];
   /** A broken answer to a new Drive folder: a dropped connection, or a body that is not JSON. */
@@ -55,6 +60,9 @@ export function fakeGoogle(): FakeGoogle {
     calendarList: [],
     calendarEvents: new Map(),
     eventPageSize: 2500,
+    taskLists: [],
+    tasks: new Map(),
+    taskPageSize: 100,
     driveFolders: [],
     driveFailure: null,
     email: "person@example.com",
@@ -113,15 +121,11 @@ export function fakeGoogle(): FakeGoogle {
       }
       if (url.pathname === "/calendar/v3/users/me/calendarList") return Response.json({ items: fake.calendarList });
       const events = /^\/calendar\/v3\/calendars\/([^/]+)\/events$/.exec(url.pathname);
-      if (events !== null) {
-        const all = fake.calendarEvents.get(decodeURIComponent(events[1] ?? "")) ?? [];
-        const start = Number(url.searchParams.get("pageToken") ?? "0");
-        const end = start + fake.eventPageSize;
-        return Response.json({
-          items: all.slice(start, end),
-          ...(end < all.length ? { nextPageToken: String(end) } : {}),
-        });
-      }
+      if (events !== null)
+        return page(fake.calendarEvents.get(decodeURIComponent(events[1] ?? "")) ?? [], url, fake.eventPageSize);
+      if (url.pathname === "/tasks/v1/users/@me/lists") return page(fake.taskLists, url, fake.taskPageSize);
+      const tasks = /^\/tasks\/v1\/lists\/([^/]+)\/tasks$/.exec(url.pathname);
+      if (tasks !== null) return page(fake.tasks.get(decodeURIComponent(tasks[1] ?? "")) ?? [], url, fake.taskPageSize);
       return Response.json({ items: [] });
     },
   });
@@ -131,4 +135,11 @@ export function fakeGoogle(): FakeGoogle {
       void server.stop(true);
     },
   });
+}
+
+/** One page of a Google list: the page token is the index of its first item. */
+function page(all: readonly unknown[], url: URL, size: number): Response {
+  const start = Number(url.searchParams.get("pageToken") ?? "0");
+  const end = start + size;
+  return Response.json({ items: all.slice(start, end), ...(end < all.length ? { nextPageToken: String(end) } : {}) });
 }

@@ -1127,6 +1127,19 @@ describe("routes", () => {
     expect(missing.status).toBe(404);
   });
 
+  test("marks the last turn of a chat as unread, and refuses an unknown chat (#1101)", async () => {
+    const session = await json<{ id: string }>(
+      await call("/api/sessions", { method: "POST", body: { mode: "assistant" } }),
+    );
+    await eva.sessions.send(session.id, "one");
+    eva.sessions.markSeen(session.id, 1);
+    const unread = await call(`/api/sessions/${session.id}/unread`, { method: "POST" });
+    expect(unread.status).toBe(200);
+    expect((await json<{ seenTurns: number }>(unread)).seenTurns).toBe(0);
+    const missing = await call("/api/sessions/missing/unread", { method: "POST" });
+    expect(missing.status).toBe(404);
+  });
+
   test("keeps the unsent text of a chat for every page, and sends each change on the socket (issue 652)", async () => {
     const events: { kind: string; [field: string]: unknown }[] = [];
     const socket = new WebSocket(`${api.url.replace("http", "ws")}/api/events?devices`, {

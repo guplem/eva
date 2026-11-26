@@ -492,6 +492,20 @@ export class SessionManager {
     return updated;
   }
 
+  /**
+   * Marks the last turn of a chat as unseen again, so the person keeps it as a reminder (#1101). A chat with
+   * an unseen turn, or with no turn, stays as it is.
+   */
+  markUnread(sessionId: string): SessionRecord {
+    const session = this.get(sessionId);
+    const seenTurns = Math.max(0, session.turns.length - 1);
+    if (seenTurns >= session.seenTurns) return session;
+    const updated = { ...session, seenTurns };
+    this.options.store.save(updated);
+    this.emit(sessionId, { kind: "session_seen", seenTurns });
+    return updated;
+  }
+
   /** Moves a chat to the archive, or brings it back. The web app archives the root chat, and its forks follow it. */
   setArchived(sessionId: string, archived: boolean): SessionRecord {
     const session = this.get(sessionId);

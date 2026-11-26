@@ -1017,6 +1017,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       const { turnCount } = seenSchema.parse(await request.json());
       return json(eva.sessions.markSeen(sessionId, turnCount));
     }
+    if (action === "unread") return json(eva.sessions.markUnread(sessionId));
     if (action === "archive") {
       const { archived } = archiveSchema.parse(await request.json());
       return json(eva.sessions.setArchived(sessionId, archived));

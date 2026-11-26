@@ -3,7 +3,8 @@
  * an `eva-google-calendar` input. Without it, they answer 404, so the widget gets nothing.
  */
 import { isEvaError } from "../../shared/errors.ts";
-import { isDay, type CalendarSource } from "../google/google-calendar.ts";
+import type { CalendarSource } from "../google/google-calendar.ts";
+import { isDay } from "../google/google-reads.ts";
 import type { Project } from "../projects/project-catalog.ts";
 import { eventsWithProjects } from "./widget-calendar-projects.ts";
 import type { WidgetGrant } from "./widget-changes.ts";

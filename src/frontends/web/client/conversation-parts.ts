@@ -439,15 +439,15 @@ export interface ComposerKey {
 const inputMethodKeyCode = 229;
 
 /**
- * True when a key press sends the message with the key that the person chose. The other Enter keys
- * start a new line. An Enter that picks the word of an input method, such as for Japanese, must not send.
+ * True when a key press sends the message with one of the keys that the person chose. Each key is one exact press:
+ * Ctrl+Enter (or Cmd+Enter), a plain Enter, or Shift+Enter. The other Enter keys start a new line. An Enter that
+ * picks the word of an input method, such as for Japanese, must not send.
  */
-export function sendsOnEnter(press: ComposerKey, sendKey: SendKey): boolean {
+export function sendsOnEnter(press: ComposerKey, sendKeys: readonly SendKey[]): boolean {
   if (press.key !== "Enter" || press.isComposing || press.keyCode === inputMethodKeyCode) return false;
   const command = press.ctrlKey || press.metaKey;
-  if (sendKey === "ctrl-enter") return command;
-  if (sendKey === "shift-enter") return press.shiftKey && !command;
-  return !press.shiftKey;
+  const pressed: SendKey = command ? "ctrl-enter" : press.shiftKey ? "shift-enter" : "enter";
+  return sendKeys.includes(pressed);
 }
 
 /**

@@ -497,41 +497,56 @@ describe("snapsToBottom", () => {
 
 describe("sendsOnEnter", () => {
   const key = { key: "Enter", ctrlKey: false, metaKey: false, shiftKey: false, isComposing: false, keyCode: 13 };
+  const ctrl = { ...key, ctrlKey: true };
+  const shift = { ...key, shiftKey: true };
 
   test("sends on Ctrl+Enter, and on Cmd+Enter for a Mac", () => {
-    expect(sendsOnEnter({ ...key, ctrlKey: true }, "ctrl-enter")).toBe(true);
-    expect(sendsOnEnter({ ...key, metaKey: true }, "ctrl-enter")).toBe(true);
+    expect(sendsOnEnter(ctrl, ["ctrl-enter"])).toBe(true);
+    expect(sendsOnEnter({ ...key, metaKey: true }, ["ctrl-enter"])).toBe(true);
+    expect(sendsOnEnter({ ...ctrl, shiftKey: true }, ["ctrl-enter"])).toBe(true);
   });
 
   test("keeps a plain Enter and Shift+Enter for a new line", () => {
-    expect(sendsOnEnter(key, "ctrl-enter")).toBe(false);
-    expect(sendsOnEnter({ ...key, shiftKey: true }, "ctrl-enter")).toBe(false);
+    expect(sendsOnEnter(key, ["ctrl-enter"])).toBe(false);
+    expect(sendsOnEnter(shift, ["ctrl-enter"])).toBe(false);
   });
 
-  test("with Enter to send, sends on Enter and Ctrl+Enter, and keeps Shift+Enter for a new line", () => {
-    expect(sendsOnEnter(key, "enter")).toBe(true);
-    expect(sendsOnEnter({ ...key, ctrlKey: true }, "enter")).toBe(true);
-    expect(sendsOnEnter({ ...key, shiftKey: true }, "enter")).toBe(false);
+  test("with Enter to send, sends only on a plain Enter", () => {
+    expect(sendsOnEnter(key, ["enter"])).toBe(true);
+    expect(sendsOnEnter(ctrl, ["enter"])).toBe(false);
+    expect(sendsOnEnter(shift, ["enter"])).toBe(false);
   });
 
   test("with Shift+Enter to send, sends only on Shift+Enter", () => {
-    expect(sendsOnEnter({ ...key, shiftKey: true }, "shift-enter")).toBe(true);
-    expect(sendsOnEnter(key, "shift-enter")).toBe(false);
-    expect(sendsOnEnter({ ...key, ctrlKey: true }, "shift-enter")).toBe(false);
+    expect(sendsOnEnter(shift, ["shift-enter"])).toBe(true);
+    expect(sendsOnEnter(key, ["shift-enter"])).toBe(false);
+    expect(sendsOnEnter(ctrl, ["shift-enter"])).toBe(false);
+  });
+
+  test("with several send keys, each of them sends (#1097)", () => {
+    const keys = ["ctrl-enter", "shift-enter"] as const;
+    expect(sendsOnEnter(ctrl, keys)).toBe(true);
+    expect(sendsOnEnter(shift, keys)).toBe(true);
+    expect(sendsOnEnter(key, keys)).toBe(false);
+  });
+
+  test("with no send key, no key sends (#1097)", () => {
+    for (const press of [key, ctrl, shift, { ...key, metaKey: true }]) expect(sendsOnEnter(press, [])).toBe(false);
   });
 
   test("sends on no other key", () => {
-    expect(sendsOnEnter({ ...key, key: "a", ctrlKey: true }, "ctrl-enter")).toBe(false);
-    expect(sendsOnEnter({ ...key, key: "a" }, "enter")).toBe(false);
-    expect(sendsOnEnter({ ...key, key: "a", shiftKey: true }, "shift-enter")).toBe(false);
+    const all = ["ctrl-enter", "enter", "shift-enter"] as const;
+    expect(sendsOnEnter({ ...ctrl, key: "a" }, all)).toBe(false);
+    expect(sendsOnEnter({ ...key, key: "a" }, all)).toBe(false);
+    expect(sendsOnEnter({ ...shift, key: "a" }, all)).toBe(false);
   });
 
   test("leaves an Enter that ends an IME composition to the input method", () => {
     for (const sendKey of ["ctrl-enter", "enter", "shift-enter"] as const) {
       const press = { ...key, ctrlKey: sendKey === "ctrl-enter", shiftKey: sendKey === "shift-enter" };
-      expect(sendsOnEnter({ ...press, isComposing: true }, sendKey)).toBe(false);
+      expect(sendsOnEnter({ ...press, isComposing: true }, [sendKey])).toBe(false);
       // Safari ends the composition before its keydown, and marks that key with the code 229.
-      expect(sendsOnEnter({ ...press, keyCode: 229 }, sendKey)).toBe(false);
+      expect(sendsOnEnter({ ...press, keyCode: 229 }, [sendKey])).toBe(false);
     }
   });
 });

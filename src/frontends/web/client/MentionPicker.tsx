@@ -15,7 +15,7 @@ import {
 import { api } from "./api.ts";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-import { readSendKey } from "./send-key.ts";
+import { readSendKeys } from "./send-key.ts";
 import {
   insertMention,
   mentionNotes,
@@ -191,7 +191,7 @@ export function useMentionPicker(
       return true;
     }
     const chosen = options[activeIndex];
-    if (chosen !== undefined && picksMention(event, readSendKey())) {
+    if (chosen !== undefined && picksMention(event, readSendKeys())) {
       event.preventDefault();
       pick(chosen);
       return true;

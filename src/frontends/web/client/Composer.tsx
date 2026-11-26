@@ -61,7 +61,7 @@ import { settingsHash } from "./settings-routes.ts";
 import { recordingTime, recordingType, withHeardText } from "./voice-notes.ts";
 import { goTo } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
-import { readSendKey } from "./send-key.ts";
+import { readSendKeys } from "./send-key.ts";
 
 /**
  * What the composer shows of a chat. A new chat has no record until its first message, so it has
@@ -613,7 +613,7 @@ export function Composer({
                 keyCode: event.keyCode,
               };
               // Read at each press, so a choice in Settings applies in an open chat too.
-              if (sendsOnEnter(press, readSendKey())) {
+              if (sendsOnEnter(press, readSendKeys())) {
                 event.preventDefault();
                 void send();
               }

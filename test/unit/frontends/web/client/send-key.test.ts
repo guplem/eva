@@ -70,10 +70,13 @@ describe("send keys", () => {
       useStorage(storage);
       expect(readSendKeys()).toEqual(["ctrl-enter"]);
     }
-    const storage = mapStorage();
-    storage.setItem("eva.send-key", "space");
-    useStorage(storage);
-    expect(readSendKeys()).toEqual(["ctrl-enter"]);
+    // A name that every object has, such as "toString", is no old choice either.
+    for (const old of ["space", "toString", "constructor", "__proto__"]) {
+      const storage = mapStorage();
+      storage.setItem("eva.send-key", old);
+      useStorage(storage);
+      expect(readSendKeys()).toEqual(["ctrl-enter"]);
+    }
   });
 
   test("blocked storage gives the default, and a save does not throw", () => {
@@ -96,8 +99,9 @@ describe("sendKeyHint", () => {
       "Ctrl+Enter and Shift+Enter send. On a Mac, Cmd+Enter sends too. Enter adds a new line.",
     );
     expect(sendKeyHint(["ctrl-enter", "enter", "shift-enter"])).toBe(
-      "Ctrl+Enter, Enter and Shift+Enter send. On a Mac, Cmd+Enter sends too. A phone keyboard then has no key for a new line.",
+      "Ctrl+Enter, Enter and Shift+Enter send. On a Mac, Cmd+Enter sends too. No key then adds a new line.",
     );
+    expect(sendKeyHint(["enter", "shift-enter"])).toBe("Enter and Shift+Enter send. No key then adds a new line.");
   });
 
   test("with no send key, says that only the send button sends", () => {

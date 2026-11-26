@@ -20,11 +20,12 @@ const storageKey = "eva.send-keys";
  * the old Enter choice also sent on Ctrl+Enter.
  */
 const oldStorageKey = "eva.send-key";
-const oldChoices: Record<string, readonly SendKey[]> = {
-  "ctrl-enter": ["ctrl-enter"],
-  enter: ["ctrl-enter", "enter"],
-  "shift-enter": ["shift-enter"],
-};
+// A Map, not an object: an old value such as "toString" must not find a built-in function.
+const oldChoices = new Map<string, readonly SendKey[]>([
+  ["ctrl-enter", ["ctrl-enter"]],
+  ["enter", ["ctrl-enter", "enter"]],
+  ["shift-enter", ["shift-enter"]],
+]);
 
 function isSendKey(value: unknown): value is SendKey {
   return sendKeyOrder.includes(value as SendKey);
@@ -49,7 +50,7 @@ export function readSendKeys(): readonly SendKey[] {
     const stored = localStorage.getItem(storageKey);
     if (stored !== null) return parsed(stored);
     const old = localStorage.getItem(oldStorageKey);
-    return (old !== null ? oldChoices[old] : undefined) ?? defaultSendKeys;
+    return (old !== null ? oldChoices.get(old) : undefined) ?? defaultSendKeys;
   } catch {
     return defaultSendKeys;
   }
@@ -86,8 +87,10 @@ export function sendKeyHint(keys: readonly SendKey[]): string {
       : `${listed(chosen.map((key) => sendKeyLabels[key]))} ${chosen.length === 1 ? "sends" : "send"}.`,
   ];
   if (chosen.includes("ctrl-enter")) parts.push("On a Mac, Cmd+Enter sends too.");
-  if (newLine.length > 0) parts.push(`${listed(newLine)} ${newLine.length === 1 ? "adds" : "add"} a new line.`);
+  // Ctrl+Enter adds no line in a text box, so with both Enter keys on, no key adds one.
+  if (newLine.length === 0) parts.push("No key then adds a new line.");
+  else parts.push(`${listed(newLine)} ${newLine.length === 1 ? "adds" : "add"} a new line.`);
   // A phone keyboard has no Shift or Ctrl key, so its Enter is the only key for a new line.
-  if (chosen.includes("enter")) parts.push("A phone keyboard then has no key for a new line.");
+  if (newLine.length === 1 && chosen.includes("enter")) parts.push("A phone keyboard then has no key for a new line.");
   return parts.join(" ");
 }

@@ -174,18 +174,15 @@ Eva saves the vault to GitHub by herself. [Settings](#settings) gives the defaul
 
 Your vault can hold secrets, such as API keys, but only encrypted. Eva encrypts each secret file before each save, in place, under the same name. An agent that opens it sees only her first line: "Encrypted by Eva. Open this file in Eva's Files page to read it."
 
-The vault map tells Eva where each secret goes:
-
-- **The master password and the recovery kit of your password manager** go on paper and in an encrypted file in the vault. They never go inside the manager.
-- **A secret that you use to log in, to pay, or in a hurry away from Eva** goes to your password manager. Examples are the recovery codes of an account, a card PIN and the Wi-Fi password. With no password manager, it goes to a secret file.
-- **Any other secret** goes to a secret file beside its item or project, such as a software licence key.
-- **The vault password** opens every secret file, so it never goes in one. Keep it in your password manager, and on paper with the recovery kit.
-
-- **The vault password.** Setup asks for it twice, for a new vault. For an existing vault, set it in **Settings > Vault and sync > Encrypted files**. It needs at least 12 characters. Nobody can recover it: keep it in a password manager, and on paper. Until the vault has a password, Eva keeps each secret file on this computer and saves none of them.
+- **The vault password.** Setup asks for it twice, for a new vault. For an existing vault, set it in **Settings > Vault and sync > Encrypted files**. It needs at least 12 characters. It opens every secret file, so it never goes in one. Nobody can recover it: keep it on paper, and in a password manager. Until the vault has a password, Eva keeps each secret file on this computer and saves none of them.
 - **Which files.** The defaults are `.env.local`, `.env.*.local`, `.env.secrets`, `*.secrets`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `.npmrc`, `.pypirc`, `.netrc`, `secrets.json`, `credentials.json` and `client_secret*.json`. A plain `.env` and `.env.example` stay plain: keep only values that are safe to share in them. A plain `.env` with a key or a token stays out of each save, and the phone says so. A vault from before this feature keeps its plain `.env` files outside `Projects/` on each computer, as before: move a secret into a `.env.local` file to sync it.
   - The Settings card shows each default with a switch, and your own patterns, in `.gitignore` syntax, such as `Life/Health/**`. Eva keeps your changes in `.eva/secret-files` in the vault.
   - A new pattern encrypts its files at once. A pattern that you take out keeps its files encrypted until you confirm it from an unlocked device. Then Eva decrypts them, and your vault remote gets their plain text.
   - Eva never encrypts `.eva/`, any `AGENTS.md`, `.gitignore` or `.gitattributes`, so the Assistant always works. Keep no secret in those files. The secret patterns still apply inside `.eva/scratch/`: Eva refuses to send such a file there, and the Files page and the search mark it as secret.
+- **Where each secret goes.** The vault map tells Eva:
+  - The master password and the recovery kit of your password manager go on paper and in an encrypted file in the vault. They never go inside the manager.
+  - A secret that you use to log in, to pay, or in a hurry away from Eva goes to your password manager. Examples are the recovery codes of an account and a card PIN. With no password manager, it goes to a secret file.
+  - Any other secret goes to a secret file beside its item or project, such as a software licence key.
 - **Read a file.** Open it in **Files** on the web page and type the vault password. This browser tab can then open encrypted files for 8 hours, until you press **Lock**, or until Eva restarts. Eva decrypts only for a device that logged in with a code or a link, never with the token. Telegram never shows an encrypted file. A browser on Eva's own computer keeps its login and its unlock in your browser profile, where an agent that runs as you can read them: press **Lock** when you are done there.
 - **Change the password** in the Settings card. Eva makes a new key for the new password and encrypts every file again, so the old password opens no file that Eva encrypted after the change. Each device must unlock again. Eva makes no change until a sync with the remote works, so a file from another computer does not stay on the old key. A file that another computer still put on the old key moves to the new key at the next unlock.
   - Old commits still hold the old key, and the old password opens them. So when you think someone knows the old password, also change the secrets in these files, such as an API key.

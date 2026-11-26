@@ -45,7 +45,7 @@ import {
   sizeWords,
   splitFrontMatter,
 } from "./file-paths.ts";
-import { fileBadgeOf, nameEnds, shownMediaOf } from "./file-kinds.ts";
+import { decryptedNameOf, fileBadgeOf, nameEnds, shownMediaOf } from "./file-kinds.ts";
 import { MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ListSkeleton } from "./Loading.tsx";
@@ -693,7 +693,7 @@ function EncryptedFile({
   readonly smart: boolean;
 }): ReactElement {
   const [opened, setOpened] = useState<Opened>({ state: "loading" });
-  const name = path.split("/").pop() ?? "file";
+  const name = decryptedNameOf(path.split("/").pop() ?? "file");
 
   const textFile = useCallback(
     (text: string, version: string): ShownFile => ({
@@ -747,7 +747,9 @@ function EncryptedFile({
 
   const download: FetchFile = async () => {
     const file = await api.openEncryptedFile(path);
-    return file.kind === "text" ? { name, blob: new Blob([file.text], { type: "text/plain" }) } : file;
+    return file.kind === "text"
+      ? { name, blob: new Blob([file.text], { type: "text/plain" }) }
+      : { name, blob: file.blob };
   };
 
   if (opened.state === "loading")
@@ -781,7 +783,7 @@ function EncryptedFile({
           <Icon name="lock" /> This encrypted file is not text, so it opens as a download.{" "}
           <span className="files-size">({sizeWords(size)})</span>
         </div>
-        <DownloadButton path={path} folder={false} fetchFile={download} />
+        <DownloadButton path={path} folder={false} label={name} fetchFile={download} />
         <button className="ghost" onClick={() => void lock()}>
           <Icon name="lock" />
           Lock

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 const token = "e2e-demo-token";
 const vaultPassword = "a long demo password";
@@ -8097,6 +8098,22 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   await expect(page.getByLabel("Vault password")).toBeVisible();
   await page.reload();
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
+});
+
+test("Files: an unlocked encrypted image downloads as the plain file, without .secrets (#1099)", async ({
+  page,
+}, testInfo) => {
+  const name = `${testInfo.project.name}-photo.png`;
+  await logInAsDevice(page);
+  await page.goto(`/#/files/Private/${name}.secrets`);
+  await page.getByLabel("Vault password").fill(vaultPassword);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  const saved = page.waitForEvent("download");
+  await page.getByRole("button", { name: `Download ${name}` }).click();
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe(name);
+  const bytes = readFileSync(await download.path());
+  expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
 });
 
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({

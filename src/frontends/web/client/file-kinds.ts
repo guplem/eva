@@ -149,3 +149,12 @@ export function shownMediaOf(path: string, shown: ShownPath): Media | null {
   // A PDF can hold only plain letters, so the core reads it as text. Its text means nothing to a person.
   return shown.kind === "file" && media.kind === "pdf" ? media : null;
 }
+
+/**
+ * The name of an encrypted file once it leaves the vault. The core sends the plain bytes, so the
+ * `.secrets` end only hides the real type from the device (#1099).
+ */
+export function decryptedNameOf(name: string): string {
+  const plain = name.replace(/\.secrets$/i, "");
+  return plain === "" ? name : plain;
+}

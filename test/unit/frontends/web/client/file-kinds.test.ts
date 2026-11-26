@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  decryptedNameOf,
   fileBadgeOf,
   maxMediaBytes,
   mediaOf,
@@ -98,5 +99,19 @@ describe("shownMediaOf: which open file the page shows as media", () => {
   test("a folder or an encrypted file is no media", () => {
     expect(shownMediaOf("Report.pdf", { kind: "encrypted", size: 400 })).toBeNull();
     expect(shownMediaOf("Media.pdf", { kind: "folder" })).toBeNull();
+  });
+});
+
+describe("decryptedNameOf", () => {
+  test("a downloaded encrypted file loses the .secrets end, so the device knows its type (#1099)", () => {
+    expect(decryptedNameOf("photo.jpg.secrets")).toBe("photo.jpg");
+    expect(decryptedNameOf("notes.md.secrets")).toBe("notes.md");
+    expect(decryptedNameOf("keys.SECRETS")).toBe("keys");
+  });
+
+  test("any other name stays as it is", () => {
+    expect(decryptedNameOf(".secrets")).toBe(".secrets");
+    expect(decryptedNameOf(".env.local")).toBe(".env.local");
+    expect(decryptedNameOf("my.secrets.txt")).toBe("my.secrets.txt");
   });
 });

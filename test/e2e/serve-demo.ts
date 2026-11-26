@@ -116,6 +116,14 @@ for (const run of ["desktop", "phone"])
       encryptFile(new TextEncoder().encode("API_KEY=demo-value\n"), vaultKey, `Private/${run}.secrets`),
     ),
   );
+// An encrypted image is no text, so it downloads, without the `.secrets` end (#1099).
+const pngStart = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
+for (const run of ["desktop", "phone"])
+  sandbox.write(
+    vault,
+    `Private/${run}-photo.png.secrets`,
+    new TextDecoder().decode(encryptFile(pngStart, vaultKey, `Private/${run}-photo.png.secrets`)),
+  );
 // The message box menu shows the examples that each vault gets (issue 661).
 for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {
   sandbox.write(vault, path, templateParts[path] ?? "");

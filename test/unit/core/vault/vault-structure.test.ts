@@ -112,6 +112,13 @@ describe("the CHANGELOG", () => {
     expect(newestStructureVersion).toBeGreaterThanOrEqual(15);
   });
 
+  test("v16 offers the rule for where each secret goes, and moves a secret only with a yes (#1095)", () => {
+    const v16 = structureChanges.find((change) => change.version === 16);
+    expect(v16?.summary).toStartWith("Eva knows where each kind of secret goes");
+    expect(v16?.migrations).toEqual([]);
+    expect(newestStructureVersion).toBeGreaterThanOrEqual(16);
+  });
+
   test("names only migrations that this Eva knows", () => {
     const known = new Set(
       migrations.filter((migration) => migration.store === "vault").map((migration) => migration.id),

@@ -408,3 +408,28 @@ The root `AGENTS.md` says "is the web link to the project's own list in the task
 ### What to ask, all in the one message up front
 
 1. Each line of _Personal rules_ that says where the things to do of a project go, or how to pick what to do next. The default is "keep it as an exception", with the rule that it overrides.
+
+## v16
+
+- **Version:** 16
+- **Date:** 2026-11-26
+- **Pull request:** https://github.com/guplem/eva/pull/1096
+- **Summary:** Eva knows where each kind of secret goes. The recovery kit of your password manager goes on paper and in an encrypted file in the vault. A secret that you use to log in, to pay, or in a hurry, such as the recovery codes of an account, goes to your password manager. Any other secret stays in an encrypted file in the vault.
+- **Migrations first:**
+
+### What changes, and why
+
+1. **The root `AGENTS.md` gets the rule "Where a secret goes".** Replace the rule "**A password or a key of something in the vault,**" of _Where things go_ with the rule "**Where a secret goes.**" of `template/`, with its three questions and the paragraph under them. Replace the password manager row of the table of _Outside the vault_ with the exact text of `template/`. Replace the rule "**Secrets** live only in encrypted secret files" of _Working in the vault_ with the exact text of `template/`. Leave the rest of the file as it is. Why: the old rule sent every key and password to a `.secrets` file. Eva cannot read one, and the person opens one only through Eva's web app, so a secret needed away from Eva was out of reach. The rules named no recovery codes. They said nothing about the password manager's own recovery kit: inside the manager, a lost master password locks it in too.
+2. **`Life/Inventory/AGENTS.md` follows the rule.** Replace the line "**A key, a password or a PIN goes in a `.secrets` file beside `Item.md`,**" with the two lines "**A secret of the item goes where _Where a secret goes_**" and "**The password manager is an item too.**" of `template/`. Replace the last sentence of the line "**What is needed in a hurry on a device without Eva**" with the exact text of `template/`. Leave the rest of the file as it is. Why: an agent that reads only the folder rules must see it too.
+3. **Existing secrets can follow the rule,** after the person approves. Eva cannot write to the password manager herself. So list each `.secrets` file in the vault that holds a secret of question 2, such as `Wi-Fi.secrets`, `Card.secrets` or a file with the recovery codes of an account. Name the file only, never its content. When the person has a password manager and moves a secret into it, delete its `.secrets` file, and write in the note of its item where the secret is now. A file that the person keeps stays as it is. Also ask where the recovery kit of the password manager is. When it is only inside the manager, tell the person to keep it on paper and in `Recovery kit.secrets` beside the manager's `Item.md`.
+4. **Nothing else moves.** A plain `.env` stays as it is. Each other file stays as it is.
+
+### How to detect a vault that has it
+
+The root `AGENTS.md` says "**Where a secret goes.**" and "Does it recover the password manager itself?". `Life/Inventory/AGENTS.md` says "**The password manager is an item too.**". Then the upgrade only records the version.
+
+### What to ask, all in the one message up front
+
+1. Each line of _Personal rules_ that says where a password, a key, a PIN or a code goes. The default is "keep it as an exception", with the rule that it overrides.
+2. Each `.secrets` file of item 3, as one list, by name only. The default is "keep it in the vault", so "yes to all" moves nothing. To move one, the person puts the secret in the password manager first, and says so in the answer.
+3. Where the recovery kit of the password manager is. The default is "the person keeps it as it is", so no answer changes nothing.

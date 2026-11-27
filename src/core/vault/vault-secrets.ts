@@ -38,7 +38,7 @@ import {
 import type { PrepareFile, WithheldReason } from "./vault-sync.ts";
 
 /** Base64 adds about a third, and the commit limit is 50 MB: a bigger file stays out. */
-const maxEncryptedBytes = 25 * 1024 * 1024;
+export const maxEncryptedBytes = 25 * 1024 * 1024;
 /** A `.env` over this size is not scanned, as the other files of the vault. */
 const maxScannedBytes = 1_000_000;
 
@@ -181,7 +181,8 @@ export class VaultSecrets {
       // A key that the chain trusts replaces the old one here, so its next change chains from it.
       fingerprint: keyChanged ? machine.fingerprint : (fingerprint ?? machine.fingerprint),
       sequence: Math.max(machine.sequence, signed?.sequence ?? 0),
-      applied: [...policy.active],
+      // An older Eva on this machine must not take a fixed pattern for one that the person can remove (#1108).
+      applied: policy.active.filter((pattern) => !input.fixed.includes(pattern)),
     };
     // A machine's first round applies the whole list, and a pattern that a signed record knows is the person's own choice.
     if (machine.applied.length > 0)

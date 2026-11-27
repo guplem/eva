@@ -37,6 +37,9 @@ export const defaultSecretPatterns: readonly string[] = [
  */
 export const fixedSecretPatterns: readonly string[] = ["*.eva-secret"];
 
+/** The end that the Encrypt action of the Files page adds to a name. */
+export const encryptActionEnd = ".eva-secret";
+
 /** The defaults that a release took out. They apply until the person confirms each removal. */
 export const retiredSecretPatterns: readonly string[] = [];
 

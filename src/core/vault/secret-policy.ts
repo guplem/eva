@@ -83,7 +83,15 @@ export function signedPayload(
     ...input.retired,
     ...keep,
   ]);
-  return { sequence, fingerprint, known: [...known].sort(), active: [...new Set(keep)].sort() };
+  // An older Eva reads this record too. A fixed pattern that it named would look to her like a
+  // removal that waits, and her confirmation would decrypt its files (#1108).
+  const named = (pattern: string): boolean => !input.fixed.includes(pattern);
+  return {
+    sequence,
+    fingerprint,
+    known: [...known].filter(named).sort(),
+    active: [...new Set(keep)].filter(named).sort(),
+  };
 }
 
 /** The defaults that the file does not turn off, and the patterns that it adds. */

@@ -24,7 +24,9 @@ import { EvaError } from "../../shared/errors.ts";
 import { isInside } from "../../shared/path-area.ts";
 import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
+import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher } from "../vault/secret-files.ts";
 import { encryptedState } from "../vault/vault-crypto.ts";
+import { isCloneFolderFile } from "../vault/vault-sync.ts";
 import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export interface FileEntry {
@@ -159,12 +161,21 @@ export function renameVaultEntry(vaultPath: string, requested: string, name: str
     throw notWritable("Eva finds her settings and projects by this name, so it stays.");
   const matcher = secretMatcherOf(root);
   const toVault = (each: string): string => [...folderParts, each].join("/");
+  const source = join(folder, oldName);
+  // An encrypted file stays encrypted under a `.eva-secret` name, and no removal ever frees that
+  // pattern. A file keeps its old path sealed inside, so another secret name could stop a removal (#1108).
+  const toEncryptedName =
+    new SecretMatcher(fixedSecretPatterns).matches(toVault(name)) &&
+    isPlainFileEntry(source) &&
+    isEncryptedOnDisk(source);
   // A new name could take a secret out of the list, and so out of its encryption (#707).
-  if (matcher.matches(toVault(oldName)) || matcher.matches(toVault(name)) || isEncryptedOnDisk(join(folder, oldName)))
+  if (
+    !toEncryptedName &&
+    (matcher.matches(toVault(oldName)) || matcher.matches(toVault(name)) || isEncryptedOnDisk(source))
+  )
     throw notWritable("A secret file stays out of reach of the page, so Eva does not rename it.");
   const newPath = [...parts, name].join("/");
   if (name === oldName) return newPath;
-  const source = join(folder, oldName);
   const target = join(folder, name);
   try {
     // A file system that ignores case finds the entry itself at a name that changes only the case.
@@ -177,6 +188,54 @@ export function renameVaultEntry(vaultPath: string, requested: string, name: str
     throw notWritable("Eva has no permission to rename this.");
   }
   return newPath;
+}
+
+/** The file that the Encrypt action moves, and its new name with the `.eva-secret` end. */
+export interface EncryptMove {
+  readonly from: string;
+  readonly to: string;
+}
+
+/**
+ * Checks the file that the person wants to encrypt, and gives its new name (#1108). The checks that
+ * need the vault's key run in `VaultEncryption`, which makes the move inside a sync step.
+ */
+export function encryptMoveOf(vaultPath: string, requested: string): EncryptMove {
+  const { root, path, notFound } = resolveInVault(vaultPath, requested);
+  if (path === "") throw notWritable("Pick a file to encrypt.");
+  const parts = path.split("/");
+  const oldName = parts.pop() ?? "";
+  const name = `${oldName}${encryptActionEnd}`;
+  const nameProblem = problemOfName(name);
+  if (nameProblem !== null) throw notWritable(nameProblem);
+  const folder = resolveInVault(vaultPath, parts.join("/")).resolved;
+  const folderParts = relative(root, folder)
+    .split(sep)
+    .filter((part) => part !== "");
+  const from = [...folderParts, oldName].join("/");
+  const to = [...folderParts, name].join("/");
+  if (!existsAt(join(folder, oldName))) throw notFound;
+  if (!isPlainFileEntry(join(folder, oldName)))
+    throw notWritable("Eva encrypts one file at a time, not a folder or a link.");
+  // The sync never encrypts a file of a clone or of `.eva/`, and Eva and her agents need some files plain.
+  if (
+    isCloneFolderFile(from) ||
+    from.toLowerCase().startsWith(".eva/") ||
+    isNeverEncrypted(from) ||
+    !new SecretMatcher(fixedSecretPatterns).matches(to)
+  )
+    throw notWritable("Eva keeps this file plain, so she does not encrypt it.");
+  if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);
+  return { from, to };
+}
+
+/** True for a file itself, never a folder or a link. */
+function isPlainFileEntry(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /** Windows cannot hold these characters or these device names, and the vault goes to every machine. */

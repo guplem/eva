@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readVaultKey, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
@@ -12,7 +12,7 @@ import {
   keyFingerprint,
 } from "../../../../src/core/vault/vault-crypto.ts";
 import { VaultKeys } from "../../../../src/core/vault/vault-keys.ts";
-import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
+import { maxEncryptedBytes, VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
 let root: string;
@@ -438,5 +438,90 @@ describe("a line with ! in the person's patterns (second review of #707)", () =>
     const refused = await failure(() => service.setPatterns(null, null, { added: ["!*.key"], off: [] }));
     expect(isEvaError(refused, "config_invalid")).toBe(true);
     expect(refused instanceof Error ? refused.message : "").toContain("switch");
+  });
+});
+
+describe("the Encrypt action of the Files page (#1108)", () => {
+  const photo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+  const writeBytes = (path: string, bytes: Uint8Array): void => {
+    mkdirSync(dirname(join(vault, path)), { recursive: true });
+    writeFileSync(join(vault, path), bytes);
+  };
+
+  test("renames the file to its .eva-secret name, encrypts it at once, and saves", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    writeBytes("Photos/photo.jpg", photo);
+    await service.encryptByRename("Photos/photo.jpg", "Photos/photo.jpg.eva-secret");
+    expect(existsSync(join(vault, "Photos/photo.jpg"))).toBe(false);
+    expect(encryptedState(readFileSync(join(vault, "Photos/photo.jpg.eva-secret")))).toBe("encrypted");
+    expect(saves).toBe(2);
+    const secret = await service.unlock(token, password);
+    const opened = service.readFile(token, secret, "Photos/photo.jpg.eva-secret");
+    expect(opened.kind === "binary" ? [...opened.bytes] : null).toEqual([...photo]);
+  });
+
+  test("a plain .env file, which Eva keeps plain on purpose, can be encrypted too", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write(".env", "TOKEN=abc\n");
+    await service.encryptByRename(".env", ".env.eva-secret");
+    expect(encryptedState(readFileSync(join(vault, ".env.eva-secret")))).toBe("encrypted");
+  });
+
+  test("with no password, nothing moves: the file would stay plain and out of each save", async () => {
+    write("notes.md", "plain\n");
+    const error = await failure(() => encryption().encryptByRename("notes.md", "notes.md.eva-secret"));
+    expect(isEvaError(error, "vault_key_missing")).toBe(true);
+    expect(read("notes.md")).toBe("plain\n");
+    expect(saves).toBe(0);
+  });
+
+  test("a key that changed with no confirmation here gets no file", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    secrets.pinKey("0000000000000000");
+    write("notes.md", "plain\n");
+    expect(
+      isEvaError(await failure(() => service.encryptByRename("notes.md", "notes.md.eva-secret")), "vault_key_invalid"),
+    ).toBe(true);
+    expect(read("notes.md")).toBe("plain\n");
+  });
+
+  test("a file that is already secret, a file over 25 MB and a taken name are refused, and nothing moves", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("deploy/id.key", "KEY\n");
+    write("notes.md", "plain\n");
+    write("notes.md.eva-secret", "taken\n");
+    writeBytes("big.mov", new Uint8Array(maxEncryptedBytes + 1));
+    for (const [from, to] of [
+      ["deploy/id.key", "deploy/id.key.eva-secret"],
+      ["notes.md", "notes.md.eva-secret"],
+      ["big.mov", "big.mov.eva-secret"],
+    ] as const)
+      expect([from, isEvaError(await failure(() => service.encryptByRename(from, to)), "file_not_writable")]).toEqual([
+        from,
+        true,
+      ]);
+    expect(read("notes.md")).toBe("plain\n");
+    expect(read("notes.md.eva-secret")).toBe("taken\n");
+    expect(existsSync(join(vault, "big.mov"))).toBe(true);
+  });
+
+  test("a file that does not come out encrypted gets its old name back", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write(".eva/notes.md", "plain\n");
+    const error = await failure(() => service.encryptByRename(".eva/notes.md", ".eva/notes.md.eva-secret"));
+    expect(isEvaError(error, "file_not_writable")).toBe(true);
+    expect(read(".eva/notes.md")).toBe("plain\n");
+    expect(existsSync(join(vault, ".eva/notes.md.eva-secret"))).toBe(false);
+  });
+
+  test("the status names the fixed pattern apart from the defaults, so Settings gives it no switch", () => {
+    const status = encryption().status(null, null);
+    expect(status.fixed).toEqual(["*.eva-secret"]);
+    expect(status.defaults.map((each) => each.pattern)).not.toContain("*.eva-secret");
   });
 });

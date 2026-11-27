@@ -126,6 +126,7 @@ import { Scheduler } from "./schedules/scheduler.ts";
 import { moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
 import {
   browseVault,
+  encryptMoveOf,
   existingVaultPaths,
   normalizedPath,
   renameVaultEntry,
@@ -2363,6 +2364,22 @@ export class Eva {
       // The rename is done. A favorite that could not follow it shows as missing, and the person can star it again.
     }
     return { path: renamed };
+  }
+
+  /**
+   * Encrypts a vault file from the file explorer: it gets the `.eva-secret` end, and Eva encrypts and
+   * saves it at once (#1108). Answers its new path.
+   */
+  async encryptVaultFile(path: string): Promise<{ path: string }> {
+    const vaultPath = this.browsedVault();
+    const move = encryptMoveOf(vaultPath, path);
+    await this.encryption.encryptByRename(move.from, move.to);
+    try {
+      moveFavorites(vaultPath, normalizedPath(path), move.to);
+    } catch {
+      // The file is encrypted. A favorite that could not follow it shows as missing, and the person can star it again.
+    }
+    return { path: move.to };
   }
 
   private browsedVault(): string {

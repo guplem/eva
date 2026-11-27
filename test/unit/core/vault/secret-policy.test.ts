@@ -150,3 +150,13 @@ describe("a fixed secret pattern (#1108)", () => {
     });
   });
 });
+
+describe("a fixed secret pattern in a signed record (#1108)", () => {
+  test("is never named, so an older Eva on another computer never offers to remove it", () => {
+    const input = { defaults, retired: [], fixed: ["*.eva-secret"], changes: none, signed: null, applied: [] };
+    const payload = signedPayload(input, activeSecretPatterns(input).active, 2, "0123456789abcdef");
+    expect(payload.known).not.toContain("*.eva-secret");
+    expect(payload.active).not.toContain("*.eva-secret");
+    expect(payload.active).toEqual(["*.key", "*.pem"]);
+  });
+});

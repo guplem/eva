@@ -1407,7 +1407,7 @@ function fileKind(path: string): "file" | "absent" | "other" {
  * for a clone chat (#774). The vault's `.gitignore` usually lists the folder. A vault without that
  * line must not commit them either. Windows and macOS ignore the case of a name.
  */
-function isCloneFolderFile(relativePath: string): boolean {
+export function isCloneFolderFile(relativePath: string): boolean {
   const parts = relativePath.split("/").map((part) => part.toLowerCase());
   return parts.length > 3 && parts[0] === "projects" && parts[2] === "repos";
 }

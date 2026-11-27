@@ -186,6 +186,7 @@ const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
 /** The limit keeps one request from making the core stat without end. The page splits a longer list (`maxPathsPerAsk`). */
 const existingFilesSchema = z.object({ paths: z.array(z.string()).max(500) });
 const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
+const encryptFileSchema = z.object({ path: z.string() });
 /** A status that a page sends. An older open page can send a status that #859 replaced. */
 const sentStatusSchema = z.enum([...projectStatuses, "idea", "in-use"]);
 
@@ -1715,6 +1716,9 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
     await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
     return noStore(encryption.status(deviceToken, null));
   }
+  // A file that the person encrypts from the Files page: it commits and pushes, so it needs no idle limit (#1108).
+  if (method === "POST" && path === "/api/vault/secrets/encrypt-file")
+    return noStore(await eva.encryptVaultFile(encryptFileSchema.parse(await request.json()).path));
   if (method === "POST" && path === "/api/vault/secrets/accept-key") {
     await encryption.acceptKey(deviceToken, secret);
     return noStore(encryption.status(deviceToken, secret));

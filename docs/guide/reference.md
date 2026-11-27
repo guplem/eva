@@ -672,6 +672,7 @@ Each feature stays off until you set it up. `eva doctor` shows which tools are m
 - **Voice notes.** Open **Settings > Updates**. In the **voice notes** row of **Versions**, press **Install**. Eva downloads ffmpeg, whisper.cpp and the `ggml-base.bin` model, which reads Spanish and English. Then press **Restart Eva**. The microphone in a chat also leads to this button. A voice note that you send in Telegram works too: Eva turns it into text on her computer. The audio never leaves the computer.
   On Linux, whisper.cpp also needs the OpenMP library. The one-command install adds it. If a voice note says that whisper-cli lacks `libgomp.so.1`, run `sudo apt-get update && sudo apt-get install libgomp1` on Ubuntu.
   To install them by hand, install [ffmpeg](https://ffmpeg.org/download.html) and [whisper.cpp](https://github.com/ggml-org/whisper.cpp). Then download a model and put it at `voice/ggml-base.bin` in Eva's home folder.
+- **Routes and places.** Ask for a route or a place, and Eva answers with a Google Maps link. On a phone, it opens the Maps app with live traffic. It needs no Google key and no login. The link holds only the places that you name, and Google sees them when you open it.
 - **Google (Calendar, Drive, Contacts, Tasks).** See [Set up Google](#set-up-google).
 
 ### Set up Google

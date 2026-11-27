@@ -48,7 +48,7 @@ import {
 import { decryptedNameOf, fileBadgeOf, nameEnds, shownMediaOf } from "./file-kinds.ts";
 import { MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
-import { ButtonSpinner, ListSkeleton } from "./Loading.tsx";
+import { ButtonSpinner, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
@@ -738,6 +738,8 @@ function EncryptedFile({
   const decryptable = name !== fileName;
 
   const decrypt = async (): Promise<void> => {
+    // The menu item stays live while a decrypt runs: a second one would only fail.
+    if (decrypting) return;
     const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
     const question = `Decrypt ${fileName}? It becomes ${name}, a plain file, and its plain text goes to the vault remote at the next save.${unsaved}`;
     if (!window.confirm(question)) return;
@@ -747,6 +749,8 @@ function EncryptedFile({
     } catch (caught) {
       showError(caught);
       setDecrypting(false);
+      // The core forgot this device's key, such as after 8 hours: the unlock form shows again.
+      if (caught instanceof ApiError && caught.code === "vault_locked") showLocked();
     }
   };
 
@@ -845,6 +849,7 @@ function EncryptedFile({
             Decrypt
           </button>
         )}
+        {decrypting && <ProgressBar label="Decrypting and saving the file…" />}
         <button className="ghost" onClick={() => void lock()}>
           <Icon name="lock" />
           Lock

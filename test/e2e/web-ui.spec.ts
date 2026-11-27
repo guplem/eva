@@ -8275,6 +8275,9 @@ test("Files: Decrypt turns an unlocked .eva-secret image into the plain file, af
   const name = `${testInfo.project.name}-badge.png`;
   await logInAsDevice(page);
   await page.goto(`/#/files/Private/${name}.eva-secret`);
+  // A locked file shows only the unlock form.
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Decrypt" })).toHaveCount(0);
   await page.getByLabel("Vault password").fill(vaultPassword);
   await page.getByRole("button", { name: "Unlock" }).click();
   let question = "";

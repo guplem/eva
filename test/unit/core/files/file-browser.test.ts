@@ -750,3 +750,55 @@ describe("duplicateVaultFile (#1117)", () => {
     expect(codeOf(() => duplicateVaultFile(vault, ".env"))).toBe("file_not_writable");
   });
 });
+
+describe("delete and duplicate keep what no commit keeps (#1117 review)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+  const token = `ghp_${"a".repeat(36)}`;
+
+  test("a path with a part that ends in a dot or a space is refused, so Windows cannot name the layout", () => {
+    for (const path of ["Projects.", "Projects ", ".eva.", "Methods./Plan.md"])
+      expect([path, codeOf(() => deleteVaultEntry(vault, path))]).toEqual([path, "file_not_found"]);
+    expect(codeOf(() => duplicateVaultFile(vault, "notes.txt."))).toBe("file_not_found");
+    expect(existsSync(join(vault, "Projects"))).toBe(true);
+  });
+
+  test("a clone and Eva's own folder stay: the vault ignores the clones, and Eva owns .eva", () => {
+    const clone = "Projects/2025-03-02-1015-example-app/repos/example-app-0";
+    expect(codeOf(() => deleteVaultEntry(vault, `${clone}/main.py`))).toBe("file_not_writable");
+    expect(codeOf(() => duplicateVaultFile(vault, `${clone}/main.py`))).toBe("file_not_writable");
+    expect(codeOf(() => deleteVaultEntry(vault, ".eva/assistant.md"))).toBe("file_not_writable");
+    expect(codeOf(() => duplicateVaultFile(vault, ".eva/assistant.md"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, `${clone}/main.py`))).toBe(true);
+  });
+
+  test("a file that holds a token stays, alone or in a folder: the save never commits it", () => {
+    write("Keys/notes.txt", `My key is ${token}\n`);
+    expect(codeOf(() => deleteVaultEntry(vault, "Keys/notes.txt"))).toBe("file_not_writable");
+    expect(codeOf(() => deleteVaultEntry(vault, "Keys"))).toBe("file_not_writable");
+    expect(codeOf(() => duplicateVaultFile(vault, "Keys/notes.txt"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, "Keys/notes.txt"))).toBe(true);
+  });
+
+  test("an encrypted file is neither deleted nor duplicated", () => {
+    write(
+      "Private/plan.md.eva-secret",
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n",
+    );
+    expect(codeOf(() => deleteVaultEntry(vault, "Private/plan.md.eva-secret"))).toBe("file_not_writable");
+    expect(codeOf(() => duplicateVaultFile(vault, "Private/plan.md.eva-secret"))).toBe("file_not_writable");
+  });
+
+  test.skipIf(process.platform !== "win32")("a junction goes, and its target stays", () => {
+    symlinkSync(join(vault, "Methods"), join(vault, "junction"), "junction");
+    deleteVaultEntry(vault, "junction");
+    expect(existsSync(join(vault, "junction"))).toBe(false);
+    expect(readFileSync(join(vault, "Methods/Plan.md"), "utf-8")).toBe("# Plan\n");
+  });
+});

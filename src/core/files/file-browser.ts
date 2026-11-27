@@ -6,7 +6,9 @@
  */
 import {
   chmodSync,
-  copyFileSync,
+  readFileSync,
+  rmdirSync,
+  unlinkSync,
   closeSync,
   constants,
   fstatSync,
@@ -25,6 +27,7 @@ import {
 import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { isInside } from "../../shared/path-area.ts";
+import { containsSecretPattern } from "../../shared/redaction.ts";
 import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher } from "../vault/secret-files.ts";
@@ -206,13 +209,19 @@ interface PlacedEntry {
 function placeEntry(vaultPath: string, requested: string, action: string): PlacedEntry {
   const { root, path, notFound } = resolveInVault(vaultPath, requested);
   if (path === "") throw notWritable(`Eva does not ${action} the vault folder.`);
+  // Windows drops a dot or a space at the end of a name, so `Projects.` would name `Projects`.
+  // This also catches a `..` part.
+  if (path.split("/").some((part) => /[. ]$/.test(part))) throw notFound;
   const parts = path.split("/");
   const name = parts.pop() ?? "";
-  if (name === "..") throw notFound;
   const folder = resolveInVault(vaultPath, parts.join("/")).resolved;
   const folderParts = relative(root, folder)
     .split(sep)
     .filter((part) => part !== "");
+  const entryPath = [...folderParts, name].join("/");
+  // The vault ignores the clones, so no commit keeps their work. Eva owns `.eva/` and its scratch files.
+  if (isCloneFolderFile(entryPath) || entryPath.toLowerCase().startsWith(".eva/"))
+    throw notWritable(`Eva keeps this file out of reach of the page, so she does not ${action} it.`);
   return { root, folder, folderParts, name, source: join(folder, name) };
 }
 
@@ -250,12 +259,16 @@ export function createVaultEntry(vaultPath: string, requested: string, name: str
 
 /** A folder this large takes long to check, and a delete of it is rarely what the person wants. */
 const maxDeletedEntries = 20_000;
+/** Only a file this small is read for a token: a larger one is a document or a media file. */
+const tokenScanBytes = 2 * 1024 * 1024;
+/** Duplicate reads the whole file into memory, so it stops at the size that Eva sends. */
+const maxCopiedBytes = 50 * 1024 * 1024;
 
 /**
  * Deletes the file or folder at `requested`, with all that a folder holds. A link goes, never its
  * target. The vault's git history keeps each committed file. So Eva refuses what no commit keeps:
- * a secret file that waits for its encryption, and a repository inside a folder. The idle sweep
- * commits the change.
+ * a secret file that waits for its encryption, a file that holds a token, a repository inside a
+ * folder, a clone and `.eva/`. The idle sweep commits the change.
  */
 export function deleteVaultEntry(vaultPath: string, requested: string): void {
   const { root, folderParts, name, source } = placeEntry(vaultPath, requested, "delete");
@@ -266,13 +279,36 @@ export function deleteVaultEntry(vaultPath: string, requested: string): void {
     throw notWritable("A secret file stays out of reach of the page, so Eva does not delete it.");
   try {
     const stats = lstatSync(source);
+    if (stats.isSymbolicLink()) {
+      removeLink(source);
+      return;
+    }
     if (stats.isDirectory()) checkFolderDelete(root, source, matcher);
+    else if (stats.isFile() && holdsToken(source))
+      throw notWritable("This file holds a secret, such as a token, that no commit keeps. Eva does not delete it.");
     rmSync(source, { recursive: stats.isDirectory() });
   } catch (error) {
     if (error instanceof EvaError) throw error;
     if (errorCode(error) === "ENOENT") throw new EvaError("file_not_found", `${requested} was not found.`);
+    if (errorCode(error) === "EBUSY") throw notWritable("Another program has this open. Close it, then try again.");
     throw notWritable("Eva has no permission to delete this.");
   }
+}
+
+/** Removes the link itself. Windows removes a link to a folder, such as a junction, as a folder. */
+function removeLink(path: string): void {
+  try {
+    unlinkSync(path);
+  } catch (error) {
+    if (errorCode(error) !== "EPERM" && errorCode(error) !== "EISDIR") throw error;
+    rmdirSync(path);
+  }
+}
+
+/** True for a small file whose text holds a token: the vault sync keeps such a file out of each commit. */
+function holdsToken(path: string): boolean {
+  if (statSync(path).size > tokenScanBytes) return false;
+  return containsSecretPattern(readFileSync(path, "utf-8"));
 }
 
 /** Walks the folder without following a link, and throws at the first entry that no commit keeps. */
@@ -287,8 +323,11 @@ function checkFolderDelete(root: string, folder: string, matcher: SecretPaths): 
       if (entry.name.toLowerCase() === hiddenName)
         throw notWritable("This folder holds a git repository, so Eva does not delete it from the page.");
       if (entry.isDirectory()) walk(path);
-      else if (entry.isFile() && matcher.matches(relative(root, path).split(sep).join("/")) && !isEncryptedOnDisk(path))
+      else if (!entry.isFile() || isEncryptedOnDisk(path)) continue;
+      else if (matcher.matches(relative(root, path).split(sep).join("/")))
         throw notWritable("This folder holds a secret file that no commit keeps, so Eva does not delete it.");
+      else if (holdsToken(path))
+        throw notWritable("This folder holds a file with a secret, such as a token, so Eva does not delete it.");
     }
   };
   walk(folder);
@@ -299,16 +338,21 @@ const maxCopyNumber = 1_000;
 
 /**
  * Copies the file at `requested` next to itself, as `name copy.ext`, then `name copy 2.ext`, and
- * answers the new path. Throws `file_not_writable` for a folder, a link and a secret file.
+ * answers the new path. Throws `file_not_writable` for a folder, a link, a secret file and a file
+ * that holds a token: a copy under a new name could slip past the rule that keeps it out of git.
  */
 export function duplicateVaultFile(vaultPath: string, requested: string): string {
   const { root, folder, folderParts, name, source } = placeEntry(vaultPath, requested, "duplicate");
   const matcher = secretMatcherOf(root);
-  if (!existsAt(source)) throw new EvaError("file_not_found", `${requested} was not found.`);
+  const notFound = new EvaError("file_not_found", `${requested} was not found.`);
+  if (!existsAt(source)) throw notFound;
   if (!isPlainFileEntry(source)) throw notWritable("Eva duplicates one file at a time, not a folder or a link.");
   // An encrypted file seals its own path inside, so a copy under another name would not open.
   if (matcher.matches([...folderParts, name].join("/")) || isEncryptedOnDisk(source))
     throw notWritable("A secret file stays out of reach of the page, so Eva does not duplicate it.");
+  const bytes = readOwnFile(source, notFound);
+  if (bytes.length <= tokenScanBytes && containsSecretPattern(bytes.toString("utf-8")))
+    throw notWritable("This file holds a secret, such as a token, so Eva does not duplicate it.");
   for (let number = 1; number <= maxCopyNumber; number += 1) {
     const copy = copyNameOf(name, number);
     const parts = [...folderParts, copy];
@@ -316,16 +360,42 @@ export function duplicateVaultFile(vaultPath: string, requested: string): string
     if (isLayoutEntry(parts) || matcher.matches(parts.join("/")))
       throw notWritable("Eva cannot give the copy a free name here.");
     try {
-      copyFileSync(source, join(folder, copy), constants.COPYFILE_EXCL);
+      // "wx" never writes through an entry that another program put at this name.
+      writeFileSync(join(folder, copy), bytes, { flag: "wx" });
       return parts.join("/");
     } catch (error) {
       if (errorCode(error) === "EEXIST") continue;
-      if (errorCode(error) === "ENOENT") throw new EvaError("file_not_found", `${requested} was not found.`);
-      throw notWritable("Eva has no permission to copy this.");
+      throw notWritable("Eva has no permission to write the copy here.");
     }
   }
   throw notWritable("This folder holds too many copies of the file. Rename some first.");
 }
+
+/**
+ * Reads the file through one handle that follows no link, so a link that another program puts at
+ * its name meanwhile cannot bring a file from outside the vault.
+ */
+function readOwnFile(source: string, notFound: EvaError): Buffer {
+  let handle: number;
+  try {
+    handle = openSync(source, constants.O_RDONLY | noFollow | noWait);
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") throw notFound;
+    throw notWritable("Eva has no permission to read this.");
+  }
+  try {
+    const stats = fstatSync(handle);
+    if (!stats.isFile()) throw notWritable("Eva duplicates one file at a time, not a folder or a link.");
+    if (stats.size > maxCopiedBytes) throw notWritable("This file is larger than 50 MB, so Eva does not duplicate it.");
+    const bytes = Buffer.alloc(stats.size);
+    return bytes.subarray(0, readSync(handle, bytes, 0, stats.size, 0));
+  } finally {
+    closeSync(handle);
+  }
+}
+
+/** Windows has no such flag. There, `isPlainFileEntry` checks the entry just before. */
+const noFollow: number = (constants as Partial<typeof constants>).O_NOFOLLOW ?? 0;
 
 /** `Plan.md` gives `Plan copy.md`, then `Plan copy 2.md`. A name such as `.env` has no extension. */
 function copyNameOf(name: string, number: number): string {

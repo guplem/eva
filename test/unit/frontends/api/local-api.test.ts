@@ -2561,6 +2561,10 @@ describe("web routes", () => {
       expect(existsSync(join(vaultPath, "Drafts"))).toBe(false);
       expect(await json(await call("/api/files/favorites"))).toEqual([]);
       expect((await call("/api/files/delete", { method: "POST", body: { path: "Drafts" } })).status).toBe(404);
+      const layout = await call("/api/files/delete", { method: "POST", body: { path: ".eva" } });
+      expect(layout.status).toBe(409);
+      expect(await json(layout)).toMatchObject({ code: "file_not_writable" });
+      expect((await call("/api/files/duplicate", { method: "POST", body: { path: ".eva" } })).status).toBe(409);
     } finally {
       rmSync(join(vaultPath, "Drafts"), { recursive: true, force: true });
     }

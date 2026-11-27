@@ -258,6 +258,27 @@ describe("the calendar writes of a widget", () => {
     expect(calls).toHaveLength(1);
   });
 
+  test("accept each field and the body at its exact limit", async () => {
+    const { source, calls } = recordingSource();
+    const email = `${"g".repeat(254 - "@example.com".length)}@example.com`;
+    const atLimits = { ...timed, title: "t".repeat(1024), place: "p".repeat(1024), guests: [email] };
+    expect((await write(source, "POST", events, atLimits))?.status).toBe(201);
+    expect((await write(source, "POST", events, { ...timed, guests: [`g${email}`] }))?.status).toBe(400);
+    const padding = maxEventWriteBytes - JSON.stringify({ ...timed, note: "" }).length;
+    expect((await write(source, "POST", events, JSON.stringify({ ...timed, note: "x".repeat(padding) })))?.status).toBe(
+      201,
+    );
+    const calendarId = "c".repeat(1024);
+    expect((await write(source, "POST", events, { ...timed, calendarId }))?.status).toBe(201);
+    expect((await write(source, "POST", events, { ...timed, calendarId: `${calendarId}c` }))?.status).toBe(400);
+    const longId = `eva/google-calendar/events/${"e".repeat(1024)}.json`;
+    const remove = (id: string): Promise<WidgetAnswer | null> =>
+      write(source, "DELETE", longId, null, { query: `calendarId=${id}` });
+    expect((await remove(calendarId))?.status).toBe(204);
+    expect((await remove(`${calendarId}c`))?.status).toBe(400);
+    expect(calls).toHaveLength(4);
+  });
+
   test("refuse a body over the cap, with 413", async () => {
     const { source, calls } = recordingSource();
     const body = JSON.stringify({ ...timed, extra: "x".repeat(maxEventWriteBytes) });

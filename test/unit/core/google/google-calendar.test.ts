@@ -419,6 +419,21 @@ describe("the writes", () => {
     expect(result).not.toMatchObject({ done: { startAt: expect.anything() as unknown } });
   });
 
+  test("change an all-day event into a timed event", async () => {
+    allowWrites();
+    google.calendarEvents.set(work.id, [
+      { id: "trip", summary: "Trip", start: { date: "2026-11-18" }, end: { date: "2026-11-19" } },
+    ]);
+    const result = await calendar.change("trip", { calendarId: work.id, time: meeting.time }, false);
+    expect(google.calendarWrites[0]?.body).toEqual({
+      start: { dateTime: "2026-11-19T10:00:00+01:00", date: null },
+      end: { dateTime: "2026-11-19T11:00:00+01:00", date: null },
+    });
+    expect(result).toMatchObject({
+      done: { startAt: "2026-11-19T10:00:00+01:00", endAt: "2026-11-19T11:00:00+01:00" },
+    });
+  });
+
   test("delete an event, and send the cancellation only when the widget asks", async () => {
     allowWrites();
     google.calendarEvents.set(work.id, [{ id: "a" }, { id: "b" }]);
@@ -455,6 +470,7 @@ describe("the writes", () => {
       [403, "insufficientPermissions", "logIn"],
       [403, "forbidden", "notAllowed"],
       [403, "requiredAccessLevel", "notAllowed"],
+      [403, "", "notAllowed"],
       [404, "notFound", "notFound"],
       [410, "deleted", "notFound"],
     ];

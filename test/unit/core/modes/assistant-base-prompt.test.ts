@@ -82,6 +82,15 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("No type means `general`, or `software` when the project lists `repos`.");
   });
 
+  test("gives a Google Maps link for a route or a place, which opens the Maps app on a phone (#453)", () => {
+    expect(assistantBasePrompt).toContain("https://www.google.com/maps/dir/?api=1&destination=<place>");
+    expect(assistantBasePrompt).toContain("https://www.google.com/maps/search/?api=1&query=<place>");
+    // A start from the vault, such as a home address, would put more in the link than the person asked for.
+    expect(assistantBasePrompt).toContain("Add `&origin=<place>` only when the person names a start");
+    // Both front ends link a Markdown link and a bare URL, but show a code span as code.
+    expect(assistantBasePrompt).toContain("never in a code span");
+  });
+
   test("sends a Google login to Settings: the login link of the Google tools opens only on Eva's computer", () => {
     expect(assistantBasePrompt).toContain("Start the Google login");
   });

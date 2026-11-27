@@ -1,12 +1,14 @@
 /**
- * Pins the whole sandbox of a Claude Code Project chat, byte for byte, from the core's wall roots
- * to the `settings` option (#759). The wall settings move between the core, `src/shared/` and the
- * adapter, and none of these moves may change what Claude Code gets.
+ * Pins the sandbox of a Claude Code Project chat and its package cache variables, byte for byte,
+ * from the core's wall roots to the `settings` and `env` options (#759). The wall settings move
+ * between the core, `src/shared/` and the adapter, and none of these moves may change what Claude
+ * Code gets.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Options } from "@anthropic-ai/claude-agent-sdk";
 import { engineEnvironment, projectWallRoots } from "../../../../src/core/instance/child-environments.ts";
 import { userspaceFolders } from "../../../../src/core/remote-access/tailscale.ts";
 import { engineFolders, homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
@@ -45,6 +47,10 @@ function cloneWall(socketFilter: boolean): FileWall {
 }
 
 function sandboxOf(fileWall: FileWall): unknown {
+  return (optionsOf(fileWall).settings as { sandbox: unknown }).sandbox;
+}
+
+function optionsOf(fileWall: FileWall): Options {
   const environment = engineEnvironment({ paths, processEnvironment: { PATH: "/usr/bin" }, evaCommand: ["eva"] }, {});
   const request: TurnRequest = {
     mode: "project",
@@ -67,7 +73,7 @@ function sandboxOf(fileWall: FileWall): unknown {
     askQuestions: () => Promise.resolve("declined"),
     signal: new AbortController().signal,
   };
-  return (buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: unknown }).sandbox;
+  return buildQueryOptions(request, "/bin/claude", "auto");
 }
 
 /** Every list is written out here, so a move of a constant cannot change both sides at once. */
@@ -138,5 +144,18 @@ describe("the sandbox of a Claude Code Project chat stays the same (#759)", () =
 
   test("without the socket filter (#760)", () => {
     expect(JSON.stringify(sandboxOf(cloneWall(false)))).toBe(JSON.stringify(expectedSandbox(false)));
+  });
+
+  test("the package caches move to the temporary folder", () => {
+    const folder = join(tmpdir(), "eva-tool-caches");
+    expect(optionsOf(cloneWall(true)).env).toMatchObject({
+      PIP_CACHE_DIR: join(folder, "pip"),
+      UV_CACHE_DIR: join(folder, "uv"),
+      YARN_CACHE_FOLDER: join(folder, "yarn"),
+      npm_config_store_dir: join(folder, "pnpm"),
+      BUN_INSTALL_CACHE_DIR: join(folder, "bun"),
+      GOCACHE: join(folder, "go-build"),
+      GOMODCACHE: join(folder, "go-mod"),
+    });
   });
 });

@@ -7,7 +7,7 @@ import { WidgetApprovals } from "../../../../src/core/widgets/widget-approvals.t
 import { WidgetCopies } from "../../../../src/core/widgets/widget-copies.ts";
 import { readWidgetList } from "../../../../src/core/widgets/widget-list.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
-import type { CalendarSource } from "../../../../src/core/google/google-calendar.ts";
+import { noCalendar, type CalendarSource } from "../../../../src/core/google/google-calendar.ts";
 import type { TasksSource } from "../../../../src/core/google/google-tasks.ts";
 import { PreviewGrants } from "../../../../src/core/widgets/widget-previews.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
@@ -192,7 +192,8 @@ describe("the preview of a clone", () => {
 
   test("My data reads the person's calendar with the grant of the preview", async () => {
     const source: CalendarSource = {
-      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true }]),
+      ...noCalendar,
+      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true, writable: true }]),
       events: () => Promise.resolve([]),
     };
     widgets = new Widgets({ ...options, calendar: source });

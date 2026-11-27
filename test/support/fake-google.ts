@@ -1,6 +1,7 @@
 /**
  * A fake Google for tests: the token endpoint, one cheap read of each service, a Drive folder, and
- * the calendar list and events of Google Calendar, and the task lists and tasks of Google Tasks, at `baseUrl`. A test sets an error to see how Eva names the step to fix.
+ * the calendar list and events of Google Calendar with their writes, and the task lists and tasks of Google Tasks, at
+ * `baseUrl`. A test sets an error to see how Eva names the step to fix.
  */
 import type { Server } from "bun";
 
@@ -19,6 +20,10 @@ export interface FakeGoogle {
   /** The events of each calendar, by its id, in Google's format. One page holds at most `eventPageSize`. */
   readonly calendarEvents: Map<string, unknown[]>;
   eventPageSize: number;
+  /** Each write of an event: its method, path as sent, query and JSON body. */
+  readonly calendarWrites: CalendarWrite[];
+  /** A status for every write of an event, with Google's reason in the body, such as 403 and `forbidden`. */
+  calendarWriteStatus: { readonly status: number; readonly reason: string; readonly message?: string } | null;
   /** The task lists, in Google's format. */
   taskLists: unknown[];
   /** The tasks of each task list, by its id, in Google's format. One page holds at most `taskPageSize`. */
@@ -45,6 +50,13 @@ export interface FakeGoogle {
   stop(): void;
 }
 
+export interface CalendarWrite {
+  readonly method: string;
+  readonly path: string;
+  readonly query: URLSearchParams;
+  readonly body: unknown;
+}
+
 const servicePaths: readonly [string, string][] = [
   ["/calendar/", "calendar"],
   ["/drive/", "drive"],
@@ -62,6 +74,8 @@ export function fakeGoogle(): FakeGoogle {
     calendarList: [],
     calendarEvents: new Map(),
     eventPageSize: 2500,
+    calendarWrites: [],
+    calendarWriteStatus: null,
     taskLists: [],
     tasks: new Map(),
     taskPageSize: 100,
@@ -122,6 +136,8 @@ export function fakeGoogle(): FakeGoogle {
         const id = `folder-${String(fake.driveFolders.length)}`;
         return Response.json({ id, webViewLink: `https://drive.google.com/drive/folders/${id}` });
       }
+      const eventWrite = /^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(url.pathname);
+      if (eventWrite !== null && request.method !== "GET") return writeEvent(fake, request, url, eventWrite);
       if (url.pathname === "/calendar/v3/users/me/calendarList") return Response.json({ items: fake.calendarList });
       const events = /^\/calendar\/v3\/calendars\/([^/]+)\/events$/.exec(url.pathname);
       if (events !== null)
@@ -140,6 +156,61 @@ export function fakeGoogle(): FakeGoogle {
       void server.stop(true);
     },
   });
+}
+
+/** Creates, patches or deletes an event in `calendarEvents`, as Google Calendar does. */
+async function writeEvent(
+  fake: Omit<FakeGoogle, "url" | "stop">,
+  request: Request,
+  url: URL,
+  match: RegExpExecArray,
+): Promise<Response> {
+  const calendarId = decodeURIComponent(match[1] ?? "");
+  const id = match[2] === undefined ? null : decodeURIComponent(match[2]);
+  const body = request.method === "DELETE" ? null : ((await request.json()) as Record<string, unknown>);
+  fake.calendarWrites.push({ method: request.method, path: url.pathname, query: url.searchParams, body });
+  const failure = fake.calendarWriteStatus;
+  if (failure !== null)
+    return Response.json(
+      { error: { code: failure.status, message: failure.message ?? "", errors: [{ reason: failure.reason }] } },
+      { status: failure.status },
+    );
+  const events = (fake.calendarEvents.get(calendarId) ?? []) as Record<string, unknown>[];
+  fake.calendarEvents.set(calendarId, events);
+  const number = String(fake.calendarWrites.length);
+  if (request.method === "POST" && id === null) {
+    const created = {
+      ...body,
+      id: `created-${number}`,
+      status: "confirmed",
+      htmlLink: `https://www.google.com/calendar/event?eid=created-${number}`,
+    };
+    events.push(created);
+    return Response.json(created);
+  }
+  const index = events.findIndex((event) => event["id"] === id);
+  if (id === null || index === -1) return Response.json({ error: { code: 404 } }, { status: 404 });
+  if (request.method === "DELETE") {
+    events.splice(index, 1);
+    return new Response(null, { status: 204 });
+  }
+  if (request.method !== "PATCH") return Response.json({ error: { code: 405 } }, { status: 405 });
+  const patched = patch(events[index] ?? {}, body ?? {});
+  events[index] = patched;
+  return Response.json(patched);
+}
+
+/** Google's patch: a given field replaces the old one, a null removes it, and `start` and `end` merge one level down. */
+function patch(event: Record<string, unknown>, change: Record<string, unknown>): Record<string, unknown> {
+  const withoutNulls = (fields: object): Record<string, unknown> =>
+    Object.fromEntries(Object.entries(fields).filter(([, part]) => part !== null));
+  const next: Record<string, unknown> = { ...event };
+  for (const [key, value] of Object.entries(change))
+    next[key] =
+      (key === "start" || key === "end") && typeof value === "object" && value !== null
+        ? withoutNulls({ ...(event[key] as object), ...value })
+        : value;
+  return withoutNulls(next);
 }
 
 /** One page of a Google list: the page token is the index of its first item. */

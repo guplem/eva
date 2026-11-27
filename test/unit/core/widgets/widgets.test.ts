@@ -12,7 +12,7 @@ import { readWidgetList, widgetListPath, writeWidgetList } from "../../../../src
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 import { Widgets, type WidgetsOptions } from "../../../../src/core/widgets/widgets.ts";
 import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
-import type { CalendarSource } from "../../../../src/core/google/google-calendar.ts";
+import { noCalendar, type CalendarSource } from "../../../../src/core/google/google-calendar.ts";
 import type { TasksSource } from "../../../../src/core/google/google-tasks.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, gitHookTimeoutMs, type GitSandbox } from "../../../support/git-sandbox.ts";
@@ -644,6 +644,7 @@ describe("the widget routes", () => {
 
   test("an event gets the project that its description names, with the tag line gone (#1012)", async () => {
     const source: CalendarSource = {
+      ...noCalendar,
       calendars: () => Promise.resolve([]),
       events: () =>
         Promise.resolve([
@@ -703,7 +704,8 @@ describe("the widget routes", () => {
     const windows: string[] = [];
     let broken = false;
     const source: CalendarSource = {
-      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true }]),
+      ...noCalendar,
+      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true, writable: true }]),
       events: (from, to) => {
         if (broken) return Promise.reject(new EvaError("google_failed", "Google refused to show the calendar."));
         windows.push(`${from}..${to}`);
@@ -728,7 +730,7 @@ describe("the widget routes", () => {
         .then((answer) => ({ status: answer?.status, body: text(answer?.body) }));
 
     expect(text((await widgets.serve(token, "eva/google-calendar/calendars.json", "GET", null))?.body)).toBe(
-      '[{"id":"work","name":"Work","color":"#3f51b5","primary":true}]',
+      '[{"id":"work","name":"Work","color":"#3f51b5","primary":true,"writable":true}]',
     );
     expect(await events("from=2026-11-01&to=2027-01-01")).toEqual({ status: 200, body: "[]" });
     for (const query of ["", "from=2026-11-01", "from=2026-11-02&to=2026-11-01", "from=2026-02-30&to=2026-03-01"])

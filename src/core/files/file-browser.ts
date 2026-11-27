@@ -27,6 +27,7 @@ import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher } from "../vault/secret-files.ts";
 import { encryptedState } from "../vault/vault-crypto.ts";
 import { isCloneFolderFile } from "../vault/vault-sync.ts";
+import { isScratchPath } from "./scratch-folders.ts";
 import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export interface FileEntry {
@@ -218,8 +219,10 @@ export function encryptMoveOf(vaultPath: string, requested: string): EncryptMove
   if (!isPlainFileEntry(join(folder, oldName)))
     throw notWritable("Eva encrypts one file at a time, not a folder or a link.");
   // The sync never encrypts a file of a clone or of `.eva/`, and Eva and her agents need some files plain.
+  // A password change skips each scratch folder, so a file there would stay on the old key.
   if (
     isCloneFolderFile(from) ||
+    isScratchPath(from) ||
     from.toLowerCase().startsWith(".eva/") ||
     isNeverEncrypted(from) ||
     !new SecretMatcher(fixedSecretPatterns).matches(to)

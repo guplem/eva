@@ -535,6 +535,9 @@ describe("encryptMoveOf: the new name of the Encrypt action (#1108)", () => {
 
   test("a file in .eva/scratch or in a clone is refused: the sync never encrypts it", () => {
     write(".eva/scratch/received/photo.png", "PNG");
+    write("Scratch/passport.jpg", "JPG");
+    // A password change finds no encrypted file in a root Scratch/ folder, so it would stay on the old key.
+    expect(codeOf(() => encryptMoveOf(vault, "Scratch/passport.jpg"))).toBe("file_not_writable");
     expect(codeOf(() => encryptMoveOf(vault, ".eva/scratch/received/photo.png"))).toBe("file_not_writable");
     expect(codeOf(() => encryptMoveOf(vault, "Projects/2025-03-02-1015-example-app/repos/example-app-0/main.py"))).toBe(
       "file_not_writable",

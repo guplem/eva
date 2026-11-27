@@ -193,6 +193,7 @@ import {
   writeStructureNotices,
 } from "./vault/vault-structure.ts";
 import { VaultEncryption } from "./vault/vault-encryption.ts";
+import { PlainHistoryWatch } from "./vault/plain-history.ts";
 import { VaultKeys } from "./vault/vault-keys.ts";
 import { VaultSecrets } from "./vault/vault-secrets.ts";
 import { filesFreedBy } from "./vault/encrypted-files.ts";
@@ -539,6 +540,8 @@ export class Eva {
   readonly deviceLogins: DeviceLogins;
   /** The encryption of the vault's secret files (#707): only a device's own request decrypts. */
   readonly encryption: VaultEncryption;
+  /** The notices about files that Eva encrypted while the vault remote still holds them plain (#1110). */
+  private readonly plainHistory: PlainHistoryWatch;
   /** The vault's secret files on this machine, or null with no vault (#707). */
   private readonly vaultSecrets: VaultSecrets | null;
   /** The widgets of the home page (#691). Null when no vault is configured. */
@@ -769,6 +772,11 @@ export class Eva {
         encryptSecrets: () => this.vault.encryptSecrets(),
         save: () => this.vault.save(),
       },
+    });
+    this.plainHistory = new PlainHistoryWatch({
+      statePath: options.paths.plainHistoryState,
+      plainOnRemote: (paths) => this.vault.plainOnRemote(paths),
+      notice: (key, problem, send) => this.alerts.notice(key, problem, send),
     });
     this.checkResults = new Map();
     this.googleLogin = new GoogleLogin({
@@ -1567,6 +1575,12 @@ export class Eva {
    */
   hideProblem(key: string): boolean {
     if (key === vaultStructureKey) return this.readVaultStructureWarning();
+    if (this.plainHistory.read(key)) {
+      // Read means closed: a restart opens only an unread notice again.
+      this.alerts.hide(key);
+      this.alerts.dismiss(key);
+      return true;
+    }
     return this.alerts.hide(key);
   }
 
@@ -1579,6 +1593,7 @@ export class Eva {
   markNotificationsRead(choice: { readonly seqs: readonly number[] } | { readonly all: true }): NotificationsView {
     if ("all" in choice) {
       this.readVaultStructureWarning();
+      for (const { key } of this.alerts.openAlerts()) if (this.plainHistory.read(key)) this.alerts.dismiss(key);
       this.alerts.markAllRead();
     } else this.alerts.markRead(choice.seqs);
     return this.notifications();
@@ -1594,6 +1609,8 @@ export class Eva {
     if (result.vault?.kind === "done") this.alignTemplate();
     this.noticeVaultAhead();
     this.reportVaultStructure();
+    // A restart lost the open notices about plain versions: the unread ones open again, unsent (#1110).
+    this.plainHistory.reopen();
     // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
     if (this.options.engines.some((engine) => engine.name === "claude-code")) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
@@ -2376,6 +2393,8 @@ export class Eva {
     const vaultPath = this.browsedVault();
     const move = encryptMoveOf(vaultPath, path);
     await this.encryption.encryptByRename(move.from, move.to);
+    // With sync off, no sync step follows to check the history of the old name (#1110).
+    this.checkPlainHistory();
     try {
       moveFavorites(vaultPath, normalizedPath(path), move.to);
     } catch {
@@ -3029,6 +3048,18 @@ export class Eva {
       const files = filesFreedBy(this.options.config.vaultPath, new SecretMatcher(added), new SecretMatcher([]));
       this.alerts.notify("vault_new_secret_defaults", "news", newSecretDefaultsNews(added, files));
     }
+    this.checkPlainHistory();
+  }
+
+  /** Warns about each file that Eva encrypted while the vault remote still holds it plain (#1110). */
+  private checkPlainHistory(): void {
+    const encrypted = this.vaultSecrets?.takeNewlyEncrypted() ?? [];
+    this.plainHistory.consider(encrypted, this.encryption.takeOldNames()).catch((error: unknown) => {
+      // The check never stops a sync: the person loses one warning, and the files stay encrypted.
+      this.options.logger?.log("warn", "Eva could not check the vault history for plain versions.", {
+        reason: String(error),
+      });
+    });
   }
 
   /**

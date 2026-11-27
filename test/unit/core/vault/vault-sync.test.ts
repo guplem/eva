@@ -1380,3 +1380,40 @@ describe("the push check, after the second review of #707", () => {
     expect(remoteVersions("Notes/mine.md")).toContain("mine\n");
   });
 });
+
+describe("VaultSync finds plain versions on the remote (#1110)", () => {
+  test("a path whose remote history holds a plain version is named, also after a rename", async () => {
+    const sync = createSync(vault);
+    sandbox.write(vault, "Notes/plan.md", "A plan\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "plan");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    // The Encrypt action renames the file: the remote then deletes the old name, and its history keeps it.
+    sandbox.git(vault, "mv", "Notes/plan.md", "Notes/plan.md.eva-secret");
+    sandbox.git(vault, "commit", "-q", "-m", "encrypt");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    expect(await sync.plainOnRemote(["Notes/plan.md", "Notes/other.md"])).toEqual(["Notes/plan.md"]);
+  });
+
+  test("a path that only unpushed commits hold, or that the remote holds only encrypted, is not named", async () => {
+    const sync = createSync(vault);
+    sandbox.write(vault, "Notes/new.md", "Not pushed\n");
+    sandbox.write(vault, "Notes/sealed.md", `${encryptedFileLine}\neva-encrypted-v1 0123456789abcdef\nAAAA\n`);
+    sandbox.git(vault, "add", "Notes/sealed.md");
+    sandbox.git(vault, "commit", "-q", "-m", "sealed");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "new");
+    expect(await sync.plainOnRemote(["Notes/new.md", "Notes/sealed.md"])).toEqual([]);
+  });
+
+  test("a vault with no remote branch names nothing", async () => {
+    const fresh = join(sandbox.root, "no-remote-1110");
+    mkdirSync(fresh);
+    sandbox.git(fresh, "init", "-q", "-b", "main");
+    sandbox.write(fresh, "plan.md", "A plan\n");
+    sandbox.git(fresh, "add", "-A");
+    sandbox.git(fresh, "commit", "-q", "-m", "plan");
+    expect(await createSync(fresh).plainOnRemote(["plan.md"])).toEqual([]);
+  });
+});

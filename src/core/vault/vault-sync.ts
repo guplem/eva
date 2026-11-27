@@ -10,6 +10,7 @@ import { failureReason, type ProcessRunner } from "../../shared/process-runner.t
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
+import { encryptedState } from "./vault-crypto.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
 import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
 import { upgradeBranchVersion } from "./vault-structure.ts";
@@ -139,6 +140,8 @@ const evaIdentity: Readonly<Record<string, string>> = {
 const maxPushAttempts = 3;
 /** Files bigger than this are not scanned for secrets: binaries, archives, exports. */
 export const maxScannedFileBytes = 1_000_000;
+/** The commits of one path that the check of the remote history reads, so a long history stays fast (#1110). */
+const maxHistoryCommits = 50;
 /** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
 const maxCommittedFileBytes = 50 * 1024 * 1024;
 /** A note conflict shows each version only up to this size: the page compares them line by line. */
@@ -297,6 +300,36 @@ export class VaultSync {
   /** True for a file that the secret list matches and that is not encrypted: it must never reach the remote. */
   isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
     return this.options.secrets?.isPlainSecret(relativePath, bytes) ?? false;
+  }
+
+  /**
+   * The paths whose history on the remote branch holds a plain version (#1110). A version only in
+   * unpushed commits does not count: the push check takes it out first. Null when git cannot say.
+   */
+  plainOnRemote(paths: readonly string[]): Promise<string[] | null> {
+    return this.serialize(async () => {
+      const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+      const branch = await this.defaultBranch(current);
+      if (!(await this.remoteBranchKnown(branch))) return [];
+      const found: string[] = [];
+      for (const path of paths) {
+        const log = await this.git(
+          ["log", "--full-history", "--format=%H", "-n", String(maxHistoryCommits), `origin/${branch}`, "--", path],
+          localTimeoutMs,
+        );
+        if (log.exitCode !== 0) return null;
+        for (const commit of log.stdout.split("\n").filter((line) => line !== "")) {
+          const shown = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
+          // A commit that deletes the path holds no version of it.
+          if (shown.exitCode !== 0) continue;
+          if (encryptedState(new TextEncoder().encode(shown.stdout)) === "plain") {
+            found.push(path);
+            break;
+          }
+        }
+      }
+      return found;
+    });
   }
 
   /** The branch that Eva syncs. */

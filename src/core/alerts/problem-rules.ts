@@ -358,3 +358,15 @@ function locationProblem(what: string): AlertProblem {
     resolvedMessage: "Eva saves your location in Life/About me.md again.",
   };
 }
+
+/**
+ * A file that Eva encrypted while the vault remote still holds it plain (#1110). Eva never rewrites
+ * the history, so only a new key or password protects what the old versions hold.
+ */
+export function plainHistoryProblem(file: string): AlertProblem {
+  return {
+    level: "warn",
+    message: `${file} is encrypted now, but the git history of the vault remote still holds its old plain versions. Change each key or password in it.`,
+    resolvedMessage: "",
+  };
+}

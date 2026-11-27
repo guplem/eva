@@ -411,6 +411,9 @@ export const api = {
   /** Gives a file its `.eva-secret` name and encrypts it (#1108). Answers the new path. */
   encryptFile: (path: string): Promise<{ path: string }> =>
     request("POST", "/api/vault/secrets/encrypt-file", { path }),
+  /** Decrypts a `.eva-secret` file for this unlocked tab (#1109). Answers the new path. */
+  decryptFile: (path: string): Promise<{ path: string }> =>
+    request("POST", "/api/vault/secrets/decrypt-file", { path }, { headers: unlockHeaders() }),
   /**
    * The vault entries whose name holds `query`. With `contents`, the files whose text holds it too.
    * With `shareable`, only what a chat in a clone may be given (#706).

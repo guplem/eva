@@ -121,6 +121,17 @@ const pngStart = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 for (const run of ["desktop", "phone"])
   for (const name of [`Private/${run}-photo.png.eva-secret`, `Private/${run}-photo.png.secrets`])
     sandbox.write(vault, name, new TextDecoder().decode(encryptFile(pngStart, vaultKey, name)));
+// Encrypted files that the Decrypt action of the Files page turns plain again (#1109).
+for (const run of ["desktop", "phone"]) {
+  const memo = `Private/${run}-memo.md.eva-secret`;
+  sandbox.write(
+    vault,
+    memo,
+    new TextDecoder().decode(encryptFile(new TextEncoder().encode("A memo to decrypt.\n"), vaultKey, memo)),
+  );
+  const badge = `Private/${run}-badge.png.eva-secret`;
+  sandbox.write(vault, badge, new TextDecoder().decode(encryptFile(pngStart, vaultKey, badge)));
+}
 // A plain file that the Encrypt action of the Files page encrypts (#1108).
 for (const run of ["desktop", "phone"]) {
   sandbox.write(vault, `Private/${run}-plan.md`, "A plan that only I may read.\n");

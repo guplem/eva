@@ -178,6 +178,13 @@ export function FilesView(): ReactElement {
     openMoved(encrypted);
   };
 
+  const decrypt = async (): Promise<void> => {
+    const decrypted = (await api.decryptFile(path)).path;
+    // The draft's version belongs to the encrypted bytes. The confirmation said that it goes.
+    keepDraft(path, null, "");
+    openMoved(decrypted);
+  };
+
   /** Opens the new path of the open entry, after a rename or an encryption. */
   const openMoved = (renamed: string): void => {
     // A renamed folder keeps the width that the person gave it.
@@ -328,6 +335,7 @@ export function FilesView(): ReactElement {
                   wrap={wrap}
                   onWrap={setWrap}
                   onSaved={onSaved}
+                  onDecrypt={decrypt}
                   onTryAgain={() => setAttempt((count) => count + 1)}
                   vaultFolder={vaultFolder}
                   width={widths.get(crumb.path) ?? null}
@@ -574,6 +582,8 @@ interface ColumnProps {
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
+  /** Decrypts the open `.eva-secret` file, and opens its new path. */
+  readonly onDecrypt: () => Promise<void>;
   readonly onTryAgain: () => void;
   /** The width that the person dragged a folder column to, or null for the usual width. */
   readonly width: number | null;
@@ -597,6 +607,7 @@ function Column({
   wrap,
   onWrap,
   onSaved,
+  onDecrypt,
   onTryAgain,
   width,
   onWidth,
@@ -661,6 +672,7 @@ function Column({
         wrap={wrap}
         onWrap={onWrap}
         smart={smart}
+        onDecrypt={onDecrypt}
       />
     );
   if (shown.kind === "unreadable")
@@ -706,6 +718,7 @@ function EncryptedFile({
   wrap,
   onWrap,
   smart,
+  onDecrypt,
 }: {
   readonly path: string;
   readonly size: number;
@@ -714,9 +727,28 @@ function EncryptedFile({
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
   readonly smart: boolean;
+  readonly onDecrypt: () => Promise<void>;
 }): ReactElement {
+  const showError = useShowError();
   const [opened, setOpened] = useState<Opened>({ state: "loading" });
-  const name = decryptedNameOf(path.split("/").pop() ?? "file");
+  const [decrypting, setDecrypting] = useState(false);
+  const fileName = path.split("/").pop() ?? "file";
+  const name = decryptedNameOf(fileName);
+  // Only the end that the Encrypt action adds: another pattern's file keeps its rules in Settings.
+  const decryptable = name !== fileName;
+
+  const decrypt = async (): Promise<void> => {
+    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
+    const question = `Decrypt ${fileName}? It becomes ${name}, a plain file, and its plain text goes to the vault remote at the next save.${unsaved}`;
+    if (!window.confirm(question)) return;
+    setDecrypting(true);
+    try {
+      await onDecrypt();
+    } catch (caught) {
+      showError(caught);
+      setDecrypting(false);
+    }
+  };
 
   const textFile = useCallback(
     (text: string, version: string): ShownFile => ({
@@ -807,6 +839,12 @@ function EncryptedFile({
           <span className="files-size">({sizeWords(size)})</span>
         </div>
         <DownloadButton path={path} folder={false} label={name} fetchFile={download} />
+        {decryptable && (
+          <button className="ghost" aria-busy={decrypting} disabled={decrypting} onClick={() => void decrypt()}>
+            {decrypting ? <ButtonSpinner /> : <Icon name="lock" />}
+            Decrypt
+          </button>
+        )}
         <button className="ghost" onClick={() => void lock()}>
           <Icon name="lock" />
           Lock
@@ -824,7 +862,10 @@ function EncryptedFile({
       return source.load();
     },
     download,
-    items: [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() }],
+    items: [
+      ...(decryptable ? [{ label: "Decrypt", icon: "lock" as const, onChoose: () => void decrypt() }] : []),
+      { label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() },
+    ],
   };
   return (
     <FilePreview

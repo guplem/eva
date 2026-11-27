@@ -1,8 +1,8 @@
 /**
  * The file explorer of the web page (issue 253): it lists a vault folder, shows a text file, saves
  * the person's edit of one (issue 308), renames a file or a folder (issue 343), and creates,
- * deletes and duplicates one (#1117). Each path is
- * resolved before the check, so neither `..` nor a symbolic link can point out of the vault (lesson 72).
+ * deletes and duplicates one (#1117). Each path is resolved before the check, so neither `..` nor a
+ * symbolic link can point out of the vault (lesson 72).
  */
 import {
   chmodSync,
@@ -403,6 +403,7 @@ function copyNameOf(name: string, number: number): string {
   const stem = name.slice(0, name.length - extension.length);
   return `${stem} copy${number === 1 ? "" : ` ${String(number)}`}${extension}`;
 }
+
 /** The file that the Encrypt action moves, and its new name with the `.eva-secret` end. */
 export interface EncryptMove {
   readonly from: string;

@@ -81,6 +81,10 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
       return [{ icon: "calendar", text, why: input.why }];
     }
     if (input.type === "eva-cases") return [{ icon: "case", text: "Reads your open cases", why: input.why }];
+    if (input.type === "eva-google-tasks") {
+      const text = input.access === "write" ? "Reads and changes your Google Tasks" : "Reads your Google Tasks";
+      return [{ icon: "check", text, why: input.why }];
+    }
     return [];
   });
   const asks = (manifest.asks ?? []).map((ask): PermissionLine =>

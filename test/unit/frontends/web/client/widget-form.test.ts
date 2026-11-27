@@ -131,7 +131,7 @@ describe("the activation form", () => {
     ]);
   });
 
-  test("shows the calendar and the cases as permissions, not as fields", () => {
+  test("shows the calendar, the cases and the tasks as permissions, not as fields", () => {
     const day: WidgetManifest = {
       ...manifest,
       contract: 2,
@@ -140,6 +140,8 @@ describe("the activation form", () => {
         { ...base, id: "calendar", type: "eva-google-calendar", label: "Calendar", required: true, access: "read" },
         { ...base, id: "plan", type: "eva-google-calendar", label: "Plan", required: false, access: "write" },
         { ...base, id: "cases", type: "eva-cases", label: "Cases", required: true, why: "Shows your cases." },
+        { ...base, id: "tasks", type: "eva-google-tasks", label: "Tasks", required: false, access: "read" },
+        { ...base, id: "todo", type: "eva-google-tasks", label: "To do", required: false, access: "write" },
       ],
     };
     expect(formInputs(day)).toEqual([]);
@@ -148,6 +150,8 @@ describe("the activation form", () => {
       { icon: "calendar", text: "Reads your Google Calendar", why: "w" },
       { icon: "calendar", text: "Reads and changes your Google Calendar", why: "w" },
       { icon: "case", text: "Reads your open cases", why: "Shows your cases." },
+      { icon: "check", text: "Reads your Google Tasks", why: "w" },
+      { icon: "check", text: "Reads and changes your Google Tasks", why: "w" },
     ]);
   });
 

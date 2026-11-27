@@ -21,6 +21,8 @@ import { answerStatePath, removeWidgetState, statePath } from "./widget-state.ts
 import type { WidgetAskType } from "./widget-kinds.ts";
 import { calendarAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
+import { noTasks, type TasksSource } from "../google/google-tasks.ts";
+import { tasksAnswer } from "./widget-google-tasks.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, writeWidgetList, type WidgetEntry, type WidgetInputValue } from "./widget-list.ts";
 import { layoutForms, type LayoutChange, type WidgetLayout } from "./widget-layout.ts";
@@ -60,6 +62,8 @@ export interface WidgetsOptions {
   readonly now: () => Date;
   /** The person's Google Calendar (#778). Without it, the calendar paths answer null, as with no Google login. */
   readonly calendar?: CalendarSource;
+  /** The person's Google Tasks (#1102). Without it, the tasks paths answer null, as with no Google login. */
+  readonly tasks?: TasksSource;
   /** The data formats (#692). Without them, this Eva writes no `DATA_FORMAT.md`. */
   readonly formats?: {
     readonly record: DataFormatRecord;
@@ -223,6 +227,7 @@ export class Widgets {
       projects: options.projects,
       location: options.location,
       calendar: options.calendar ?? noCalendar,
+      tasks: options.tasks ?? noTasks,
       exclusive: options.exclusive,
       redact: options.redact,
       now: options.now,
@@ -1005,6 +1010,8 @@ export class Widgets {
       this.options.projects,
     );
     if (calendar !== null) return calendar;
+    const tasks = await tasksAnswer(path, query, record.googleTasks, this.options.tasks ?? noTasks);
+    if (tasks !== null) return tasks;
     const evaData = evaDataAnswer(path, record, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;
     if (path === "eva/theme.css")

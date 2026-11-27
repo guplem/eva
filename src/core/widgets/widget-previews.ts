@@ -30,6 +30,8 @@ import { evaDataAnswer } from "./widget-eva-data.ts";
 import { answerStatePath, statePath } from "./widget-state.ts";
 import { calendarAnswer } from "./widget-google-calendar.ts";
 import type { CalendarSource } from "../google/google-calendar.ts";
+import type { TasksSource } from "../google/google-tasks.ts";
+import { tasksAnswer } from "./widget-google-tasks.ts";
 import { checkHost } from "./widget-hosts.ts";
 import { readWidgetList, widgetInputValueSchema, type WidgetInputValue } from "./widget-list.ts";
 import { themeCss, type WidgetTheme } from "./widget-policy.ts";
@@ -76,6 +78,7 @@ export const previewGrantSchema = z.object({
   paths: approvalSchema.shape.paths,
   location: z.boolean(),
   googleCalendar: approvalSchema.shape.googleCalendar,
+  googleTasks: approvalSchema.shape.googleTasks,
   cases: approvalSchema.shape.cases,
   asks: approvalSchema.shape.asks,
   hosts: z.array(z.string()),
@@ -141,6 +144,7 @@ export interface WidgetPreviewsOptions {
   readonly projects: () => readonly Project[];
   readonly location: () => LastLocation | null;
   readonly calendar: CalendarSource;
+  readonly tasks: TasksSource;
   readonly exclusive: <Result>(work: () => Result) => Promise<Result>;
   readonly redact: (text: string) => string;
   readonly now: () => Date;
@@ -342,6 +346,8 @@ export class WidgetPreviews {
         this.options.projects,
       );
       if (calendar !== null) return calendar;
+      const tasks = await tasksAnswer(path, query, grant.googleTasks, this.options.tasks);
+      if (tasks !== null) return tasks;
     }
     const evaData = grant === null ? null : evaDataAnswer(path, grant, { vaultPath: this.options.vaultPath });
     if (evaData !== null) return evaData;

@@ -4,7 +4,7 @@
  * person. The preview of a clone uses the same rule, so the person approves only what the clone adds.
  *
  * A permission is each folder or file input with its access, type and file pattern, the location,
- * the calendar with its access, the cases, each ask, each host, the prompt line, and the text of each
+ * the calendar and the tasks with their access, the cases, each ask, each host, the prompt line, and the text of each
  * written schema.
  */
 import type { ApprovedPath, WidgetApproval } from "./widget-approvals.ts";
@@ -23,7 +23,7 @@ const askLines: Readonly<Record<WidgetAskType, string>> = {
 /** What the approval grants, without the facts that grant nothing, such as the name. */
 export type WidgetGrant = Pick<
   WidgetApproval,
-  "paths" | "location" | "googleCalendar" | "cases" | "asks" | "hosts" | "prompt"
+  "paths" | "location" | "googleCalendar" | "googleTasks" | "cases" | "asks" | "hosts" | "prompt"
 >;
 
 export interface GrantChange {
@@ -62,10 +62,12 @@ export function grantChange(
     ];
   });
   const calendar = manifest.inputs.find((input) => input.type === "eva-google-calendar");
+  const tasks = manifest.inputs.find((input) => input.type === "eva-google-tasks");
   const grant: WidgetGrant = {
     paths,
     location: manifest.inputs.some((input) => input.type === "eva-location"),
     googleCalendar: calendar === undefined ? null : (calendar.access ?? "read"),
+    googleTasks: tasks === undefined ? null : (tasks.access ?? "read"),
     cases: manifest.inputs.some((input) => input.type === "eva-cases"),
     asks: widgetAskTypes.filter((type) => (manifest.asks ?? []).some((ask) => ask.type === type)),
     hosts: manifest.hosts.map((host) => origin(host.url)),
@@ -93,6 +95,10 @@ export function grantChange(
     added.push(
       grant.googleCalendar === "write" ? "Read and change your Google Calendar." : "Read your Google Calendar.",
     );
+  const oldTasks = approved?.googleTasks ?? null;
+  if (grant.googleTasks === "write" && oldTasks === "read") added.push("Change your Google Tasks, not only read them.");
+  else if (grant.googleTasks !== null && oldTasks === null)
+    added.push(grant.googleTasks === "write" ? "Read and change your Google Tasks." : "Read your Google Tasks.");
   if (grant.cases && approved?.cases !== true) added.push("Read your open cases.");
   for (const ask of grant.asks) if (!(approved?.asks ?? []).includes(ask)) added.push(askLines[ask]);
   for (const host of grant.hosts) if (!(approved?.hosts ?? []).includes(host)) added.push(`Send requests to ${host}.`);

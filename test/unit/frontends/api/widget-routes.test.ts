@@ -440,11 +440,15 @@ describe("the widget files", () => {
     expect((await frameCall(next)).status).toBe(404);
   });
 
-  test("a calendar widget reads the person's events through Eva's own Google login, with no token in the answer", async () => {
+  test("a calendar widget reads the person's events and tasks through Eva's own Google login, with no token in the answer", async () => {
     const google = fakeGoogle();
     try {
       const client = { clientId: "123456789012-clientid.apps.googleusercontent.com", clientSecret: "GOCSPX-secret" };
-      const googleConfig = { ...defaultConfig.google, email: "person@example.com", services: ["calendar" as const] };
+      const googleConfig = {
+        ...defaultConfig.google,
+        email: "person@example.com",
+        services: ["calendar" as const, "tasks" as const],
+      };
       const credentials = googleCredentialsFolder(homePaths(home));
       mkdirSync(credentials, { recursive: true });
       writeFileSync(
@@ -465,6 +469,8 @@ describe("the widget files", () => {
           end: { dateTime: "2026-10-14T09:15:00Z" },
         },
       ]);
+      google.taskLists = [{ id: "home", title: "Home" }];
+      google.tasks.set("home", [{ id: "water", title: "Water the plants", due: "2026-10-14T00:00:00.000Z" }]);
       api.stop();
       eva.stop();
       eva = new Eva({
@@ -498,10 +504,11 @@ describe("the widget files", () => {
         why: "The widget shows your events.",
         required: true,
       };
+      const tasks = { ...calendar, id: "tasks", type: "eva-google-tasks", label: "Tasks", required: false };
       sandbox.write(
         work,
         "eva-widget.json",
-        JSON.stringify({ ...manifest, contract: 2, inputs: [...manifest.inputs, calendar] }),
+        JSON.stringify({ ...manifest, contract: 4, inputs: [...manifest.inputs, calendar, tasks] }),
       );
       sandbox.git(work, "commit", "-q", "-am", "feat: calendar");
       sandbox.git(work, "push", "-q", "origin", "main");
@@ -525,6 +532,24 @@ describe("the widget files", () => {
       ]);
       expect(body).not.toContain("the-access-token");
       expect((await frameCall(`${base}eva/google-calendar/events.json`)).status).toBe(400);
+
+      const due = await frameCall(`${base}eva/google-tasks/tasks.json?from=2026-10-14&to=2026-10-14`);
+      expect(due.status).toBe(200);
+      expect(await due.json()).toEqual([
+        {
+          id: "water",
+          listId: "home",
+          title: "Water the plants",
+          dueDate: "2026-10-14",
+          completed: false,
+          completedAt: null,
+          notes: null,
+          link: null,
+        },
+      ]);
+      expect(await (await frameCall(`${base}eva/google-tasks/lists.json`)).json()).toEqual([
+        { id: "home", name: "Home" },
+      ]);
     } finally {
       google.stop();
     }

@@ -25,6 +25,7 @@ const record: WidgetApproval = {
   ],
   location: false,
   googleCalendar: null,
+  googleTasks: null,
   cases: false,
   asks: [],
   hosts: [],
@@ -83,12 +84,19 @@ describe("the prompt line of a record", () => {
 });
 
 describe("the inputs of Eva's data in a record", () => {
-  test("a record from before them reads as no calendar and no cases", () => {
-    const { googleCalendar: _calendar, cases: _cases, ...old } = record;
+  test("a record from before them reads as no calendar, no tasks and no cases", () => {
+    const { googleCalendar: _calendar, googleTasks: _tasks, cases: _cases, ...old } = record;
     writeFileSync(join(folder, "old.json"), JSON.stringify({ version: 1, approvals: [old] }));
     const read = new WidgetApprovals(join(folder, "old.json")).get("example-owner/habits");
     expect(read?.googleCalendar).toBeNull();
+    expect(read?.googleTasks).toBeNull();
     expect(read?.cases).toBe(false);
+  });
+
+  test("keeps the tasks access of contract 4", () => {
+    const tasks: WidgetApproval = { ...record, googleTasks: "read" };
+    new WidgetApprovals(path).save("example-owner/habits", tasks);
+    expect(new WidgetApprovals(path).get("example-owner/habits")).toEqual(tasks);
   });
 
   test("a record from before contract 3 reads as no asks, and a record keeps its asks and the header size", () => {

@@ -1,6 +1,6 @@
 # Widgets
 
-A widget is a small web page that Eva shows on her home page. This document is the widget contract: the rules that each widget follows, so that Eva can show it, give it data, and keep the person's data safe. It is contract `3`. Eva still reads widgets of contracts `1` and `2`: see [Contract versions](#contract-versions).
+A widget is a small web page that Eva shows on her home page. This document is the widget contract: the rules that each widget follows, so that Eva can show it, give it data, and keep the person's data safe. It is contract `4`. Eva still reads widgets of contracts `1`, `2` and `3`: see [Contract versions](#contract-versions).
 
 A widget is plain, standard web code: HTML, JavaScript and CSS, with no framework of Eva and no build step. The same files work inside Eva and on any static web server, such as GitHub Pages.
 
@@ -39,16 +39,17 @@ Each widget has its own public GitHub repository. The repository holds no data o
 | `eva/theme.css`            | A mock of the theme, with the default EVE colours.                                            |
 | `example/location.json`    | A mock location, only when the widget uses the location. Never put it at `eva/location.json`. |
 | `example/google-calendar/` | Mock `calendars.json` and `events.json`, only when the widget uses the calendar.              |
+| `example/google-tasks/`    | Mock `lists.json` and `tasks.json`, only when the widget uses the tasks.                      |
 | `example/cases.json`       | Mock cases, only when the widget uses the cases.                                              |
 | `tests/`                   | The tests, with a helper that fakes the writes.                                               |
 
 ## The manifest: `eva-widget.json`
 
-The manifest says what the widget is and what it needs. [`widgets/manifest-v3.json`](widgets/manifest-v3.json) is its JSON Schema. A key that the schema does not name is an error.
+The manifest says what the widget is and what it needs. [`widgets/manifest-v4.json`](widgets/manifest-v4.json) is its JSON Schema. A key that the schema does not name is an error.
 
 | Key        | Required | What it is                                                                                       |
 | ---------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `contract` | yes      | The version of this contract: `3`.                                                               |
+| `contract` | yes      | The version of this contract: `4`.                                                               |
 | `name`     | yes      | The name that Eva shows, 60 characters at most.                                                  |
 | `entry`    | no       | The page that Eva opens, by its path from the repository root. `index.html` when not given.      |
 | `size`     | yes      | The default size of the widget: `small`, `medium`, `large`, `tall`, `xlarge` or `header`.        |
@@ -84,10 +85,11 @@ Each input has these keys:
 | `choice`              | One value of a list.                               | `choices`: the list, 2 values at least.      |
 | `eva-location`        | The permission to read the person's last location. | No `default`.                                |
 | `eva-google-calendar` | Access to the person's Google Calendar.            | `access`. No `default` and no `schema`.      |
+| `eva-google-tasks`    | Access to the person's Google Tasks.               | `access`. No `default` and no `schema`.      |
 | `eva-cases`           | The permission to read the person's open cases.    | No `default` and no `access`.                |
 
 - `access` is `read` or `write`. A write also allows a read.
-- Eva serves no calendar write yet. A later contract path adds it. Ask for `read`.
+- Eva serves no write of the calendar or the tasks yet. A later contract path adds it. Ask for `read`.
 - `schema` is the path of the JSON Schema of each file that the widget writes, such as `schemas/habits.json`.
 - `files` is a glob pattern of the file names of a folder, such as `*.json` or `????-??-??.json`. `*` matches any text, and `?` matches one character. Neither matches a `/`.
 
@@ -103,7 +105,7 @@ The default folder need not exist, and the vault map need not name it. Eva's for
 - **Use the default folder** shows when the folder exists. **Use the default file** shows when the file exists.
 - **Create the default folder** shows when the folder does not exist. The tap creates the folder and each missing parent, with an empty `.gitkeep`, so the vault sync keeps the empty folder. Eva creates no file.
 - A default in a place that no widget reaches, such as `.eva/` or `Scratch/`, shows no button.
-- A default is not a permission. A new or changed default asks for no new approval, changes no value that the person picked, and moves no file. A person who picked the old default keeps that folder. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
+- A default is not a permission. A new or changed default asks for no new approval, changes no value that the person picked, and moves no file. A person who picked the old default keeps that folder. A widget with no `eva-google-calendar` input gets nothing from `eva/google-calendar/`, a widget with no `eva-google-tasks` input gets nothing from `eva/google-tasks/`, and a widget with no `eva-cases` input gets nothing at `eva/cases.json`.
 
 ## How a widget talks to Eva
 
@@ -117,6 +119,8 @@ A widget reads and writes data only through `fetch` to relative paths. It asks E
 | `eva/location.json`                                             | `GET`                  | The last location, or `null` when Eva has none yet.                                   |
 | `eva/google-calendar/calendars.json`                            | `GET`                  | The person's calendars, or `null`. See [The calendar](#the-calendar).                 |
 | `eva/google-calendar/events.json?from=YYYY-MM-DD&to=YYYY-MM-DD` | `GET`                  | The events of each shown calendar in the window, or `null`.                           |
+| `eva/google-tasks/lists.json`                                   | `GET`                  | The person's task lists, or `null`. See [The tasks](#the-tasks).                      |
+| `eva/google-tasks/tasks.json?from=YYYY-MM-DD&to=YYYY-MM-DD`     | `GET`                  | The tasks of each list with a due day in the window, or `null`.                       |
 | `eva/cases.json`                                                | `GET`                  | The person's open cases, or `null`. See [The cases](#the-cases).                      |
 | `eva/state.json`                                                | `GET`, `PUT`           | The widget's own small state. See [The widget's own state](#the-widgets-own-state).   |
 | `eva/theme.css`                                                 | `GET`                  | The EVE colour variables. See [Theme](#theme).                                        |
@@ -148,6 +152,39 @@ An `eva-google-calendar` input gives the widget the person's Google Calendar. Ev
 - Eva answers `502` when Google fails or refuses. Show that the calendar is not available now, and try again later.
 - The calendar is read only in this version: each other method answers `405`.
 
+### The tasks
+
+An `eva-google-tasks` input gives the widget the person's Google Tasks. Eva calls Google with her own login, as for the calendar. The widget never sees a token.
+
+- `eva/google-tasks/lists.json` answers `null` when Eva has no working Google login or Tasks is off in Settings. Otherwise it answers each task list of the person, in Google's order: `[{ "id": "…", "name": "My Tasks" }]`. `name` is `""` for a list with no name.
+- `eva/google-tasks/tasks.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the tasks of each list whose due day is in the window. `to` is inclusive. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`, as for the events.
+- A task holds only a due day, never a time: Google Tasks keeps only the day of a due date. So a task has no time span and no time zone. Show it on its day, such as with the all-day events.
+- A task with no due day does not come.
+- The order: by due day, then by the order of the lists, then by the order of the tasks in a list. A subtask comes right after its parent. A subtask whose parent is due on another day, or does not come, comes after the other tasks of its day in its list.
+
+  ```json
+  [
+    {
+      "id": "…",
+      "listId": "…",
+      "title": "Water the plants",
+      "dueDate": "2026-11-18",
+      "completed": true,
+      "completedAt": "2026-11-18T10:00:00.000Z",
+      "notes": "The ones on the balcony.",
+      "link": "https://tasks.google.com/…"
+    }
+  ]
+  ```
+
+- `completed` is `true` for a task that the person marked as done. Completed tasks come too, also the ones that the person cleared from the list. Show them as done, such as struck through. `completedAt` is the time it was marked as done, or `null`.
+- `title` is `""` for a task with no title. `notes` is the text of the task as the person wrote it, 2000 characters at most, or `null`. Show it as text, never as HTML.
+- `link` opens the task in Google, or is `null`. It is always an `https` address.
+- Eva leaves out a deleted task.
+- Eva keeps each answer for 1 minute, so a new task can take a minute to show.
+- Eva answers `502` when Google fails or refuses. Show that the tasks are not available now, and try again later.
+- The tasks are read only in this version: each other method answers `405`.
+
 ### The cases
 
 An `eva-cases` input gives the widget the person's open cases. Eva reads them from the vault with the same rules as her Cases page.
@@ -178,7 +215,7 @@ An `eva-cases` input gives the widget the person's open cases. Eva reads them fr
 
 ### The widget's own state
 
-A widget of contract 3 can keep a small state of its own, such as the calendars that the person hides. Eva keeps it in the vault, so every device of the person shows the same.
+A widget of contract 3 or later can keep a small state of its own, such as the calendars that the person hides. Eva keeps it in the vault, so every device of the person shows the same.
 
 - `GET eva/state.json` answers a JSON object: the last saved state, or `{}` when the widget saved none.
 - `PUT eva/state.json` with a JSON object replaces the whole state. The body is 64 KB at most. Eva answers `413` for a larger body, `400` for a body that is not a JSON object, and `422` for a text that holds a secret.
@@ -188,7 +225,7 @@ A widget of contract 3 can keep a small state of its own, such as the calendars 
 
 ### Asks
 
-A widget of contract 3 can ask Eva to act: to write a text in the message box (`chat`), or to open a page of Eva (`open`). Each ask is a permission. The manifest lists each type with a `why`, and the person approves it:
+A widget of contract 3 or later can ask Eva to act: to write a text in the message box (`chat`), or to open a page of Eva (`open`). Each ask is a permission. The manifest lists each type with a `why`, and the person approves it:
 
 ```json
 "asks": [
@@ -374,7 +411,7 @@ The field names of a data schema follow strict rules, so that people, agents and
 
 A machine checks two of these rules: camelCase, and a list of refused abbreviations, such as `loc`, `temp`, `qty` and `desc`. "Full words" and "the unit in the name" stay rules for people and agents.
 
-The machine check is a meta-schema: [`widgets/meta-schema-v3.json`](widgets/meta-schema-v3.json), a JSON Schema that checks the schemas of a widget. It also refuses a closed object. A standard validator, such as `ajv`, runs it:
+The machine check is a meta-schema: [`widgets/meta-schema-v4.json`](widgets/meta-schema-v4.json), a JSON Schema that checks the schemas of a widget. It also refuses a closed object. A standard validator, such as `ajv`, runs it:
 
 - in the CI of each widget, with `npm run check:widget`;
 - in Eva's setup report of a widget repository;
@@ -406,7 +443,7 @@ Permissions decide an update, not a version. Eva reads no version of a widget. R
 
 - Eva checks the newest commit of the default branch with `git ls-remote`, which downloads no code. Each computer checks its own copies.
 - The person's own widgets, the widget projects of the vault, are checked at the interval of `widgets.checkIntervalMinutes`: 30 minutes by default. Every other widget is checked once a day. **Check for updates** checks every widget at once.
-- A permission is each folder or file with its type, its access and its `files` pattern, the location, the calendar with its access, the cases, each ask, each host, the prompt line and the text of each schema.
+- A permission is each folder or file with its type, its access and its `files` pattern, the location, the calendar and the tasks with their access, the cases, each ask, each host, the prompt line and the text of each schema.
 - An update with no new permission installs by itself. The home page shows it soon after.
 - Any other update waits, and the old version keeps running. An update also waits when its manifest fails, it follows a newer contract, it adds a required input, or a schema conflicts with another widget of the same folder. Eva says why.
 - Eva sends one notice for each waiting commit, with the new permissions and the release notes since the installed commit. With no release notes, it shows the commit subjects. A computer that is not the hub sends the notice through the hub, with its own name.
@@ -431,7 +468,7 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
   1. `eva/location.json`. Inside Eva, this path always answers, so a mock location never shows in Eva.
   2. When that path does not exist, the browser's `navigator.geolocation`.
   3. When the visitor does not allow it, the mock `example/location.json`.
-- The calendar and the cases come from `eva/google-calendar/` and `eva/cases.json`. When a path answers `404`, read its mock under `example/`: `example/google-calendar/calendars.json`, `example/google-calendar/events.json` or `example/cases.json`. Inside Eva, these paths always answer for a widget with the input, so a mock never shows in Eva. The **Example data** preview answers `404` too, so it shows the mocks.
+- The calendar, the tasks and the cases come from `eva/google-calendar/`, `eva/google-tasks/` and `eva/cases.json`. When a path answers `404`, read its mock under `example/`: `example/google-calendar/calendars.json`, `example/google-calendar/events.json`, `example/google-tasks/lists.json`, `example/google-tasks/tasks.json` or `example/cases.json`. Inside Eva, these paths always answer for a widget with the input, so a mock never shows in Eva. The **Example data** preview answers `404` too, so it shows the mocks.
 - `eva/state.json` answers `404`, and a `PUT` fails. Keep the state in memory.
 - No answer comes to an ask. Hide each entry that needs Eva, such as "Open in Eva".
 
@@ -450,8 +487,9 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 | `1`      | The first contract.                                                                                                                                         |
 | `2`      | The sizes `tall` and `xlarge`, the inputs `eva-google-calendar` and `eva-cases`, and their paths under `eva/`. The data rules stay the same.                |
 | `3`      | The size `header`, the key `asks` with its messages, the path `eva/state.json`, and new fields of the calendar and the cases. The data rules stay the same. |
+| `4`      | The input `eva-google-tasks` and its paths under `eva/google-tasks/`. The data rules stay the same.                                                         |
 
-A widget of contract 1 or 2 works with no change. To use a new size, input, key or path, set `contract` to the contract that adds it.
+A widget of contract 1, 2 or 3 works with no change. To use a new size, input, key or path, set `contract` to the contract that adds it.
 
 ## Example: a habits widget
 

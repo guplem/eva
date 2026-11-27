@@ -43,6 +43,7 @@
     "test/unit/core/google/google-mcp.test.ts": 1,
     "test/unit/core/google/google-scopes.test.ts": 1,
     "test/unit/core/google/google-steps.test.ts": 1,
+    "test/unit/core/google/google-tasks.test.ts": 190,
     "test/unit/core/instance/child-environments.test.ts": 23,
     "test/unit/core/instance/commit-identity.test.ts": 54,
     "test/unit/core/instance/computers.test.ts": 40,

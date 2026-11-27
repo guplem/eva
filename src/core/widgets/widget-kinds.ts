@@ -21,12 +21,14 @@ export type WidgetInputType =
   | "choice"
   | "eva-location"
   | "eva-google-calendar"
+  | "eva-google-tasks"
   | "eva-cases";
 
 /** The input types that give a permission to Eva's own data, not a value: the form shows no field for them. */
 export const evaDataInputTypes: ReadonlySet<WidgetInputType> = new Set([
   "eva-location",
   "eva-google-calendar",
+  "eva-google-tasks",
   "eva-cases",
 ]);
 

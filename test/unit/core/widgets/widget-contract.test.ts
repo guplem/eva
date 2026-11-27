@@ -56,11 +56,11 @@ describe("checkManifest", () => {
   });
 
   test("refuses a contract that Eva does not know, and asks for an update", () => {
-    const result = checkManifest(JSON.stringify({ ...manifest, contract: 4 }));
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 5 }));
     expect(result.manifest).toBeNull();
-    expect(result.problems).toEqual(["This widget follows contract 4. Update Eva to use this widget."]);
+    expect(result.problems).toEqual(["This widget follows contract 5. Update Eva to use this widget."]);
     expect(result.newerContract).toBe(true);
-    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 4 })).newerContract).toBe(true);
+    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 5 })).newerContract).toBe(true);
   });
 
   test("accepts contract 2, with its sizes and its inputs of Eva's data", () => {
@@ -146,6 +146,45 @@ describe("checkManifest", () => {
     expect(checkManifest(JSON.stringify({ ...manifest, contract: 2, size: "header" })).problems.length).toBeGreaterThan(
       0,
     );
+  });
+
+  test("accepts contract 4, with the Google Tasks input, and keeps everything of contract 3", () => {
+    const tasks = {
+      id: "tasks",
+      type: "eva-google-tasks",
+      access: "read",
+      label: "Tasks",
+      description: "Your Google Tasks.",
+      why: "The widget shows the tasks with a due day next to your events.",
+      required: false,
+    } as const;
+    const asks = [{ type: "open", why: "Opens a case." }];
+    const result = checkManifest(
+      JSON.stringify({ ...manifest, contract: 4, size: "header", asks, inputs: [...manifest.inputs, tasks] }),
+    );
+    expect(result.problems).toEqual([]);
+    expect(result.manifest?.inputs.at(-1)).toEqual(tasks);
+  });
+
+  test("keeps the rules of the Google Tasks input, and keeps it out of contract 3", () => {
+    const tasks = {
+      id: "tasks",
+      type: "eva-google-tasks",
+      access: "read",
+      label: "Tasks",
+      description: "Your Google Tasks.",
+      why: "The widget shows your tasks.",
+      required: true,
+    };
+    const fails = (input: object, contract = 4): boolean =>
+      checkManifest(JSON.stringify({ ...manifest, contract, inputs: [input] })).problems.length > 0;
+    const { access: _access, ...noAccess } = tasks;
+    expect(fails(tasks)).toBe(false);
+    expect(fails({ ...tasks, access: "write" })).toBe(false);
+    expect(fails(noAccess)).toBe(true);
+    expect(fails({ ...tasks, default: "x" })).toBe(true);
+    expect(fails({ ...tasks, schema: "schemas/tasks.json" })).toBe(true);
+    expect(fails(tasks, 3)).toBe(true);
   });
 
   test("keeps contract 1 as it was: no new size and no new input type", () => {
@@ -320,7 +359,7 @@ describe("checkData", () => {
 });
 
 describe("the meta-schemas", () => {
-  test("contract 2 keeps the data rules of contract 1, so a data schema passes or fails the same", async () => {
+  test("each contract keeps the data rules of contract 1, so a data schema passes or fails the same", async () => {
     const rules = async (contract: number): Promise<unknown> => {
       const text = await Bun.file(
         join(import.meta.dir, `../../../../docs/widgets/meta-schema-v${String(contract)}.json`),
@@ -335,5 +374,6 @@ describe("the meta-schemas", () => {
     };
     expect(await rules(2)).toEqual(await rules(1));
     expect(await rules(3)).toEqual(await rules(1));
+    expect(await rules(4)).toEqual(await rules(1));
   });
 });

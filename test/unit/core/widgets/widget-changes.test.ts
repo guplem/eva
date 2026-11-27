@@ -31,6 +31,7 @@ const approved: WidgetGrant = {
   ],
   location: false,
   googleCalendar: null,
+  googleTasks: null,
   cases: false,
   asks: [],
   hosts: [],
@@ -136,6 +137,30 @@ describe("grantChange", () => {
     ]);
     // Less access asks for nothing.
     expect(grantChange({ ...change.grant, googleCalendar: "write" }, both, values, none, none).added).toEqual([]);
+  });
+
+  test("the tasks and more tasks access are new permissions", () => {
+    const tasks: WidgetInput = {
+      id: "tasks",
+      type: "eva-google-tasks",
+      label: "Tasks",
+      description: "Your Google Tasks.",
+      why: "The widget shows your tasks.",
+      required: false,
+      access: "read",
+    };
+    const reading = manifest({ contract: 4, inputs: [habits, tasks] });
+    const change = grantChange(approved, reading, values, none, none);
+    expect(change.added).toEqual(["Read your Google Tasks."]);
+    expect(change.grant).toMatchObject({ googleTasks: "read" });
+    expect(grantChange(change.grant, reading, values, none, none).added).toEqual([]);
+    const writing = manifest({ contract: 4, inputs: [habits, { ...tasks, access: "write" }] });
+    expect(grantChange(change.grant, writing, values, none, none).added).toEqual([
+      "Change your Google Tasks, not only read them.",
+    ]);
+    expect(grantChange(approved, writing, values, none, none).added).toEqual(["Read and change your Google Tasks."]);
+    expect(grantChange({ ...change.grant, googleTasks: "write" }, reading, values, none, none).added).toEqual([]);
+    expect(grantChange(approved, manifest(), values, none, none).grant.googleTasks).toBeNull();
   });
 
   test("each new ask of contract 3 is a new permission, and a removed one asks for nothing", () => {

@@ -1012,7 +1012,7 @@ describe("the updates", () => {
     commit({ "eva-widget.json": JSON.stringify({ ...manifest, inputs: [...manifest.inputs, extra] }) });
     await widgets.checkUpdates(true);
     expect(widgets.list()[0]?.update).toMatchObject({ permissions: [], reasons: ["Daily goal needs a value."] });
-    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 5 }) });
+    commit({ "eva-widget.json": JSON.stringify({ ...manifest, contract: 6 }) });
     await widgets.checkUpdates(true);
     expect(widgets.list()[0]?.update?.reasons.join(" ")).toContain("Update Eva");
   });

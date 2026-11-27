@@ -935,10 +935,12 @@ test("with no chat yet, Chats shows the blank New chat page, and the first messa
   await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").first()).toContainText(text);
   expect(made()).toBe(1);
+  // The turn can end after the answer shows. On a phone, the list covers the chat, and a covered chat
+  // marks nothing as seen. So wait for the mark before the list opens (#1105). A chat that stays unread
+  // on the shared demo server makes a later test find "Chats 1 unread chat", not "Chats".
+  await waitUntilNewestChatSeen(page);
   await openList(page);
   await expect(page.locator(".sidebar .list-item").first()).toHaveAttribute("aria-current", "true");
-  // The turn can end after the answer shows. A page that closes before it leaves the chat unread on
-  // the shared demo server, and a later test then finds "Chats 1 unread chat", not "Chats".
   await expect(page.locator(".sidebar .list-item").first()).not.toContainText("Unread");
 });
 

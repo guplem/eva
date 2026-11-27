@@ -2527,6 +2527,45 @@ describe("web routes", () => {
     expect((await call("/api/files/rename", { method: "POST", body: { path: "README.md" } })).status).toBe(400);
   });
 
+  test("files: New file, Duplicate and Delete answer their paths, and a delete drops its favorite (#1117)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    try {
+      const made = await call("/api/files/new", {
+        method: "POST",
+        body: { folder: "", name: "Drafts", kind: "folder" },
+      });
+      expect(made.status).toBe(201);
+      expect(await json(made)).toEqual({ path: "Drafts" });
+      const file = await call("/api/files/new", {
+        method: "POST",
+        body: { folder: "Drafts", name: "idea.md", kind: "file" },
+      });
+      expect(await json(file)).toEqual({ path: "Drafts/idea.md" });
+      expect(readFileSync(join(vaultPath, "Drafts", "idea.md"), "utf-8")).toBe("");
+      const copy = await call("/api/files/duplicate", { method: "POST", body: { path: "Drafts/idea.md" } });
+      expect(await json(copy)).toEqual({ path: "Drafts/idea copy.md" });
+      const taken = await call("/api/files/new", {
+        method: "POST",
+        body: { folder: "", name: "Drafts", kind: "file" },
+      });
+      expect(taken.status).toBe(409);
+      expect(await json(taken)).toMatchObject({ code: "file_not_writable" });
+      expect(
+        (await call("/api/files/new", { method: "POST", body: { folder: "", name: "x", kind: "link" } })).status,
+      ).toBe(400);
+
+      await call("/api/files/favorites", { method: "PUT", body: { path: "Drafts/idea.md", favorite: true } });
+      expect(await json(await call("/api/files/delete", { method: "POST", body: { path: "Drafts" } }))).toEqual({
+        path: "Drafts",
+      });
+      expect(existsSync(join(vaultPath, "Drafts"))).toBe(false);
+      expect(await json(await call("/api/files/favorites"))).toEqual([]);
+      expect((await call("/api/files/delete", { method: "POST", body: { path: "Drafts" } })).status).toBe(404);
+    } finally {
+      rmSync(join(vaultPath, "Drafts"), { recursive: true, force: true });
+    }
+  });
+
   test("life: lists a kind, reads one entity, and redacts each text (#911)", async () => {
     const vaultPath = eva.status().vaultPath ?? "";
     const leaked = `ghp_${"a".repeat(36)}`;

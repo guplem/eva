@@ -187,6 +187,11 @@ const favoriteSchema = z.object({ path: z.string(), favorite: z.boolean() });
 const existingFilesSchema = z.object({ paths: z.array(z.string()).max(500) });
 const vaultRenameSchema = z.object({ path: z.string(), name: z.string().max(1_000) });
 const vaultFilePathSchema = z.object({ path: z.string() });
+const vaultNewEntrySchema = z.object({
+  folder: z.string(),
+  name: z.string().max(1_000),
+  kind: z.enum(["file", "folder"]),
+});
 /** A status that a page sends. An older open page can send a status that #859 replaced. */
 const sentStatusSchema = z.enum([...projectStatuses, "idea", "in-use"]);
 
@@ -1202,6 +1207,14 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
     const { path, name } = vaultRenameSchema.parse(await request.json());
     return json(eva.renameFile(path, name));
   }
+  if (method === "POST" && url.pathname === "/api/files/new") {
+    const { folder, name, kind } = vaultNewEntrySchema.parse(await request.json());
+    return json(eva.createFile(folder, name, kind), 201);
+  }
+  if (method === "POST" && url.pathname === "/api/files/delete")
+    return json(eva.deleteFile(vaultFilePathSchema.parse(await request.json()).path));
+  if (method === "POST" && url.pathname === "/api/files/duplicate")
+    return json(eva.duplicateFile(vaultFilePathSchema.parse(await request.json()).path), 201);
   if (method === "GET" && url.pathname === "/api/settings") return json(eva.publicSettings());
   if (method === "GET" && url.pathname === "/api/settings/setup") return json(await eva.setupState());
   if (method === "PUT" && url.pathname === "/api/settings") {

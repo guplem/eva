@@ -16,6 +16,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   browseVault,
+  createVaultEntry,
+  deleteVaultEntry,
+  duplicateVaultFile,
   decryptMoveOf,
   encryptMoveOf,
   existingVaultPaths,
@@ -639,5 +642,111 @@ describe("decryptMoveOf: places and names that stay encrypted (review of #1109)"
     write(".gitignore.eva-secret", encrypted);
     for (const path of [`${clone}/key.txt.eva-secret`, "Life/AGENTS.md.eva-secret", ".gitignore.eva-secret"])
       expect([path, codeOf(() => decryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
+  });
+});
+
+describe("createVaultEntry: New file and New folder (#1117)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("an empty file and a folder appear in the chosen folder, and answer their path", () => {
+    expect(createVaultEntry(vault, "Methods", "Ideas.md", "file")).toBe("Methods/Ideas.md");
+    expect(readFileSync(join(vault, "Methods/Ideas.md"), "utf-8")).toBe("");
+    expect(createVaultEntry(vault, "", "Library", "folder")).toBe("Library");
+    expect(statSync(join(vault, "Library")).isDirectory()).toBe(true);
+  });
+
+  test("a taken name, a bad name, a secret name and a layout name are refused", () => {
+    expect(codeOf(() => createVaultEntry(vault, "", "notes.txt", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, "", "Methods", "folder"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, "", "a:b", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, "", ".env", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, "Projects", "2026-01-01-0000-new", "folder"))).toBe(
+      "file_not_writable",
+    );
+    expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test("a missing folder, a file as the folder and git data are refused", () => {
+    expect(codeOf(() => createVaultEntry(vault, "Missing", "a.md", "file"))).toBe("file_not_found");
+    expect(codeOf(() => createVaultEntry(vault, "notes.txt", "a.md", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, ".git", "a.md", "file"))).toBe("file_not_found");
+  });
+});
+
+describe("deleteVaultEntry (#1117)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a file and a whole folder go", () => {
+    deleteVaultEntry(vault, "notes.txt");
+    expect(existsSync(join(vault, "notes.txt"))).toBe(false);
+    deleteVaultEntry(vault, "Methods");
+    expect(existsSync(join(vault, "Methods"))).toBe(false);
+  });
+
+  test("the vault root, the layout, git data, a missing entry and a secret file are refused", () => {
+    write(".env", "TOKEN=abc\n");
+    const project = "Projects/2025-03-02-1015-example-app";
+    for (const path of ["", ".eva", "Projects", project, `${project}/repos`, `${project}/repos/example-app-0`])
+      expect([path, codeOf(() => deleteVaultEntry(vault, path))]).toEqual([path, "file_not_writable"]);
+    expect(codeOf(() => deleteVaultEntry(vault, ".env"))).toBe("file_not_writable");
+    expect(codeOf(() => deleteVaultEntry(vault, ".git"))).toBe("file_not_found");
+    expect(codeOf(() => deleteVaultEntry(vault, "missing.md"))).toBe("file_not_found");
+    expect(existsSync(join(vault, ".env"))).toBe(true);
+  });
+
+  test("a folder that holds a repository or a plain secret file stays: no commit keeps them", () => {
+    write("Code/tool/.git/HEAD", "ref: refs/heads/main\n");
+    write("Keys/deep/.env", "TOKEN=abc\n");
+    expect(codeOf(() => deleteVaultEntry(vault, "Code"))).toBe("file_not_writable");
+    expect(codeOf(() => deleteVaultEntry(vault, "Keys"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, "Code/tool/.git/HEAD"))).toBe(true);
+    expect(existsSync(join(vault, "Keys/deep/.env"))).toBe(true);
+  });
+
+  test.skipIf(process.platform === "win32")("a link goes, and its target stays", () => {
+    symlinkSync(join(vault, "Methods"), join(vault, "link"));
+    deleteVaultEntry(vault, "link");
+    expect(existsSync(join(vault, "link"))).toBe(false);
+    expect(readFileSync(join(vault, "Methods/Plan.md"), "utf-8")).toBe("# Plan\n");
+  });
+});
+
+describe("duplicateVaultFile (#1117)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("the copy lands next to the file with a free name", () => {
+    expect(duplicateVaultFile(vault, "Methods/Plan.md")).toBe("Methods/Plan copy.md");
+    expect(duplicateVaultFile(vault, "Methods/Plan.md")).toBe("Methods/Plan copy 2.md");
+    expect(readFileSync(join(vault, "Methods/Plan copy 2.md"), "utf-8")).toBe("# Plan\n");
+    write(".prettierrc", "{}\n");
+    expect(duplicateVaultFile(vault, ".prettierrc")).toBe(".prettierrc copy");
+  });
+
+  test("a folder, a missing file and a secret file are refused", () => {
+    write(".env", "TOKEN=abc\n");
+    expect(codeOf(() => duplicateVaultFile(vault, "Methods"))).toBe("file_not_writable");
+    expect(codeOf(() => duplicateVaultFile(vault, "missing.md"))).toBe("file_not_found");
+    expect(codeOf(() => duplicateVaultFile(vault, ".env"))).toBe("file_not_writable");
   });
 });

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   favoritesPath,
+  dropFavorites,
   moveFavorites,
   readFavorites,
   setFavorite,
@@ -124,5 +125,21 @@ describe("setFavorite", () => {
       expect(isEvaError(caught, "file_not_found")).toBe(true);
     }
     expect(readFavorites(vault)).toEqual([]);
+  });
+});
+
+describe("dropFavorites (#1117)", () => {
+  test("a deleted favorite, and each favorite inside a deleted folder, leaves the list", () => {
+    write(
+      ".eva/favorites.json",
+      JSON.stringify({ version: 1, paths: ["Notes/list.md", "Projects", "Notes", "Notes-old"] }),
+    );
+    dropFavorites(vault, "Notes");
+    expect(readFavorites(vault).map((favorite) => favorite.path)).toEqual(["Projects", "Notes-old"]);
+  });
+
+  test("a delete of a path that is no favorite leaves the file alone", () => {
+    dropFavorites(vault, "Notes/list.md");
+    expect(existsSync(favoritesPath(vault))).toBe(false);
   });
 });

@@ -94,7 +94,12 @@ export class ChatNotifications {
         );
         return;
       case "turn_finished":
-        this.endings.set(sessionId, this.lastTexts.get(sessionId) ?? "Eva finished.");
+        // A lock screen shows plain text, so Markdown marks would show as they are (#1106). An
+        // approval keeps its marks: they are part of the command that the person approves.
+        this.endings.set(
+          sessionId,
+          plainLine(this.lastTexts.get(sessionId) ?? "", maxBodyLength * 4) || "Eva finished.",
+        );
         return;
       case "turn_failed":
         this.endings.set(sessionId, `Eva could not finish: ${event.reason}`);
@@ -166,8 +171,6 @@ export class ChatNotifications {
 }
 
 function shorten(text: string): string {
-  // A lock screen shows plain text, so Markdown marks would show as they are (#1106).
-  // A text of marks only keeps them: an empty body says nothing.
-  const flat = plainLine(text, maxBodyLength * 4) || text.replace(/\s+/g, " ").trim();
+  const flat = text.replace(/\s+/g, " ").trim();
   return flat.length <= maxBodyLength ? flat : `${flat.slice(0, maxBodyLength - 1).trimEnd()}…`;
 }

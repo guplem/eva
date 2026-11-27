@@ -440,6 +440,18 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain("repos/");
   });
 
+  test("never commits or snapshots a specialist's copy of a mentioned file, which a crash can leave behind (#753)", async () => {
+    sandbox.write(vault, "Projects/2025-01-01-1200-coach/.mentions/s1/Plan-0123456789ab.md", "A copy.\n");
+    sandbox.write(vault, "Projects/2025-01-01-1200-coach/log.md", "Ran 5 km.\n");
+    const sync = createSync(vault);
+    await sync.snapshot("refs/eva/turns/s1/0/after");
+    expect(sandbox.git(vault, "ls-tree", "-r", "--name-only", "refs/eva/turns/s1/0/after")).not.toContain(".mentions");
+    const state = await sync.save();
+    expect(state.status).toBe("ok");
+    expect(remoteFiles()).toContain("Projects/2025-01-01-1200-coach/log.md");
+    expect(remoteFiles()).not.toContain(".mentions");
+  });
+
   test("never commits a file in .eva/scratch/, even when the vault's .gitignore does not list it (#415)", async () => {
     sandbox.write(vault, ".eva/scratch/received/statement.pdf", "A bank statement.\n");
     sandbox.write(vault, "Methods/New.md", "Steps.\n");

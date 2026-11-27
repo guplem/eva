@@ -66,7 +66,7 @@ Eva starts each child program through a seam, with a timeout, and with a short l
 
 This is one turn of an Assistant chat:
 
-1. **A front end sends your text** to the core. Telegram calls the core directly. The web page and the terminal call the local API. The web page gives each message an id. On a bad connection it sends the message again with the same id. The core keeps the recent ids of each chat in memory, and runs each id once while it runs.
+1. **A front end sends your text** to the core. Telegram calls the core directly. The web page and the terminal call the local API. The web page gives each message an id. On a bad connection it sends the message again with the same id. The core keeps the recent ids of each chat in memory, and runs each id once while it runs. The page keeps its unsent messages in the session storage of the tab, so a reload of the page sends them again with the same ids.
 2. **The core finds the chat.** A chat runs one turn at a time. A message that you send during a turn waits in line, and joins the next turn.
 3. **Eva pulls the vault,** and takes a snapshot of it. The snapshot lets you undo the turn later.
 4. **Eva builds the prompt:** her own prompt, your rules in `.eva/assistant.md`, your pinned files, your format settings and your widgets. A running chat keeps the prompt of its first turn.

@@ -1,8 +1,8 @@
 /**
  * The header of an open chat: one row with the title, one subtitle, and a "More actions" menu with Rename,
- * Rename automatically, Chat info, Compact, Mark as unread, Archive and Delete chat. Rename, Compact and Delete chat ask
- * in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows the chat details
- * column. On a phone, a tap on the title opens the chat details.
+ * Rename automatically, Chat info, Compact, Mark as unread, Archive and Delete chat. Rename, Compact and Delete
+ * chat ask in a dialog. One row leaves the chat its height. A computer also has a button that hides or shows the
+ * chat details column. On a phone, a tap on the title opens the chat details.
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { api, type ChatFacts } from "./api.ts";

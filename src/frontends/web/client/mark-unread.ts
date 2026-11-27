@@ -22,11 +22,10 @@ export function useMarkUnreadItem(): (branch: { readonly id: string } & UnseenFa
             label: "Mark as unread",
             icon: "bell",
             onChoose: () => {
-              // After the request, as Archive does: the closing menu steps back in the history first.
-              api
-                .markUnread(branch.id)
-                .then(() => leave(branch.id))
-                .catch((caught: unknown) => showError(caught));
+              // First, so the open page cannot mark the answer as seen again while the request runs. The leave
+              // makes a new history entry at once, before the closing menu takes its own entry away.
+              leave(branch.id);
+              api.markUnread(branch.id).catch((caught: unknown) => showError(caught));
             },
           },
         ]

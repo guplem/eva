@@ -492,6 +492,8 @@ test("a right click on any row of the branch map gives the actions of its turn a
   await composer.press("Control+Enter");
   await expect(page.locator(".message.answer").nth(1)).toContainText("A second question");
   await waitUntilIdle(page, chatId);
+  // The menu has Mark as unread only for a branch with no unseen answer.
+  await waitUntilNewestChatSeen(page);
   await page.getByRole("button", { name: "Fork", exact: true }).first().click();
   await expect(page.getByRole("group", { name: "Branches after answer 1" })).toContainText("Fork 1 · 2 of 2");
 
@@ -1767,6 +1769,17 @@ test("a read chat marked as unread leaves the page and shows as unread in the li
   await expect(item.locator(".status-pill")).toHaveText("Unread");
   await expect(page).toHaveURL(/#\/chats\/new$/);
 
+  // The open chat, marked from the list, leaves too. On a phone, the list over the chat closes with it.
+  await item.click();
+  await waitUntilNewestChatSeen(page);
+  await openList(page);
+  await rightClickInView(item);
+  await listMenu.getByRole("menuitem", { name: "Mark as unread" }).click();
+  await expect(page).toHaveURL(/#\/chats\/new$/);
+  await expect(page.getByRole("region", { name: "New chat", exact: true })).toBeVisible();
+  await openList(page);
+  await expect(item.locator(".status-pill")).toHaveText("Unread");
+
   // Mark it as seen, so the shared demo keeps no unread chat.
   await page.request.post(`/api/sessions/${id}/seen`, { data: { turnCount: 1 } });
 });
@@ -2585,6 +2598,42 @@ test("New project: a specialist opens its first chat, and its page lists its cha
   if (testInfo.project.name === "phone") await page.getByRole("button", { name: "Back to the projects" }).click();
   const card = page.getByRole("navigation", { name: "Projects" }).getByRole("button", { name: new RegExp(name) });
   await expect(card).toContainText("Specialist · 1 chat");
+});
+
+test("a Project chat marked as unread leaves for its project page, which shows it as unread (#1101)", async ({
+  page,
+}, testInfo) => {
+  const name = `Reminder ${testInfo.project.name}`;
+  await logIn(page);
+  await openProjects(page);
+  await page.getByRole("button", { name: "New project" }).click();
+  const form = page.getByRole("dialog", { name: "New project" });
+  await form.getByLabel("Project type").selectOption("specialist");
+  await form.getByLabel("Name").fill(name);
+  await form.getByRole("button", { name: "Create project" }).click();
+  await expect(form).toHaveCount(0);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("Keep this answer for later");
+  await composer.press("Control+Enter");
+  await expect(page.locator(".message.answer").first()).toContainText("Keep this answer for later");
+  await waitUntilNewestChatSeen(page);
+
+  await chooseFromMore(page, "Mark as unread");
+  const main = page.locator("main");
+  await expect(main.getByRole("heading", { name: "Chats" })).toBeVisible();
+  const row = main.locator(".clone-chat");
+  await expect(row.locator(".status-pill")).toHaveText("Unread");
+  // An unread chat has nothing left to mark.
+  await rightClickInView(row);
+  const menu = page.getByRole("menu", { name: /^Actions of/ });
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Mark as unread" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // Mark it as seen, so the shared demo keeps no unread chat.
+  const sessions = (await (await page.request.get("/api/sessions")).json()) as { id: string; createdAt: string }[];
+  const newest = sessions.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+  await page.request.post(`/api/sessions/${newest.id}/seen`, { data: { turnCount: 1 } });
 });
 
 test("New project: a failed read of the settings turns the steps off and says so", async ({ page }) => {

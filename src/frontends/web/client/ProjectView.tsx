@@ -600,16 +600,15 @@ export function ProjectView({
     setFilter(listFilterOf(count));
   };
 
-  /** Leaves a chat that the person marked as unread for its project page, so the page does not see it again (#1101). */
+  /**
+   * Leaves a chat that the person marks as unread for its project page (#1101). The page marks what it shows as
+   * seen, so it must not show the marked answer. A new entry also takes the place of each open layer, such as a sheet.
+   */
   const leaveMarked = (sessionId: string): void => {
-    // The newest page, not this render: the person may have opened another page while the request ran.
-    const now = pageRef.current;
-    if (page?.kind !== "chat" || chat === undefined || now?.kind !== "chat" || now.chatId !== page.chatId) return;
+    if (page?.kind !== "chat" || chat === undefined) return;
     if (sessionId !== chat.id && (branch.id === null || !showsLastTurn(tree, branch.id, sessionId))) return;
     clearAction();
-    const above: Page = { kind: "project", project: page.project };
-    opening.current = above;
-    leaveFor(projectAddressOf(routeOfPage(above)), () => setRoute(routeOfPage(above)));
+    open({ kind: "project", project: page.project });
   };
 
   return (

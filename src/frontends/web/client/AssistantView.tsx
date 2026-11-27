@@ -28,7 +28,7 @@ import { BusyProjects } from "./MentionPicker.tsx";
 import { busyProjects } from "./mentions.ts";
 import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
 import { tabLinkProps } from "./new-tab.ts";
-import { goTo, leaveFor, replaceAddress } from "./back-layers.ts";
+import { goTo, replaceAddress } from "./back-layers.ts";
 import { LeaveMarkedChat, useMarkUnreadItem } from "./mark-unread.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -219,15 +219,6 @@ export function AssistantView({
   }, [newChatRequest, clearAction]);
 
   /** Leaves a chat that the person marked as unread for the New chat page, so the page does not see it again (#1101). */
-  const leaveMarked = (sessionId: string): void => {
-    // The address, not this render: the person may have opened another chat while the request ran.
-    if (selected === undefined) return;
-    if (assistantChatIdOf(window.location.hash) !== selected.id) return;
-    if (sessionId !== selected.id && (branch.id === null || !showsLastTurn(tree, branch.id, sessionId))) return;
-    clearAction();
-    leaveFor(assistantChatAddressOf(newChatPageId), () => setSelectedId(newChatPageId));
-  };
-
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
     // The chat takes the place of the New chat page, so Back does not open the page again.
@@ -247,6 +238,17 @@ export function AssistantView({
     // The new chat goes first in the list. A phone hides the list now, and a hidden list does not scroll.
     listRef.current?.scrollTo({ top: 0 });
     onNavigate();
+  };
+
+  /**
+   * Leaves a chat that the person marks as unread for the New chat page (#1101). The page marks what it shows as
+   * seen, so it must not show the marked answer. A new entry, as New chat makes, also takes the place of each open
+   * layer, such as the list on a phone. Back to the chat then reads it again.
+   */
+  const leaveMarked = (sessionId: string): void => {
+    if (selected === undefined) return;
+    if (sessionId !== selected.id && (branch.id === null || !showsLastTurn(tree, branch.id, sessionId))) return;
+    newChat();
   };
 
   return (

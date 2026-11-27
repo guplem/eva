@@ -8234,6 +8234,32 @@ test("Files: Encrypt gives a plain file the .eva-secret end, and it opens with t
   await expect(page.getByRole("button", { name: `Encrypt ${name}.eva-secret` })).toHaveCount(0);
 });
 
+test("Files: Encrypt works on an image too, and warns about an unsaved edit of a text file (#1108)", async ({
+  page,
+}, testInfo) => {
+  const run = testInfo.project.name;
+  await logIn(page);
+  await page.goto(`/#/files/Private/${run}-scan.png`);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: `Encrypt ${run}-scan.png` }).click();
+  await expect(page).toHaveURL(/scan\.png\.eva-secret$/);
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+
+  const draft = `Private/${run}-draft.md`;
+  await page.goto(`/#/files/${draft}`);
+  const file = page.getByRole("region", { name: "File text" });
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("textbox", { name: `Text of ${draft}` }).fill("# Draft\n\nAn edit that is not saved.\n");
+  let question = "";
+  page.once("dialog", (dialog) => {
+    question = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: `Encrypt ${run}-draft.md` }).click();
+  await expect.poll(() => question).toContain("Your unsaved changes are lost.");
+  await expect(page).toHaveURL(/draft\.md$/);
+});
+
 test("Files: Encrypt refuses a file that Eva keeps plain, and says why (#1108)", async ({ page }) => {
   await logIn(page);
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");

@@ -173,7 +173,7 @@ export function FilesView(): ReactElement {
 
   const encrypt = async (): Promise<void> => {
     const encrypted = (await api.encryptFile(path)).path;
-    // An unsaved edit is plain text in this tab, with no mark of an encrypted file: it must not follow.
+    // An unsaved edit is plain text with no mark of an encrypted file. The confirmation said that it goes.
     keepDraft(path, null, "");
     openMoved(encrypted);
   };
@@ -264,7 +264,12 @@ export function FilesView(): ReactElement {
             last?.state === "shown" &&
             last.answer.kind !== "folder" &&
             last.answer.kind !== "encrypted" && (
-              <EncryptButton key={`encrypt:${path}`} name={crumbs[crumbs.length - 1]?.name ?? ""} onEncrypt={encrypt} />
+              <EncryptButton
+                key={`encrypt:${path}`}
+                path={path}
+                name={crumbs[crumbs.length - 1]?.name ?? ""}
+                onEncrypt={encrypt}
+              />
             )}
           {naming === null && shownPath !== null && shownPath !== "" && (
             <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
@@ -881,21 +886,20 @@ function StarButton({
  * the button shows for every plain file.
  */
 function EncryptButton({
+  path,
   name,
   onEncrypt,
 }: {
+  readonly path: string;
   readonly name: string;
   readonly onEncrypt: () => Promise<void>;
 }): ReactElement {
   const showError = useShowError();
   const [busy, setBusy] = useState(false);
   const encrypt = async (): Promise<void> => {
-    if (
-      !window.confirm(
-        `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it. Its old versions stay in the git history.`,
-      )
-    )
-      return;
+    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
+    const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it. Its old versions stay in the git history.${unsaved}`;
+    if (!window.confirm(question)) return;
     setBusy(true);
     try {
       await onEncrypt();

@@ -4,7 +4,7 @@ A widget is a small web page that Eva shows on her home page. This document is t
 
 A widget is plain, standard web code: HTML, JavaScript and CSS, with no framework of Eva and no build step. The same files work inside Eva and on any static web server, such as GitHub Pages.
 
-The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
+The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. She adds exact copies of her skills from [`.agents/skills/`](../.agents/skills/). Each Eva release updates the template and this document together.
 
 The five widgets that ship with Eva are full examples: [`guplem/eva-widget-summary`](https://github.com/guplem/eva-widget-summary) is a `header` widget that reads the Google Calendar and the location, and asks Eva to act, [`guplem/eva-widget-calendar`](https://github.com/guplem/eva-widget-calendar) reads the Google Calendar and calls a host, [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, [`guplem/eva-widget-cases`](https://github.com/guplem/eva-widget-cases) reads the cases, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
 

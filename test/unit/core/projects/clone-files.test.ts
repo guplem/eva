@@ -233,5 +233,8 @@ describe("withFolderMentions (#753)", () => {
     expect(existsSync(join(coach(), mentionsFolderName))).toBe(false);
     // A chat with no copies changes nothing.
     expect(() => removeFolderMentions(coach(), "s3")).not.toThrow();
+    // A removal that fails never throws: the turn must still save the vault.
+    write(join(coach(), mentionsFolderName), "A note of the person's, named like the folder.");
+    expect(() => removeFolderMentions(coach(), "s1")).not.toThrow();
   });
 });

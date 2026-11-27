@@ -153,11 +153,12 @@ export function withFolderMentions(text: string, vaultPath: string, projectFolde
  */
 export function removeFolderMentions(projectFolder: string, sessionId: string): void {
   const folder = join(projectFolder, mentionsFolderName);
-  rmSync(join(folder, sessionId), { recursive: true, force: true });
   try {
+    rmSync(join(folder, sessionId), { recursive: true, force: true });
     rmdirSync(folder);
   } catch {
-    // Another chat still has copies there, or the folder is gone.
+    // Another chat still has copies there, the folder is gone, or a file is locked. The turn must
+    // still save the vault, and the sync keeps a copy that stays out of each commit.
   }
 }
 

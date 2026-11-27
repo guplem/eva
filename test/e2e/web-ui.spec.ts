@@ -8084,6 +8084,7 @@ test("Settings: a vault with no password asks for it twice (#707)", async ({ pag
         unlocked: false,
         defaults: [],
         added: [],
+        fixed: ["*.eva-secret"],
         waiting: [],
         waitingFiles: [],
       },
@@ -8099,6 +8100,7 @@ test("Settings: a vault with no password asks for it twice (#707)", async ({ pag
         unlocked: false,
         defaults: [],
         added: [],
+        fixed: ["*.eva-secret"],
         waiting: [],
         waitingFiles: [],
       },
@@ -8127,6 +8129,13 @@ test("Settings: this tab unlocks, and a default secret pattern waits before it s
   await card.getByLabel("Vault password", { exact: true }).fill(vaultPassword);
   await card.getByRole("button", { name: "Unlock" }).click();
   await expect(card.getByText("This tab is unlocked")).toBeVisible();
+  // The pattern of the Encrypt action has no switch: nobody turns it off (#1108).
+  const fixed = card
+    .getByRole("list", { name: "Default secret files" })
+    .getByRole("listitem")
+    .filter({ hasText: "*.eva-secret" });
+  await expect(fixed).toContainText("Always on");
+  await expect(card.getByRole("switch", { name: "Encrypt *.eva-secret" })).toHaveCount(0);
 
   // A default that the person turns off still applies until a confirmation.
   await card.getByRole("switch", { name: "Encrypt *.pfx" }).click();
@@ -8188,20 +8197,76 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
 });
 
-test("Files: an unlocked encrypted image downloads as the plain file, without .secrets (#1099)", async ({
+for (const [end, saved] of [
+  [".eva-secret", ""],
+  [".secrets", ".secrets"],
+] as const)
+  test(`Files: an unlocked encrypted image named ${end} downloads as ${saved === "" ? "the plain name" : "it is"} (#1108)`, async ({
+    page,
+  }, testInfo) => {
+    const name = `${testInfo.project.name}-photo.png`;
+    await logInAsDevice(page);
+    await page.goto(`/#/files/Private/${name}${end}`);
+    await page.getByLabel("Vault password").fill(vaultPassword);
+    await page.getByRole("button", { name: "Unlock" }).click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: `Download ${name}${saved}` }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe(`${name}${saved}`);
+    const bytes = readFileSync(await file.path());
+    expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+test("Files: Encrypt gives a plain file the .eva-secret end, and it opens with the lock (#1108)", async ({
   page,
 }, testInfo) => {
-  const name = `${testInfo.project.name}-photo.png`;
-  await logInAsDevice(page);
-  await page.goto(`/#/files/Private/${name}.secrets`);
-  await page.getByLabel("Vault password").fill(vaultPassword);
-  await page.getByRole("button", { name: "Unlock" }).click();
-  const saved = page.waitForEvent("download");
-  await page.getByRole("button", { name: `Download ${name}` }).click();
-  const download = await saved;
-  expect(download.suggestedFilename()).toBe(name);
-  const bytes = readFileSync(await download.path());
-  expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  const name = `${testInfo.project.name}-plan.md`;
+  await logIn(page);
+  await page.goto(`/#/files/Private/${name}`);
+  await expect(page.getByText("A plan that only I may read.")).toBeVisible();
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain(`It becomes ${name}.eva-secret`);
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: `Encrypt ${name}` }).click();
+  await expect(page).toHaveURL(new RegExp(`${name.replace(".", "\\.")}\\.eva-secret$`));
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+  await expect(page.getByRole("button", { name: `Encrypt ${name}.eva-secret` })).toHaveCount(0);
+});
+
+test("Files: Encrypt works on an image too, and warns about an unsaved edit of a text file (#1108)", async ({
+  page,
+}, testInfo) => {
+  const run = testInfo.project.name;
+  await logIn(page);
+  await page.goto(`/#/files/Private/${run}-scan.png`);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: `Encrypt ${run}-scan.png` }).click();
+  await expect(page).toHaveURL(/scan\.png\.eva-secret$/);
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+
+  const draft = `Private/${run}-draft.md`;
+  await page.goto(`/#/files/${draft}`);
+  const file = page.getByRole("region", { name: "File text" });
+  await file.getByRole("button", { name: "Edit" }).click();
+  await file.getByRole("textbox", { name: `Text of ${draft}` }).fill("# Draft\n\nAn edit that is not saved.\n");
+  let question = "";
+  page.once("dialog", (dialog) => {
+    question = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: `Encrypt ${run}-draft.md` }).click();
+  await expect.poll(() => question).toContain("Your unsaved changes are lost.");
+  await expect(page).toHaveURL(/draft\.md$/);
+});
+
+test("Files: Encrypt refuses a file that Eva keeps plain, and says why (#1108)", async ({ page }) => {
+  await logIn(page);
+  await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Encrypt AGENTS.md" }).click();
+  await expect(page.getByText("Eva keeps this file plain, so she does not encrypt it.")).toBeVisible();
+  await expect(page).toHaveURL(/AGENTS\.md$/);
 });
 
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({

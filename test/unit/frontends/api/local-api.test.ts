@@ -740,6 +740,32 @@ describe("device login", () => {
     expect(status).toMatchObject({ hasKey: true, unlocked: true });
   });
 
+  test("the Encrypt action gives a file its .eva-secret name, encrypts it and answers the new path (#1108)", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const vaultPath = eva.status().vaultPath ?? "";
+    writeFileSync(join(vaultPath, "plan.md"), "Plain plan\n");
+    const encrypt = { method: "POST", body: { path: "plan.md" } } as const;
+    // With no vault password, the file would stay plain under a secret name: nothing moves.
+    const early = await call("/api/vault/secrets/encrypt-file", encrypt);
+    expect(await json(early)).toMatchObject({ code: "vault_key_missing" });
+    expect(existsSync(join(vaultPath, "plan.md"))).toBe(true);
+    const device = { cookie, "content-type": "application/json" };
+    await call("/api/vault/secrets/password", {
+      method: "POST",
+      body: { password: "correct horse battery" },
+      headers: device,
+    });
+    // Encryption hides a file and shows nothing, so the local API token is enough, as for a rename.
+    const done = await call("/api/vault/secrets/encrypt-file", encrypt);
+    expect(await json(done)).toEqual({ path: "plan.md.eva-secret" });
+    expect(existsSync(join(vaultPath, "plan.md"))).toBe(false);
+    expect(readFileSync(join(vaultPath, "plan.md.eva-secret"), "utf8")).not.toContain("Plain plan");
+    const folder = await call("/api/vault/secrets/encrypt-file", { method: "POST", body: { path: ".eva" } });
+    expect(folder.status).toBe(409);
+    expect((await call("/api/vault/secrets/encrypt-file", { method: "POST", body: {} })).status).toBe(400);
+  });
+
   test("a password change, by its own path or an older page's new-key path, locks the page (#775)", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());

@@ -16,3 +16,5 @@
 
 - Treat a release that takes out a default secret pattern as a breaking change: mark it with `!`. Move the pattern to `retiredSecretPatterns`, never delete it.
 - Never decrypt a file because a pattern went away. Only a removal that the person signs decrypts.
+- Never take out a fixed secret pattern (`fixedSecretPatterns`).
+- Keep each fixed pattern out of the signed record and out of `.eva/secret-files`. An older Eva would offer to remove it.

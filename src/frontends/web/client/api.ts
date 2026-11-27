@@ -408,6 +408,9 @@ export const api = {
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
+  /** Gives a file its `.eva-secret` name and encrypts it (#1108). Answers the new path. */
+  encryptFile: (path: string): Promise<{ path: string }> =>
+    request("POST", "/api/vault/secrets/encrypt-file", { path }),
   /**
    * The vault entries whose name holds `query`. With `contents`, the files whose text holds it too.
    * With `shareable`, only what a chat in a clone may be given (#706).

@@ -4,7 +4,7 @@
  * password, which makes a new key (#775), and accept a key that changed on another machine. Each
  * change of the vault runs between two steps of the vault sync, so it never races a commit.
  */
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -17,12 +17,26 @@ import {
   saveEncryptedFile,
   type OpenedFile,
 } from "./encrypted-files.ts";
-import { defaultSecretPatterns, SecretMatcher, secretFilesPath, type SecretFilesChanges } from "./secret-files.ts";
+import {
+  defaultSecretPatterns,
+  fixedSecretPatterns,
+  SecretMatcher,
+  secretFilesPath,
+  type SecretFilesChanges,
+} from "./secret-files.ts";
 import { activeSecretPatterns, addedBack, signedPayload } from "./secret-policy.ts";
 import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
-import { createVaultKey, keyFingerprint, nextVaultKey, unlockVaultKey, type UnlockedVaultKey } from "./vault-crypto.ts";
+import {
+  createVaultKey,
+  encryptedState,
+  hasEncryptedShape,
+  keyFingerprint,
+  nextVaultKey,
+  unlockVaultKey,
+  type UnlockedVaultKey,
+} from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
-import type { VaultSecrets } from "./vault-secrets.ts";
+import { maxEncryptedBytes, type VaultSecrets } from "./vault-secrets.ts";
 
 /** The steps of the vault sync that a change needs. */
 export interface VaultSteps {
@@ -55,6 +69,8 @@ export interface VaultSecretsStatus {
   readonly defaults: readonly { readonly pattern: string; readonly on: boolean }[];
   /** The person's own patterns. */
   readonly added: readonly string[];
+  /** The patterns that always apply, with no switch (#1108). */
+  readonly fixed: readonly string[];
   /** The patterns that still apply but that the file no longer asks for: removals that wait. */
   readonly waiting: readonly string[];
   /** The encrypted files that a confirmation of every waiting removal would decrypt. */
@@ -83,6 +99,7 @@ export class VaultEncryption {
         unlocked: false,
         defaults: [],
         added: [],
+        fixed: fixedSecretPatterns,
         waiting: [],
         waitingFiles: [],
       };
@@ -94,7 +111,8 @@ export class VaultEncryption {
       keyChanged,
       unlocked: this.options.keys.isUnlocked(deviceToken, secret),
       defaults: defaultSecretPatterns.map((pattern) => ({ pattern, on: !off.has(pattern) })),
-      added: input.changes.added,
+      added: input.changes.added.filter((pattern) => !fixedSecretPatterns.includes(pattern)),
+      fixed: fixedSecretPatterns,
       waiting,
       waitingFiles: waiting.length === 0 ? [] : this.freedFiles(active, waiting),
     };
@@ -197,7 +215,8 @@ export class VaultEncryption {
       );
     const added = changes.added
       .map((pattern) => pattern.trim())
-      .filter((pattern) => pattern !== "" && !pattern.startsWith("!"));
+      // A fixed pattern always applies. As a line of its own, an older Eva could offer to remove it (#1108).
+      .filter((pattern) => pattern !== "" && !pattern.startsWith("!") && !fixedSecretPatterns.includes(pattern));
     const off = changes.off.filter((pattern) => defaultSecretPatterns.includes(pattern));
     const lines = [
       "# The secret files of this vault: Eva encrypts each one. Settings writes this file.",
@@ -303,6 +322,52 @@ export class VaultEncryption {
     await this.persist();
   }
 
+  /**
+   * The Encrypt action of the Files page (#1108): gives a plain file its `.eva-secret` name and
+   * encrypts it at once. A file that the round would leave plain, such as with no key, never moves.
+   * Under a secret name, such a file stays out of each save, and the remote loses it.
+   */
+  async encryptByRename(from: string, to: string): Promise<void> {
+    const vaultPath = this.vaultPath();
+    await this.options.vault.exclusive(() => {
+      const secrets = this.secrets();
+      const { key, keyChanged, input } = secrets.inputs();
+      if (key === null) throw new EvaError("vault_key_missing", "This vault has no password yet. Set one in Settings.");
+      if (keyChanged) throw new EvaError("vault_key_invalid", "The vault's key changed. Confirm it in Settings first.");
+      const source = join(vaultPath, from);
+      const target = join(vaultPath, to);
+      let size: number;
+      try {
+        const info = lstatSync(source);
+        if (!info.isFile()) throw notWritable("Eva encrypts one file at a time, not a folder or a link.");
+        size = info.size;
+      } catch (error) {
+        if (error instanceof EvaError) throw error;
+        throw new EvaError("file_not_found", `${from} was not found.`);
+      }
+      if (size > maxEncryptedBytes) throw notWritable("Eva encrypts files up to 25 MB.");
+      if (new SecretMatcher(activeSecretPatterns(input).active).matches(from) || isEncrypted(source))
+        throw notWritable("This file is secret already.");
+      if (existsSync(target)) throw notWritable(`${to.split("/").pop() ?? to} is in this folder already.`);
+      renameSync(source, target);
+      let reason: string | null;
+      try {
+        reason = secrets.prepare(to);
+      } catch {
+        reason = "unreadable";
+      }
+      if (!isEncrypted(target)) {
+        renameSync(target, source);
+        throw notWritable(
+          reason === null
+            ? "Eva keeps this file plain, so she does not encrypt it."
+            : `Eva could not encrypt this file (${reason}).`,
+        );
+      }
+    });
+    await this.persist();
+  }
+
   /** Pins a key that changed on another machine. The device must have unlocked that key here. */
   async acceptKey(deviceToken: string | null, secret: string | null): Promise<void> {
     this.options.keys.keyFor(deviceToken, secret);
@@ -355,5 +420,19 @@ export class VaultEncryption {
     const secrets = this.options.secrets();
     if (secrets === null) throw new EvaError("vault_not_found", "Eva has no vault yet.");
     return secrets;
+  }
+}
+
+function notWritable(reason: string): EvaError {
+  return new EvaError("file_not_writable", reason);
+}
+
+/** True for a file in Eva's exact encrypted shape. */
+function isEncrypted(path: string): boolean {
+  try {
+    const bytes = readFileSync(path);
+    return encryptedState(bytes) === "encrypted" && hasEncryptedShape(bytes);
+  } catch {
+    return false;
   }
 }

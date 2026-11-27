@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   browseVault,
+  encryptMoveOf,
   existingVaultPaths,
   maxShownBytes,
   renameVaultEntry,
@@ -482,6 +483,77 @@ describe("renameVaultEntry (issue 343)", () => {
     expect(renameVaultEntry(vault, "link.txt", "shortcut.txt")).toBe("shortcut.txt");
     expect(lstatSync(join(vault, "shortcut.txt")).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(vault, "notes.txt"), "utf-8")).toBe("Buy milk.\n");
+  });
+
+  test("an encrypted file gets a .eva-secret name, so the person can rename a .secrets file by hand (#1108)", () => {
+    const encrypted =
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n";
+    write("Private/photo.png.secrets", encrypted);
+    expect(renameVaultEntry(vault, "Private/photo.png.secrets", "photo.png.eva-secret")).toBe(
+      "Private/photo.png.eva-secret",
+    );
+    expect(readFileSync(join(vault, "Private/photo.png.eva-secret"), "utf-8")).toBe(encrypted);
+    // Under a removable pattern, the old sealed path could stop its removal. A plain name leaves it encrypted.
+    for (const name of ["photo.png.secrets", "photo.png.pem", "photo.png"])
+      expect(codeOf(() => renameVaultEntry(vault, "Private/photo.png.eva-secret", name))).toBe("file_not_writable");
+    // A plain file must go through the Encrypt action, which encrypts it at once.
+    write("Private/plain.secrets", "TOKEN=abc\n");
+    expect(codeOf(() => renameVaultEntry(vault, "Private/plain.secrets", "plain.eva-secret"))).toBe(
+      "file_not_writable",
+    );
+    expect(codeOf(() => renameVaultEntry(vault, "notes.txt", "notes.txt.eva-secret"))).toBe("file_not_writable");
+  });
+});
+
+describe("encryptMoveOf: the new name of the Encrypt action (#1108)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a vault file gets the .eva-secret end, in its own folder", () => {
+    expect(encryptMoveOf(vault, "notes.txt")).toEqual({ from: "notes.txt", to: "notes.txt.eva-secret" });
+    expect(encryptMoveOf(vault, "Methods/Plan.md")).toEqual({
+      from: "Methods/Plan.md",
+      to: "Methods/Plan.md.eva-secret",
+    });
+  });
+
+  test("a folder, a missing file, the vault root and a file that Eva needs plain are refused", () => {
+    write("AGENTS.md", "# Rules\n");
+    write(".gitignore", "repos/\n");
+    expect(codeOf(() => encryptMoveOf(vault, "Methods"))).toBe("file_not_writable");
+    expect(codeOf(() => encryptMoveOf(vault, ""))).toBe("file_not_writable");
+    expect(codeOf(() => encryptMoveOf(vault, "missing.md"))).toBe("file_not_found");
+    for (const path of ["AGENTS.md", ".gitignore", ".eva/assistant.md"])
+      expect([path, codeOf(() => encryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
+  });
+
+  test("a file in .eva/scratch or in a clone is refused: the sync never encrypts it", () => {
+    write(".eva/scratch/received/photo.png", "PNG");
+    write("Scratch/passport.jpg", "JPG");
+    // A password change finds no encrypted file in a root Scratch/ folder, so it would stay on the old key.
+    expect(codeOf(() => encryptMoveOf(vault, "Scratch/passport.jpg"))).toBe("file_not_writable");
+    expect(codeOf(() => encryptMoveOf(vault, ".eva/scratch/received/photo.png"))).toBe("file_not_writable");
+    expect(codeOf(() => encryptMoveOf(vault, "Projects/2025-03-02-1015-example-app/repos/example-app-0/main.py"))).toBe(
+      "file_not_writable",
+    );
+  });
+
+  test("a taken new name and a name that grows too long are refused", () => {
+    write("notes.txt.eva-secret", "old");
+    expect(codeOf(() => encryptMoveOf(vault, "notes.txt"))).toBe("file_not_writable");
+    write(`${"x".repeat(250)}.md`, "long");
+    expect(codeOf(() => encryptMoveOf(vault, `${"x".repeat(250)}.md`))).toBe("file_not_writable");
+  });
+
+  test.skipIf(process.platform === "win32")("a link is refused, so its target never moves", () => {
+    symlinkSync(join(vault, "notes.txt"), join(vault, "link.txt"));
+    expect(codeOf(() => encryptMoveOf(vault, "link.txt"))).toBe("file_not_writable");
   });
 });
 

@@ -221,6 +221,12 @@ function SecretPatterns({
     <div className="unlock-form">
       <span className="field-label">Secret files that Eva encrypts</span>
       <ul className="secret-patterns" aria-label="Default secret files">
+        {status.fixed.map((pattern) => (
+          <li key={pattern}>
+            <code>{pattern}</code>
+            <span className="pill">Always on</span>
+          </li>
+        ))}
         {status.defaults.map(({ pattern }) => {
           const on = !off.includes(pattern);
           return (

@@ -14,6 +14,7 @@ import {
   type VaultKeyFile,
 } from "../../../../src/core/vault/vault-crypto.ts";
 import { readMachineSecrets, writeMachineSecrets, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
+import { secretMatcherOf } from "../../../../src/core/files/secret-paths.ts";
 import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
 
 let root: string;
@@ -228,5 +229,24 @@ describe("faults of one file or of the block, after the review of #707", () => {
     expect(text).not.toContain("Private/ -diff");
     expect(text).not.toContain("my -diff");
     expect(text).not.toContain("# -diff");
+  });
+});
+
+describe("the fixed pattern *.eva-secret (#1108)", () => {
+  test("a hand-written !*.eva-secret line does not stop the encryption of a .eva-secret file", async () => {
+    await withKey();
+    write(".eva/secret-files", "!*.eva-secret\n");
+    write("Notes/plan.md.eva-secret", "A plan\n");
+    expect(secrets().prepare("Notes/plan.md.eva-secret")).toBeNull();
+    expect(encryptedState(read("Notes/plan.md.eva-secret"))).toBe("encrypted");
+    expect(secretMatcherOf(vault).matches("Notes/plan.md.eva-secret")).toBe(true);
+  });
+
+  test("this machine's memory never names it, so an older Eva here never offers to remove it", async () => {
+    await withKey();
+    secrets().round();
+    const { applied } = readMachineSecrets(machine);
+    expect(applied).toContain("*.pem");
+    expect(applied).not.toContain("*.eva-secret");
   });
 });

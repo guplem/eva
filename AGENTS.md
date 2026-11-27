@@ -72,6 +72,7 @@ A change to one of these goals needs the owner.
 - Layers: `src/shared/` (types, seams), `src/core/`, `src/engines/<engine>/`, `src/frontends/`, and `src/main.ts` (wiring only). `bun run arch` enforces the imports.
 - `templates/vault/` is runtime content that each new vault gets, not rules for agents.
 - `templates/widget/` is the runtime content of each new widget repository, with its own checks. Eva's CI runs them. Install its dependencies with `npm ci --ignore-scripts`: its `prepare` script replaces Eva's git hooks with its own.
+- Each new widget repository also gets an exact copy of each skill in `.agents/skills/`, from the executable. Give a change to a skill a commit that makes a release. Otherwise, new widget repositories get the old skill, and the setup report flags it.
 - `install/` holds the one-command install scripts. Each release publishes them, and `scripts/smoke-install.sh` and `scripts/smoke-install.ps1` check them in CI. Give a change to them a commit that makes a release (see the `write-commit` skill). Otherwise, no release publishes the change.
 - These folders have their own `AGENTS.md`: `src/core/instance/`, `src/core/migrations/`, `src/core/modes/`, `src/core/remote-access/`, `src/core/settings/`, `src/core/updates/`, `src/core/vault/`, `src/engines/`, `src/frontends/api/`, `src/frontends/web/` and `test/`.
 

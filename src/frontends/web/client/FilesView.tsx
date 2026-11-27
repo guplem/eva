@@ -873,18 +873,26 @@ function EncryptedFile({
     ],
   };
   return (
-    <FilePreview
-      file={opened.file}
-      large={large}
-      onLarge={onLarge}
-      wrap={wrap}
-      onWrap={onWrap}
-      onSaved={(saved) => {
-        if (saved.kind === "file") setOpened({ state: "text", file: saved });
-      }}
-      source={source}
-      smart={smart}
-    />
+    <>
+      <FilePreview
+        file={opened.file}
+        large={large}
+        onLarge={onLarge}
+        wrap={wrap}
+        onWrap={onWrap}
+        onSaved={(saved) => {
+          if (saved.kind === "file") setOpened({ state: "text", file: saved });
+        }}
+        source={source}
+        smart={smart}
+      />
+      {/* The menu that started it is gone, so the wait shows at the bottom of the screen. */}
+      {decrypting && (
+        <Toast message="Decrypting and saving the file…" role={null}>
+          <ProgressBar label="Decrypting and saving the file…" />
+        </Toast>
+      )}
+    </>
   );
 }
 

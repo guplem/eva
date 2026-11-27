@@ -493,7 +493,7 @@ describe("renameVaultEntry (issue 343)", () => {
       "Private/photo.png.eva-secret",
     );
     expect(readFileSync(join(vault, "Private/photo.png.eva-secret"), "utf-8")).toBe(encrypted);
-    // A name that a removable pattern makes secret, or no pattern, stays refused: see #1108.
+    // Under a removable pattern, the old sealed path could stop its removal. A plain name leaves it encrypted.
     for (const name of ["photo.png.secrets", "photo.png.pem", "photo.png"])
       expect(codeOf(() => renameVaultEntry(vault, "Private/photo.png.eva-secret", name))).toBe("file_not_writable");
     // A plain file must go through the Encrypt action, which encrypts it at once.

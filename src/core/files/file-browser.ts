@@ -162,8 +162,8 @@ export function renameVaultEntry(vaultPath: string, requested: string, name: str
   const matcher = secretMatcherOf(root);
   const toVault = (each: string): string => [...folderParts, each].join("/");
   const source = join(folder, oldName);
-  // An encrypted file stays encrypted under a `.eva-secret` name, and no removal ever frees that
-  // pattern. A file keeps its old path sealed inside, so another secret name could stop a removal (#1108).
+  // An encrypted file may take a `.eva-secret` name. No removal ever frees that pattern (#1108).
+  // The file keeps its old path sealed inside. Under another secret name, it could stop a removal.
   const toEncryptedName =
     new SecretMatcher(fixedSecretPatterns).matches(toVault(name)) &&
     isPlainFileEntry(source) &&

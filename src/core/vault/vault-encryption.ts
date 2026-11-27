@@ -324,8 +324,8 @@ export class VaultEncryption {
 
   /**
    * The Encrypt action of the Files page (#1108): gives a plain file its `.eva-secret` name and
-   * encrypts it at once. A file that the round would leave plain, such as with no key, never moves:
-   * under a secret name it would stay out of each save, and the remote would lose it.
+   * encrypts it at once. A file that the round would leave plain, such as with no key, never moves.
+   * Under a secret name, such a file stays out of each save, and the remote loses it.
    */
   async encryptByRename(from: string, to: string): Promise<void> {
     const vaultPath = this.vaultPath();

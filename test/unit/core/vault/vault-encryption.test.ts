@@ -735,3 +735,50 @@ describe("the Decrypt action and the names that a save leaves out (second review
     expect(error instanceof Error ? error.message : "").toContain("*.key");
   });
 });
+
+describe("missing files and folder links (coverage of #1108 and #1109)", () => {
+  test("Encrypt of a file that went away answers file_not_found", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    expect(
+      isEvaError(await failure(() => service.encryptByRename("gone.md", "gone.md.eva-secret")), "file_not_found"),
+    ).toBe(true);
+  });
+
+  test("Decrypt of a file that went away is refused", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const secret = await service.unlock(token, password);
+    expect(
+      isEvaError(
+        await failure(() => service.decryptByRename(token, secret, "gone.md.eva-secret", "gone.md")),
+        "file_not_writable",
+      ),
+    ).toBe(true);
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "Decrypt through a folder that links out of the vault is refused",
+    async () => {
+      const service = encryption();
+      await service.setPassword(token, password);
+      const key = readVaultKey(vault);
+      if (key === null) throw new Error("expected a key");
+      const outside = join(root, "outside");
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(
+        join(outside, "x.md.eva-secret"),
+        new TextDecoder().decode(encryptFile(new TextEncoder().encode("x"), key, "Linked/x.md.eva-secret")),
+      );
+      symlinkSync(outside, join(vault, "Linked"));
+      const secret = await service.unlock(token, password);
+      expect(
+        isEvaError(
+          await failure(() => service.decryptByRename(token, secret, "Linked/x.md.eva-secret", "Linked/x.md")),
+          "file_not_writable",
+        ),
+      ).toBe(true);
+      expect(existsSync(join(outside, "x.md"))).toBe(false);
+    },
+  );
+});

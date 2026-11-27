@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { readVaultKey, writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
@@ -631,5 +631,72 @@ describe("a decoy copy of a secret (review of #1109)", () => {
     );
     expect(isEvaError(error, "file_not_writable")).toBe(true);
     expect(existsSync(join(vault, "Notes/todo.txt"))).toBe(false);
+  });
+});
+
+describe("the Decrypt action after its review (#1109)", () => {
+  async function sealed(
+    path: string,
+    plain: string,
+    sealedAs = path,
+  ): Promise<{ service: VaultEncryption; secret: string }> {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const key = readVaultKey(vault);
+    if (key === null) throw new Error("expected a key");
+    write(path, new TextDecoder().decode(encryptFile(new TextEncoder().encode(plain), key, sealedAs)));
+    return { service, secret: await service.unlock(token, password) };
+  }
+  const refused = async (work: () => Promise<void>): Promise<boolean> =>
+    isEvaError(await failure(work), "file_not_writable");
+
+  test("a file with a token stays encrypted: the save would leave the plain file out and push only the delete", async () => {
+    const { service, secret } = await sealed("Keys/deploy.txt.eva-secret", `token ghp_${"a".repeat(36)}\n`);
+    expect(
+      await refused(() => service.decryptByRename(token, secret, "Keys/deploy.txt.eva-secret", "Keys/deploy.txt")),
+    ).toBe(true);
+    expect(existsSync(join(vault, "Keys/deploy.txt"))).toBe(false);
+    expect(existsSync(join(vault, "Keys/deploy.txt.eva-secret"))).toBe(true);
+  });
+
+  test("a copy beside its original stays encrypted: a rename by hand leaves no file at the old path", async () => {
+    const { service, secret } = await sealed("Taxes/2025.eva-secret", "Income\n", "Taxes/2025.secrets");
+    write("Taxes/2025.secrets", "the original, still encrypted");
+    expect(await refused(() => service.decryptByRename(token, secret, "Taxes/2025.eva-secret", "Taxes/2025"))).toBe(
+      true,
+    );
+  });
+
+  test("a sealed name must start with the plain name and a dot, in the very same folder", async () => {
+    const { service, secret } = await sealed("Photos/photo.jpg.eva-secret", "x", "Photos/photo.jpgx");
+    expect(
+      await refused(() => service.decryptByRename(token, secret, "Photos/photo.jpg.eva-secret", "Photos/photo.jpg")),
+    ).toBe(true);
+  });
+
+  test("a folder whose name differs only in letter case is another folder on Linux", async () => {
+    const other = await sealed("Private/x.txt.eva-secret", "x", "private/x.txt.secrets");
+    expect(
+      await refused(() =>
+        other.service.decryptByRename(token, other.secret, "Private/x.txt.eva-secret", "Private/x.txt"),
+      ),
+    ).toBe(true);
+  });
+
+  test("the patterns of the round decide again inside the lock", async () => {
+    const { service, secret } = await sealed("deploy/id.key.eva-secret", "KEY\n");
+    expect(
+      await refused(() => service.decryptByRename(token, secret, "deploy/id.key.eva-secret", "deploy/id.key")),
+    ).toBe(true);
+    expect(existsSync(join(vault, "deploy/id.key"))).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")("a link put in the file's place is refused inside the lock", async () => {
+    const { service, secret } = await sealed("Photos/real.jpg.eva-secret", "x", "Photos/link.jpg.eva-secret");
+    symlinkSync(join(vault, "Photos/real.jpg.eva-secret"), join(vault, "Photos/link.jpg.eva-secret"));
+    expect(
+      await refused(() => service.decryptByRename(token, secret, "Photos/link.jpg.eva-secret", "Photos/link.jpg")),
+    ).toBe(true);
+    expect(existsSync(join(vault, "Photos/link.jpg"))).toBe(false);
   });
 });

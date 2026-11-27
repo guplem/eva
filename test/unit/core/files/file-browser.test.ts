@@ -612,6 +612,7 @@ describe("decryptMoveOf: the new name of the Decrypt action (#1109)", () => {
   });
 
   test("a new name that is secret again, a plain env name and a taken name are refused", () => {
+    // notes.txt is in the vault from beforeEach, so its .eva-secret file has a taken name.
     write("server.key.eva-secret", encrypted);
     write("prod.env.eva-secret", encrypted);
     write("notes.txt.eva-secret", encrypted);

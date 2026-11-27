@@ -28,7 +28,7 @@ import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher 
 import { encryptedState } from "../vault/vault-crypto.ts";
 import { isCloneFolderFile } from "../vault/vault-sync.ts";
 import { isScratchPath } from "./scratch-folders.ts";
-import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
+import { isEncryptedOnDisk, isPlainSecretName, secretMatcherOf } from "./secret-paths.ts";
 
 export interface FileEntry {
   readonly name: string;
@@ -234,7 +234,7 @@ export function encryptMoveOf(vaultPath: string, requested: string): EncryptMove
 
 /**
  * Checks the file that the person wants to decrypt, and gives its name without the `.eva-secret`
- * end (#1109). `VaultEncryption` decrypts it with the unlocked key, inside a sync step.
+ * end (#1109). `VaultEncryption` decrypts it with the unlocked key, inside the vault lock.
  */
 export function decryptMoveOf(vaultPath: string, requested: string): EncryptMove {
   const { root, path, notFound } = resolveInVault(vaultPath, requested);
@@ -259,7 +259,10 @@ export function decryptMoveOf(vaultPath: string, requested: string): EncryptMove
   // A clone has its own remote, and agents and git read the never-encrypted names as their own files.
   if (isCloneFolderFile(from) || isNeverEncrypted(to))
     throw notWritable("Eva keeps this file encrypted here. Move it first.");
-  // Eva would encrypt the file again at once, or keep a plain env file with a token out of each save.
+  if (isPlainSecretName(to))
+    throw notWritable(
+      `Eva keeps a plain ${name} with a token out of each save, so the remote could lose it. Rename it first.`,
+    );
   if (secretMatcherOf(root).matches(to))
     throw notWritable(`${name} is a secret name too, so Eva would encrypt it again. Rename it first.`);
   if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);

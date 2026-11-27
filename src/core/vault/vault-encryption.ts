@@ -4,10 +4,12 @@
  * password, which makes a new key (#775), and accept a key that changed on another machine. Each
  * change of the vault runs between two steps of the vault sync, so it never races a commit.
  */
-import { existsSync, lstatSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { isInside } from "../../shared/path-area.ts";
+import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import {
   decryptFiles,
   encryptAgain,
@@ -38,6 +40,7 @@ import {
 } from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
 import { maxEncryptedBytes, type VaultSecrets } from "./vault-secrets.ts";
+import { maxScannedFileBytes } from "./vault-sync.ts";
 
 /** The steps of the vault sync that a change needs. */
 export interface VaultSteps {
@@ -382,13 +385,20 @@ export class VaultEncryption {
       this.refuseChangedKey();
       const source = join(vaultPath, from);
       const target = join(vaultPath, to);
+      // Checked again here: a link put in its place since the page's check could lead out of the vault.
+      if (!isFileItself(source) || !isInsideVault(vaultPath, dirname(target)))
+        throw notWritable("Eva decrypts one file at a time, not a folder or a link.");
       if (!isEncrypted(source)) throw notWritable("This file is not encrypted, so Eva has nothing to decrypt.");
       if (existsSync(target)) throw notWritable(`${to.split("/").pop() ?? to} is in this folder already.`);
       const opened = decryptFile(new Uint8Array(readFileSync(source)), unlocked);
-      if (!sealedFor(opened.path, from, to))
+      // A rename by hand leaves no file at the old path. A file there means that this one is a copy.
+      if (!sealedFor(opened.path, from, to) || (opened.path !== from && existsSync(join(vaultPath, opened.path))))
         throw notWritable(
           "Eva sealed this file under another name. It may be a copy of another secret, so it stays encrypted.",
         );
+      // The save leaves out a file that holds a token, but it would push the delete of the encrypted one.
+      if (opened.plain.length <= maxScannedFileBytes && bytesContainSecretPattern(opened.plain))
+        throw notWritable("This file holds a key or a token, so Eva keeps it encrypted.");
       if (new SecretMatcher(activeSecretPatterns(this.secrets().inputs().input).active).matches(to))
         throw notWritable(`${to.split("/").pop() ?? to} is a secret name too, so Eva would encrypt it again.`);
       writeFileAtomic(target, opened.plain);
@@ -483,10 +493,26 @@ function sealedFor(sealed: string, from: string, to: string): boolean {
   const folderOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
   const plainName = to.slice(to.lastIndexOf("/") + 1).toLowerCase();
   return (
-    folderOf(sealed).toLowerCase() === folderOf(from).toLowerCase() &&
+    folderOf(sealed) === folderOf(from) &&
     sealed
       .slice(sealed.lastIndexOf("/") + 1)
       .toLowerCase()
       .startsWith(`${plainName}.`)
   );
+}
+
+function isFileItself(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isInsideVault(vaultPath: string, folder: string): boolean {
+  try {
+    return isInside(realpathSync(vaultPath), realpathSync(folder));
+  } catch {
+    return false;
+  }
 }

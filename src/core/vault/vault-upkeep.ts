@@ -156,6 +156,13 @@ export class VaultUpkeep {
     return vaultSync === null ? Promise.resolve().then(work) : vaultSync.exclusive(work);
   }
 
+  /** True for a path that the vault's `.gitignore` lists, so no save takes it (#1109). False with no vault sync. */
+  async isIgnored(relativePath: string): Promise<boolean> {
+    const vaultSync = this.options.vaultSync;
+    if (vaultSync === null) return false;
+    return (await vaultSync.runGit(["check-ignore", "-q", "--", relativePath])).exitCode === 0;
+  }
+
   /** Encrypts each plain secret file now (#707). With sync off too: the files on disk must not wait. */
   async encryptSecrets(): Promise<void> {
     await this.options.vaultSync?.encryptSecrets();

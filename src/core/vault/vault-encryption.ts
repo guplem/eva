@@ -48,6 +48,8 @@ export interface VaultSteps {
   exclusive<Result>(work: () => Result): Promise<Result>;
   /** Its status tells whether the remote answered. */
   pull(): Promise<{ readonly status: string }>;
+  /** True for a path that the vault's `.gitignore` lists, so no save takes it. */
+  isIgnored(relativePath: string): Promise<boolean>;
   /** Encrypts each plain secret file now, even with the vault sync off. */
   encryptSecrets(): Promise<void>;
   /** Commits and pushes, when the vault sync is on. */
@@ -380,6 +382,10 @@ export class VaultEncryption {
    */
   async decryptByRename(deviceToken: string | null, secret: string | null, from: string, to: string): Promise<void> {
     const vaultPath = this.vaultPath();
+    const name = to.split("/").pop() ?? to;
+    // No save takes an ignored file, but it would push the delete of the encrypted one.
+    if (await this.options.vault.isIgnored(to))
+      throw notWritable(`The vault's .gitignore lists ${name}, so the remote would lose it. Rename it first.`);
     await this.options.vault.exclusive(() => {
       const unlocked = this.options.keys.keyFor(deviceToken, secret);
       this.refuseChangedKey();
@@ -398,9 +404,14 @@ export class VaultEncryption {
         );
       // The save leaves out a file that holds a token, but it would push the delete of the encrypted one.
       if (opened.plain.length <= maxScannedFileBytes && bytesContainSecretPattern(opened.plain))
-        throw notWritable("This file holds a key or a token, so Eva keeps it encrypted.");
-      if (new SecretMatcher(activeSecretPatterns(this.secrets().inputs().input).active).matches(to))
-        throw notWritable(`${to.split("/").pop() ?? to} is a secret name too, so Eva would encrypt it again.`);
+        throw notWritable(
+          "This file holds a key or a token. A save leaves such a plain file out, so the remote would lose it. It stays encrypted.",
+        );
+      const pattern = new SecretMatcher(activeSecretPatterns(this.secrets().inputs().input).active).matchingPattern(to);
+      if (pattern !== null)
+        throw notWritable(
+          `${name} matches the secret pattern ${pattern}, so Eva would encrypt it again. Rename it first.`,
+        );
       writeFileAtomic(target, opened.plain);
       try {
         rmSync(source);

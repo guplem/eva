@@ -263,8 +263,6 @@ export function decryptMoveOf(vaultPath: string, requested: string): EncryptMove
     throw notWritable(
       `Eva keeps a plain ${name} with a token out of each save, so the remote could lose it. Rename it first.`,
     );
-  if (secretMatcherOf(root).matches(to))
-    throw notWritable(`${name} is a secret name too, so Eva would encrypt it again. Rename it first.`);
   if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);
   return { from, to };
 }

@@ -765,6 +765,7 @@ export class Eva {
       vault: {
         exclusive: (work) => this.vault.exclusive(work),
         pull: () => this.vault.pull(),
+        isIgnored: (path) => this.vault.isIgnored(path),
         encryptSecrets: () => this.vault.encryptSecrets(),
         save: () => this.vault.save(),
       },

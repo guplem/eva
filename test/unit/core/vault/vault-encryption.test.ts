@@ -18,6 +18,8 @@ import { isEvaError } from "../../../../src/shared/errors.ts";
 let root: string;
 let vault: string;
 let saves: number;
+/** The names that the vault's .gitignore lists, for the fake git of a test. */
+const ignoredNames = new Set(["settings.local.json"]);
 /** What the next pull answers: "offline" plays a computer that cannot reach the remote. */
 let pullStatus: string;
 /** What the remote brings at the next pull, such as a key file from another computer. */
@@ -45,6 +47,7 @@ function encryption(): VaultEncryption {
         beforePull();
         return Promise.resolve({ status: pullStatus });
       },
+      isIgnored: (path) => Promise.resolve(ignoredNames.has(path.split("/").pop() ?? "")),
       encryptSecrets: () => {
         const prepare = secrets.round();
         for (const path of ["deploy/id.key", "Toolbox/server.pem", "Life/Health/blood.md"]) prepare(path);
@@ -187,6 +190,7 @@ describe("the person's patterns and a confirmed removal (#707)", () => {
       vault: {
         exclusive: (work) => Promise.resolve().then(work),
         pull: () => Promise.resolve({ status: "ok" }),
+        isIgnored: () => Promise.resolve(false),
         encryptSecrets: () => Promise.resolve(),
         save: () => Promise.resolve(),
       },
@@ -698,5 +702,36 @@ describe("the Decrypt action after its review (#1109)", () => {
       await refused(() => service.decryptByRename(token, secret, "Photos/link.jpg.eva-secret", "Photos/link.jpg")),
     ).toBe(true);
     expect(existsSync(join(vault, "Photos/link.jpg"))).toBe(false);
+  });
+});
+
+describe("the Decrypt action and the names that a save leaves out (second review of #1109)", () => {
+  test("a name that the vault's .gitignore lists stays encrypted: the save would push only the delete", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("Config/settings.local.json", "{}\n");
+    await service.encryptByRename("Config/settings.local.json", "Config/settings.local.json.eva-secret");
+    const secret = await service.unlock(token, password);
+    const error = await failure(() =>
+      service.decryptByRename(token, secret, "Config/settings.local.json.eva-secret", "Config/settings.local.json"),
+    );
+    expect(isEvaError(error, "file_not_writable")).toBe(true);
+    expect(existsSync(join(vault, "Config/settings.local.json.eva-secret"))).toBe(true);
+  });
+
+  test("a name that another pattern covers is refused with that pattern", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const key = readVaultKey(vault);
+    if (key === null) throw new Error("expected a key");
+    write(
+      "deploy/id.key.eva-secret",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("K"), key, "deploy/id.key.eva-secret")),
+    );
+    const secret = await service.unlock(token, password);
+    const error = await failure(() =>
+      service.decryptByRename(token, secret, "deploy/id.key.eva-secret", "deploy/id.key"),
+    );
+    expect(error instanceof Error ? error.message : "").toContain("*.key");
   });
 });

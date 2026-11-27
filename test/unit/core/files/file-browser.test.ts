@@ -611,12 +611,11 @@ describe("decryptMoveOf: the new name of the Decrypt action (#1109)", () => {
     expect(codeOf(() => decryptMoveOf(vault, "gone.md.eva-secret"))).toBe("file_not_found");
   });
 
-  test("a new name that is secret again, a plain env name and a taken name are refused", () => {
+  test("a plain env name and a taken name are refused: the vault lock checks the patterns", () => {
     // notes.txt is in the vault from beforeEach, so its .eva-secret file has a taken name.
-    write("server.key.eva-secret", encrypted);
     write("prod.env.eva-secret", encrypted);
     write("notes.txt.eva-secret", encrypted);
-    for (const path of ["server.key.eva-secret", "prod.env.eva-secret", "notes.txt.eva-secret"])
+    for (const path of ["prod.env.eva-secret", "notes.txt.eva-secret"])
       expect([path, codeOf(() => decryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
   });
 });

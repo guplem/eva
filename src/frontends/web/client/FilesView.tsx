@@ -37,7 +37,6 @@ import { codeTokens, prettyJson, viewOf } from "./code-view.ts";
 import {
   childPath,
   fileAddressOf,
-  fullPathOf,
   filePathOf,
   isUnder,
   parentOf,
@@ -49,19 +48,40 @@ import { decryptedNameOf, fileBadgeOf, nameEnds, shownMediaOf } from "./file-kin
 import { MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ListSkeleton, ProgressBar } from "./Loading.tsx";
-import { useContextMenu, type MenuItem } from "./Menu.tsx";
+import { MoreMenu, useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
-import { RenameForm } from "./RenameForm.tsx";
 import { SaveButton } from "./SaveButton.tsx";
 import { opensNewTab } from "./new-tab.ts";
 import { Toast } from "./Toast.tsx";
 import { UnlockVaultForm } from "./VaultPasswordForms.tsx";
-import { draftOf, hasEncryptedDraft, keepDraft, moveDrafts, sameText, type Draft } from "./file-drafts.ts";
+import {
+  draftOf,
+  dropDrafts,
+  hasDraftUnder,
+  hasEncryptedDraft,
+  keepDraft,
+  moveDrafts,
+  sameText,
+  type Draft,
+} from "./file-drafts.ts";
+import {
+  entryMenuItems,
+  folderBackgroundItems,
+  openFileItems,
+  type EntryActions,
+  type EntryFacts,
+  type OpenFileItems,
+} from "./file-actions.ts";
+import { RenameDialog } from "./ChatHeader.tsx";
 import { dayOf, smartName, type SmartName } from "./smart-names.ts";
 import { toWebHtml } from "./web-format.ts";
 
 type ShownFile = Extract<BrowsedPath, { kind: "file" }>;
 type SearchMatch = SearchResult["matches"][number];
+/** The dialog that asks for a name: a new file or folder in a folder, or a new name for an entry. */
+type Asking =
+  | { readonly kind: "new"; readonly folder: string; readonly entry: "file" | "folder" }
+  | { readonly kind: "rename"; readonly path: string; readonly name: string };
 type Answer =
   { readonly state: "shown"; readonly answer: BrowsedPath } | { readonly state: "failed"; readonly reason: string };
 
@@ -72,8 +92,16 @@ export function FilesView(): ReactElement {
   const [large, setLarge] = useState(false);
   /** The wrap stays on or off while the person opens other files. It starts on: a phone has no room for long lines. */
   const [wrap, setWrap] = useState(true);
-  /** The new name in the rename field, or null when the field is closed. */
-  const [naming, setNaming] = useState<string | null>(null);
+  /** The open dialog that asks for a name: a new file or folder, or a rename. */
+  const [asking, setAsking] = useState<Asking | null>(null);
+  /** A download from a menu. The key starts a new one for the same path. */
+  const [downloading, setDownloading] = useState<{ path: string; folder: boolean; key: number } | null>(null);
+  const [encrypting, setEncrypting] = useState(false);
+  /** A short message, such as "Copied.". The count starts the toast again for the same message. */
+  const [notice, setNotice] = useState<{ text: string; count: number } | null>(null);
+  /** A new file opens in the editor, so the person types at once. */
+  const [editOnOpen, setEditOnOpen] = useState<string | null>(null);
+  const showError = useShowError();
   /** A tap on the same link changes no address, so a failed read needs its own way to run again. */
   const [attempt, setAttempt] = useState(0);
   const columns = useRef<HTMLDivElement>(null);
@@ -143,7 +171,7 @@ export function FilesView(): ReactElement {
   const lastDate = lastCrumb?.shown.date ?? null;
   useEffect(() => {
     setLarge(false);
-    setNaming(null);
+    setEditOnOpen((current) => (current === path ? current : null));
     // The open path reads again each time, so a file shows its newest text. A parent column reads once.
     for (const crumb of pathCrumbs(path).slice(0, -1))
       if (known.current.get(crumb.path)?.state !== "shown") read(crumb.path);
@@ -164,45 +192,129 @@ export function FilesView(): ReactElement {
     if (parent !== null) read(parent);
   };
 
-  const rename = async (name: string): Promise<void> => {
-    const renamed = (await api.renameFile(path, name)).path;
-    if (renamed === path) return;
-    moveDrafts(path, renamed);
-    openMoved(renamed);
-  };
+  const notify = (text: string): void => setNotice((current) => ({ text, count: (current?.count ?? 0) + 1 }));
 
-  const encrypt = async (): Promise<void> => {
-    const encrypted = (await api.encryptFile(path)).path;
-    // An unsaved edit is plain text with no mark of an encrypted file. The confirmation said that it goes.
-    keepDraft(path, null, "");
-    openMoved(encrypted);
+  const rename = async (from: string, name: string): Promise<void> => {
+    const renamed = (await api.renameFile(from, name)).path;
+    if (renamed === from) return;
+    moveDrafts(from, renamed);
+    moved(from, renamed);
   };
 
   const decrypt = async (): Promise<void> => {
     const decrypted = (await api.decryptFile(path)).path;
     // The draft's version belongs to the encrypted bytes. The confirmation said that it goes.
     keepDraft(path, null, "");
-    openMoved(decrypted);
+    moved(path, decrypted);
   };
 
-  /** Opens the new path of the open entry, after a rename or an encryption. */
-  const openMoved = (renamed: string): void => {
+  /**
+   * Shows the new path of an entry after a rename or an encryption. When the open path was the entry
+   * or inside it, the page opens its new path.
+   */
+  const moved = (from: string, to: string): void => {
     // A renamed folder keeps the width that the person gave it.
     setWidths(
       (current) =>
         new Map(
-          [...current].map(([known, width]) => [
-            isUnder(known, path) ? renamed + known.slice(path.length) : known,
-            width,
-          ]),
+          [...current].map(([known, width]) => [isUnder(known, from) ? to + known.slice(from.length) : known, width]),
         ),
     );
     // The old answers name a path that is gone, so the new path and its folder read again.
-    setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, path))));
-    const folder = parentOf(renamed);
-    if (folder !== null) read(folder);
+    setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, from))));
+    read(parentOf(to) ?? "");
     // The old address names nothing now, so Back must not go there.
-    window.location.replace(fileAddressOf(renamed));
+    if (isUnder(path, from)) window.location.replace(fileAddressOf(to + path.slice(from.length)));
+  };
+
+  const encrypt = async (entryPath: string, name: string): Promise<void> => {
+    // The question says what the git history keeps before the change, not after it (#1110).
+    const plain = await api.plainHistory(entryPath).catch(() => null);
+    const history =
+      plain === true
+        ? " Its old plain versions stay on the vault remote: change each key or password in it."
+        : plain === false
+          ? ""
+          : " Its old versions stay in the git history.";
+    const unsaved = draftOf(entryPath) === undefined ? "" : " Your unsaved changes are lost.";
+    const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it.${history}${unsaved}`;
+    if (!window.confirm(question)) return;
+    setEncrypting(true);
+    try {
+      const encrypted = (await api.encryptFile(entryPath)).path;
+      // An unsaved edit is plain text with no mark of an encrypted file. The confirmation said that it goes.
+      keepDraft(entryPath, null, "");
+      moved(entryPath, encrypted);
+    } catch (caught) {
+      showError(caught);
+    } finally {
+      setEncrypting(false);
+    }
+  };
+
+  const remove = async (entryPath: string, name: string, folder: boolean): Promise<void> => {
+    const what = folder ? `the folder ${name} and everything in it` : name;
+    const unsaved = hasDraftUnder(entryPath);
+    const question = `Delete ${what}? The vault's history keeps the last saved version.${unsaved ? " Your unsaved changes are lost." : ""}`;
+    if (!window.confirm(question)) return;
+    try {
+      await api.deleteFile(entryPath);
+    } catch (caught) {
+      showError(caught);
+      return;
+    }
+    dropDrafts(entryPath);
+    setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, entryPath))));
+    const folderPath = parentOf(entryPath) ?? "";
+    read(folderPath);
+    api.favorites().then(setFavorites, () => undefined);
+    notify(`Deleted ${name}.`);
+    // The open entry is gone, so the page shows its folder, and Back does not lead to it.
+    if (isUnder(path, entryPath)) window.location.replace(fileAddressOf(folderPath));
+  };
+
+  const actions: EntryActions = {
+    newEntry: (folder, kind) => setAsking({ kind: "new", folder, entry: kind }),
+    rename: (entryPath, name) => setAsking({ kind: "rename", path: entryPath, name }),
+    duplicate: (entryPath) => {
+      api.duplicateFile(entryPath).then(
+        (copy) => {
+          read(parentOf(copy.path) ?? "");
+          notify(`Made ${copy.path.split("/").pop() ?? copy.path}.`);
+        },
+        (caught: unknown) => showError(caught),
+      );
+    },
+    remove: (entryPath, name, folder) => void remove(entryPath, name, folder),
+    copy: (text) => {
+      copyText(text).then(
+        () => notify("Copied."),
+        (caught: unknown) => showError(caught),
+      );
+    },
+    download: (entryPath, folder) => setDownloading({ path: entryPath, folder, key: Date.now() }),
+    encrypt: (entryPath, name) => void encrypt(entryPath, name),
+    favorite: (entryPath, on) => {
+      api.setFavorite(entryPath, on).then(setFavorites, (caught: unknown) => showError(caught));
+    },
+  };
+
+  /** The facts of an entry for its menu. The favorites are null until read, so no star shows. */
+  const factsOf = (entryPath: string, name: string, kind: EntryFacts["kind"]): EntryFacts => ({
+    path: entryPath,
+    name,
+    kind,
+    favorite: favorites === null ? null : favorites.some((favorite) => favorite.path === entryPath),
+    vaultFolder,
+  });
+
+  const menuOf: MenuOf = (entryPath, name, kind, open) => entryMenuItems(factsOf(entryPath, name, kind), actions, open);
+
+  const create = async (folder: string, name: string, kind: "file" | "folder"): Promise<void> => {
+    const made = (await api.createFile(folder, name, kind)).path;
+    read(folder);
+    if (kind === "file") setEditOnOpen(made);
+    goTo(fileAddressOf(made));
   };
 
   const parent = parentOf(path);
@@ -210,6 +322,18 @@ export function FilesView(): ReactElement {
   const fileIsOpen = last?.state === "shown" && last.answer.kind !== "folder";
   // The answer's path is the tidy one that the core stores, so the star matches the favorite.
   const shownPath = last?.state === "shown" ? last.answer.path : null;
+  const openName = crumbs[crumbs.length - 1]?.name ?? "";
+  // A text file and a media file show their menu in their own bar. Any other entry shows it here.
+  const headerKind: EntryFacts["kind"] | null =
+    last?.state !== "shown"
+      ? null
+      : last.answer.kind === "folder"
+        ? "folder"
+        : last.answer.kind === "encrypted"
+          ? "encrypted"
+          : last.answer.kind === "unreadable" && shownMediaOf(path, last.answer) === null
+            ? "file"
+            : null;
   return (
     <div className="main">
       <div className={large ? "files-page large" : "files-page"}>
@@ -219,72 +343,72 @@ export function FilesView(): ReactElement {
               <Icon name="back" />
             </a>
           )}
-          {naming !== null ? (
-            <RenameForm
-              label={`New name of ${crumbs[crumbs.length - 1]?.name ?? ""}`}
-              original={crumbs[crumbs.length - 1]?.name ?? ""}
-              draft={naming}
-              onDraft={setNaming}
-              onSave={rename}
-              onEnd={() => setNaming(null)}
-            />
-          ) : (
-            <nav className="files-crumbs" aria-label="Folder path">
-              {shownCrumbs.map((crumb, index) =>
-                index === shownCrumbs.length - 1 ? (
-                  <h1 key={crumb.path} aria-current="page">
+          <nav className="files-crumbs" aria-label="Folder path">
+            {shownCrumbs.map((crumb, index) =>
+              index === shownCrumbs.length - 1 ? (
+                <h1 key={crumb.path} aria-current="page">
+                  {crumb.shown.name}
+                </h1>
+              ) : (
+                <span key={crumb.path} className="files-crumb">
+                  <a
+                    href={fileAddressOf(crumb.path)}
+                    data-tooltip={crumb.shown.name === crumb.name ? undefined : crumb.name}
+                  >
                     {crumb.shown.name}
-                  </h1>
-                ) : (
-                  <span key={crumb.path} className="files-crumb">
-                    <a
-                      href={fileAddressOf(crumb.path)}
-                      data-tooltip={crumb.shown.name === crumb.name ? undefined : crumb.name}
-                    >
-                      {crumb.shown.name}
-                    </a>
-                    <span aria-hidden="true">/</span>
-                  </span>
-                ),
-              )}
-              {lastDate !== null && <span className="pill files-date">{lastDate}</span>}
-              {/* A touch screen shows no tooltip, so the real name stays in view under the smart one. */}
-              {lastCrumb !== undefined && lastCrumb.shown.name !== lastCrumb.name && (
-                <span className="files-real-name">
-                  <span className="visually-hidden">Real name: </span>
-                  {lastCrumb.name}
+                  </a>
+                  <span aria-hidden="true">/</span>
                 </span>
-              )}
-            </nav>
-          )}
-          {naming === null && path !== "" && last?.state === "shown" && (
-            <button
-              className="files-rename icon-button"
-              aria-label={`Rename ${crumbs[crumbs.length - 1]?.name ?? ""}`}
-              data-tooltip="Rename"
-              onClick={() => setNaming(crumbs[crumbs.length - 1]?.name ?? "")}
-            >
-              <Icon name="pen" />
-            </button>
-          )}
-          {naming === null &&
-            last?.state === "shown" &&
-            last.answer.kind !== "folder" &&
-            last.answer.kind !== "encrypted" && (
-              <EncryptButton
-                key={`encrypt:${path}`}
-                path={path}
-                name={crumbs[crumbs.length - 1]?.name ?? ""}
-                onEncrypt={encrypt}
-              />
+              ),
             )}
-          {naming === null && shownPath !== null && shownPath !== "" && (
+            {lastDate !== null && <span className="pill files-date">{lastDate}</span>}
+            {/* A touch screen shows no tooltip, so the real name stays in view under the smart one. */}
+            {lastCrumb !== undefined && lastCrumb.shown.name !== lastCrumb.name && (
+              <span className="files-real-name">
+                <span className="visually-hidden">Real name: </span>
+                {lastCrumb.name}
+              </span>
+            )}
+          </nav>
+          {shownPath !== null && shownPath !== "" && (
             <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
           )}
-          {naming === null && last?.state === "shown" && last.answer.kind === "folder" && (
-            <DownloadButton key={path} path={path} folder={true} />
+          {headerKind !== null && (
+            <MoreMenu
+              items={entryMenuItems(factsOf(path, openName, headerKind), actions)}
+              label={headerKind === "folder" ? "Folder actions" : "File actions"}
+            />
           )}
         </div>
+        {asking !== null && (
+          <RenameDialog
+            key={asking.kind === "new" ? `new:${asking.folder}:${asking.entry}` : `rename:${asking.path}`}
+            heading={
+              asking.kind === "new" ? (asking.entry === "file" ? "New file" : "New folder") : `Rename ${asking.name}`
+            }
+            label={asking.kind === "new" ? "Name" : "New name"}
+            original={asking.kind === "new" ? "" : asking.name}
+            onSave={(name) =>
+              asking.kind === "new" ? create(asking.folder, name, asking.entry) : rename(asking.path, name)
+            }
+            onEnd={() => setAsking(null)}
+            onChanged={() => Promise.resolve()}
+          />
+        )}
+        {downloading !== null && (
+          <MenuDownload
+            key={downloading.key}
+            path={downloading.path}
+            folder={downloading.folder}
+            onEnd={() => setDownloading(null)}
+          />
+        )}
+        {encrypting && (
+          <Toast message="Encrypting and saving the file…" role={null}>
+            <ProgressBar label="Encrypting and saving the file…" />
+          </Toast>
+        )}
+        {notice !== null && <Toast key={notice.count} message={notice.text} onClose={() => setNotice(null)} />}
         {/* The large file gets the whole page, so the search and the favorites step aside. */}
         {!large && (
           <div className="files-search">
@@ -337,7 +461,9 @@ export function FilesView(): ReactElement {
                   onSaved={onSaved}
                   onDecrypt={decrypt}
                   onTryAgain={() => setAttempt((count) => count + 1)}
-                  vaultFolder={vaultFolder}
+                  menuOf={menuOf}
+                  backgroundMenu={folderBackgroundItems(crumb.path, actions)}
+                  startEditing={editOnOpen === crumb.path}
                   width={widths.get(crumb.path) ?? null}
                   onWidth={(width) =>
                     setWidths((current) => {
@@ -570,6 +696,9 @@ function BacklinksButton({ path, smart }: { readonly path: string; readonly smar
   );
 }
 
+/** Builds the one menu of an entry. The open file passes its own items. */
+type MenuOf = (path: string, name: string, kind: EntryFacts["kind"], open?: OpenFileItems) => MenuItem[];
+
 interface ColumnProps {
   readonly path: string;
   readonly name: string;
@@ -588,7 +717,11 @@ interface ColumnProps {
   /** The width that the person dragged a folder column to, or null for the usual width. */
   readonly width: number | null;
   readonly onWidth: (width: number | null) => void;
-  readonly vaultFolder: string | null;
+  readonly menuOf: MenuOf;
+  /** The menu of a press beside the rows of this folder. */
+  readonly backgroundMenu: readonly MenuItem[];
+  /** True for a file that the person just made, so it opens in the editor. */
+  readonly startEditing: boolean;
 }
 
 /** The narrowest folder column, as the `min-width` of `.files-pane` in `files.css`. */
@@ -611,11 +744,14 @@ function Column({
   onTryAgain,
   width,
   onWidth,
-  vaultFolder,
+  menuOf,
+  backgroundMenu,
+  startEditing,
 }: ColumnProps): ReactElement | null {
   // A folder that reads again keeps its width, so the row does not jump while it loads.
   const place = `${isLast ? "files-pane" : "files-pane files-parent"}${width === null ? "" : " resized"}`;
   const sized = width === null ? undefined : ({ "--files-width": `${String(width)}px` } as CSSProperties);
+  const background = useContextMenu(backgroundMenu, `Actions for ${name}`);
   if (answer === undefined)
     return (
       <div className={place} style={sized}>
@@ -634,16 +770,18 @@ function Column({
   const shown = answer.answer;
   if (shown.kind === "folder")
     return (
-      <div className={place} style={sized}>
+      // A right click beside the rows makes a new file or folder here. Each row keeps its own menu.
+      <div className={place} style={sized} {...background.props}>
         <FolderList
           path={path}
           name={name}
           entries={shown.entries}
           openChild={openChild}
           smart={smart}
-          vaultFolder={vaultFolder}
+          menuOf={menuOf}
         />
         <ColumnDivider label={`Resize the column ${name}`} minWidth={columnMinWidth} onWidth={onWidth} />
+        {background.menu}
       </div>
     );
   if (!isLast) return null;
@@ -659,6 +797,7 @@ function Column({
         media={media}
         large={large}
         onLarge={onLarge}
+        menu={(open) => menuOf(path, name, "file", open)}
       />
     );
   if (shown.kind === "encrypted")
@@ -695,6 +834,8 @@ function Column({
       onWrap={onWrap}
       onSaved={onSaved}
       smart={smart}
+      menu={(open) => menuOf(path, name, "file", open)}
+      startEditing={startEditing}
     />
   );
 }
@@ -936,58 +1077,6 @@ function StarButton({
 }
 
 /**
- * Encrypts the open file (#1108). The core refuses a file that it keeps plain, with the reason, so
- * the button shows for every plain file.
- */
-function EncryptButton({
-  path,
-  name,
-  onEncrypt,
-}: {
-  readonly path: string;
-  readonly name: string;
-  readonly onEncrypt: () => Promise<void>;
-}): ReactElement {
-  const showError = useShowError();
-  const [busy, setBusy] = useState(false);
-  const encrypt = async (): Promise<void> => {
-    setBusy(true);
-    // The question says what the git history keeps before the change, not after it (#1110).
-    const plain = await api.plainHistory(path).catch(() => null);
-    const history =
-      plain === true
-        ? " Its old plain versions stay on the vault remote: change each key or password in it."
-        : plain === false
-          ? ""
-          : " Its old versions stay in the git history.";
-    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
-    const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it.${history}${unsaved}`;
-    if (!window.confirm(question)) {
-      setBusy(false);
-      return;
-    }
-    try {
-      await onEncrypt();
-    } catch (caught) {
-      showError(caught);
-      setBusy(false);
-    }
-  };
-  return (
-    <button
-      className="files-encrypt icon-button"
-      aria-label={`Encrypt ${name}`}
-      data-tooltip="Encrypt"
-      aria-busy={busy}
-      disabled={busy}
-      onClick={() => void encrypt()}
-    >
-      {busy ? <ButtonSpinner /> : <Icon name="lock" />}
-    </button>
-  );
-}
-
-/**
  * The favorites, first on the page, so a note that the person opens often is one tap away. A
  * favorite that was moved or deleted stays, with a button to remove it.
  */
@@ -1058,14 +1147,14 @@ function FolderList({
   entries,
   openChild,
   smart,
-  vaultFolder,
+  menuOf,
 }: {
   readonly path: string;
   readonly name: string;
   readonly entries: readonly FileEntry[];
   readonly openChild: string | null;
   readonly smart: boolean;
-  readonly vaultFolder: string | null;
+  readonly menuOf: MenuOf;
 }): ReactElement {
   const list = useRef<HTMLUListElement>(null);
   // A link from a favorite or another page can open an entry far down a long folder, so its row scrolls into sight.
@@ -1099,10 +1188,18 @@ function FolderList({
             ) : (
               <EntryLink
                 entryPath={childPath(path, entry.name)}
-                entryName={entry.name}
+                items={menuOf(
+                  childPath(path, entry.name),
+                  entry.name,
+                  entry.kind === "folder"
+                    ? "folder"
+                    : entry.name.toLowerCase().endsWith(".eva-secret")
+                      ? "encrypted"
+                      : "file",
+                )}
+                label={`Actions for ${entry.name}`}
                 current={entry.name === openChild}
                 realName={realName}
-                vaultFolder={vaultFolder}
               >
                 {entry.kind === "folder" ? <Icon name="folder" /> : <FileIcon name={entry.name} />}
                 <FileName shown={shown} spoken={spoken} />
@@ -1117,47 +1214,26 @@ function FolderList({
 }
 
 /**
- * A row of a folder. A right click or a long press opens a menu that copies its real name, its
- * path in the vault, or its path on this computer. The name is the one on disk, with its extension,
- * not the smart name that the row shows.
+ * A row of a folder. A right click or a long press opens the entry's menu, the same menu as the ⋯
+ * button of the open entry (#1117). Each copy item copies the name on disk, with its extension, not
+ * the smart name that the row shows.
  */
 function EntryLink({
   entryPath,
-  entryName,
   current,
   realName,
-  vaultFolder,
+  items,
+  label,
   children,
 }: {
   readonly entryPath: string;
-  readonly entryName: string;
   readonly current: boolean;
   readonly realName: string | undefined;
-  readonly vaultFolder: string | null;
+  readonly items: readonly MenuItem[];
+  readonly label: string;
   readonly children: ReactNode;
 }): ReactElement {
-  const showError = useShowError();
-  // A count, so a second copy starts the toast again.
-  const [copies, setCopies] = useState(0);
-  const copy = (text: string): void => {
-    copyText(text)
-      .then(() => setCopies((count) => count + 1))
-      .catch((caught: unknown) => showError(caught));
-  };
-  const items: MenuItem[] = [
-    { label: "Copy name", icon: "copy", onChoose: () => copy(entryName) },
-    { label: "Copy path in the vault", icon: "copy", onChoose: () => copy(entryPath) },
-    ...(vaultFolder === null
-      ? []
-      : [
-          {
-            label: "Copy full path on this computer",
-            icon: "copy" as const,
-            onChoose: () => copy(fullPathOf(vaultFolder, entryPath)),
-          },
-        ]),
-  ];
-  const { props, menu } = useContextMenu(items, `Actions for ${entryName}`);
+  const { props, menu } = useContextMenu(items, label);
   return (
     <>
       <a
@@ -1170,9 +1246,42 @@ function EntryLink({
         {children}
       </a>
       {menu}
-      {copies > 0 && <Toast key={copies} message="Copied." onClose={() => setCopies(0)} />}
     </>
   );
+}
+
+/**
+ * A download that a menu started. The menu closes at once, so the wait and a problem show in a
+ * toast at the bottom of the screen.
+ */
+function MenuDownload({
+  path,
+  folder,
+  onEnd,
+}: {
+  readonly path: string;
+  readonly folder: boolean;
+  readonly onEnd: () => void;
+}): ReactElement | null {
+  const download = useDownload(path);
+  // A ref, not state: a second run of the effect in the same render must not start a second download.
+  const started = useRef(false);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void download.start().finally(() => setDone(true));
+  }, [download]);
+  if (download.problem !== null) return <Toast message={download.problem} role="alert" onClose={onEnd} />;
+  if (!done) {
+    const label = folder ? "Packing the folder…" : "Downloading…";
+    return (
+      <Toast message={label} role={null}>
+        <ProgressBar label={label} share={download.share} />
+      </Toast>
+    );
+  }
+  return null;
 }
 
 /** The smart name of the Appearance setting, or the real name with no date. */
@@ -1224,6 +1333,10 @@ interface FilePreviewProps {
   readonly source?: FileSource;
   /** True when the person picked the smart file names, for the list of notes that link here. */
   readonly smart: boolean;
+  /** Builds the whole menu of the file from its own items. Without it, the menu holds only those. */
+  readonly menu?: (open: OpenFileItems) => MenuItem[];
+  /** True for a file that the person just made, so it opens in the editor. */
+  readonly startEditing?: boolean;
 }
 
 /** The routes of a file that the vault keeps encrypted (#707). Each one needs this tab's unlock. */
@@ -1241,11 +1354,24 @@ const plainSource = (path: string): FileSource => ({
   download: (onShare) => api.downloadFile(path, onShare),
 });
 
-function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source, smart }: FilePreviewProps): ReactElement {
+function FilePreview({
+  file,
+  large,
+  onLarge,
+  wrap,
+  onWrap,
+  onSaved,
+  source,
+  smart,
+  menu,
+  startEditing = false,
+}: FilePreviewProps): ReactElement {
   const files = source ?? plainSource(file.path);
   const [plain, setPlain] = useState(false);
   /** The edit, or null outside the editor. */
-  const [draft, setDraftState] = useState<Draft | null>(() => draftOf(file.path) ?? null);
+  const [draft, setDraftState] = useState<Draft | null>(
+    () => draftOf(file.path) ?? (startEditing && file.editable ? { text: file.text, version: file.version } : null),
+  );
   const [problem, setProblem] = useState<{ readonly text: string; readonly changed: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   /** The editor closes at a save, so its button cannot show the check: the bar says it. */
@@ -1261,21 +1387,21 @@ function FilePreview({ file, large, onLarge, wrap, onWrap, onSaved, source, smar
   const unsaved = draft !== null && !sameText(draft.text, file.text);
 
   const download = useDownload(file.path, files.download);
-  const items: MenuItem[] = [];
+  const viewItems: MenuItem[] = [];
   if (draft === null && (view === "markdown" || view === "json" || view === "image")) {
     const formatted = view === "image" ? "Show image" : "Show formatted";
-    items.push({ label: plain ? formatted : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
+    viewItems.push({ label: plain ? formatted : "Show plain text", icon: "code", onChoose: () => setPlain(!plain) });
   }
   // A text area wraps by itself, so the editor needs no wrap item.
   if (draft === null) {
-    items.push({
+    viewItems.push({
       label: wrap ? "Do not wrap long lines" : "Wrap long lines",
       icon: "wrap",
       onChoose: () => onWrap(!wrap),
     });
   }
-  items.push({ label: "Download", icon: "download", onChoose: () => void download.start() });
-  items.push(...(files.items ?? []));
+  const open: OpenFileItems = { view: viewItems, download: () => void download.start(), security: files.items ?? [] };
+  const items = menu === undefined ? openFileItems(open) : menu(open);
 
   const save = async (): Promise<boolean> => {
     if (draft === null) return false;

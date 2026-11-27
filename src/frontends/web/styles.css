@@ -1193,20 +1193,6 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.rename-form {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-/* On a phone, the buttons go to a second row, so the field gets the whole width. */
-.rename-form input {
-  flex: 1 1 12em;
-  min-width: 0;
-}
-
 /* The buttons beside the title keep their size, so a long title wraps instead. */
 .main-header > button {
   flex-shrink: 0;

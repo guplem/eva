@@ -923,6 +923,7 @@ export class Eva {
             return type === undefined || !worksInClones(type);
           },
           wallRoots: () => this.wallRoots(),
+          vaultPath: () => this.options.config.vaultPath,
           receivedFolder: (projectId) => {
             const vaultPath = this.options.config.vaultPath;
             return vaultPath === null ? null : join(vaultPath, receivedFolder(projectId));
@@ -2355,12 +2356,12 @@ export class Eva {
   }
 
   /**
-   * Throws the first problem of a file that a message to a chat in a clone mentions, such as a gone
-   * file, so the message is not sent and the person hears why (#706).
+   * Throws the first problem of a file that a message to a Project chat mentions, such as a gone
+   * file, so the message is not sent and the person hears why (#706, #753).
    */
   checkMessage(sessionId: string, text: string): void {
     const chat = this.sessions.get(sessionId);
-    if (chatKind(chat) === "project") checkMentions(this.browsedVault(), text);
+    if (chatKind(chat) !== "assistant") checkMentions(this.browsedVault(), text);
   }
 
   /** The favorite files and folders, which the file explorer shows first. */

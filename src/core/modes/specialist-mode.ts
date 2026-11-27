@@ -11,6 +11,7 @@ import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
+import { removeFolderMentions, withFolderMentions } from "../projects/clone-files.ts";
 import { withGitCeiling } from "./project-mode.ts";
 import { VaultTurns, type VaultSyncPort } from "./vault-turns.ts";
 
@@ -29,6 +30,8 @@ export interface SpecialistPreparerOptions {
    * The chat reads them, but never changes them: they are temporary (#768).
    */
   readonly receivedFolder?: (projectId: string) => string | null;
+  /** The vault, read at each turn, for the files that a message mentions (#753). Without it, mentions stay as they are. */
+  readonly vaultPath?: () => string | null;
 }
 
 export class SpecialistPreparer implements TurnPreparer {
@@ -85,8 +88,24 @@ export class SpecialistPreparer implements TurnPreparer {
     });
   }
 
+  /**
+   * The chat gets each vault file that its text mentions, as a clone chat does (#753). A file
+   * inside the project folder keeps its path from the folder. Each other file becomes a copy in
+   * the folder. The chat never gets a vault path, so it never learns where the vault is (#702).
+   */
+  engineMessage(session: SessionRecord, text: string): string {
+    const vaultPath = this.options.vaultPath?.() ?? null;
+    if (vaultPath === null) return text;
+    return withFolderMentions(text, vaultPath, session.startFolder, session.id);
+  }
+
   async afterTurn(session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
-    await this.vaultTurns.after(session);
+    // Before the snapshot and the save: a copy is no change of the turn. The vault sync keeps a
+    // copy out of each commit too, for a copy that a crash leaves behind.
+    await this.vaultTurns.after(session, () => {
+      removeFolderMentions(session.startFolder, session.id);
+      return undefined;
+    });
     return null;
   }
 }

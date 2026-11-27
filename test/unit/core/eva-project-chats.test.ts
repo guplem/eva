@@ -7,6 +7,7 @@ import { homePaths } from "../../../src/core/settings/home.ts";
 import { projectWallRoots } from "../../../src/core/instance/child-environments.ts";
 import type { SessionRecord } from "../../../src/core/sessions/session-store.ts";
 import { isEvaError } from "../../../src/shared/errors.ts";
+import { mentionsIn } from "../../../src/shared/mentions.ts";
 import { wallRefusesPath } from "../../../src/shared/path-area.ts";
 import type { TurnRequest } from "../../../src/shared/engine-port.ts";
 import { FakeEngine } from "../../support/fake-engine.ts";
@@ -22,6 +23,33 @@ import {
 } from "../../support/eva-testbed.ts";
 
 useEvaTestbed();
+
+/**
+ * An engine whose Project chat reads each file that its message gives it, from its start folder,
+ * and answers with their text. It says when Eva could not give it a file (#753).
+ */
+function readingEngine(): FakeEngine {
+  return new FakeEngine((request) => {
+    if (request.mode !== "project") return FakeEngine.answer(request, "Noted.");
+    const paths = [
+      ...[...request.prompt.matchAll(/is the file (\S+)\]/g)].map((match) => match[1]!),
+      ...mentionsIn(request.prompt).map((mention) => mention.name),
+    ];
+    const read = paths
+      .map((path) => join(request.startFolder, path))
+      .filter((path) => existsSync(path))
+      .map((path) => readFileSync(path, "utf8").trim());
+    const missing = request.prompt.includes("Eva could not give this file") ? ["I did not get the file."] : [];
+    return FakeEngine.answer(request, [...read, ...missing].join(" ") || "Nothing to read.");
+  });
+}
+
+/** The result of the project work that reports to the Assistant chat, once it arrives. */
+async function workResult(instance: Eva, askingId: string): Promise<string | undefined> {
+  await waitFor(() => instance.sessions.get(askingId).turns.length === 1, 20_000);
+  await instance.idle();
+  return instance.sessions.get(askingId).turns[0]?.projectReports[0]?.result;
+}
 
 describe("clone reuse (issue 521)", () => {
   // Not the call that names a chat, which reads its first message too.
@@ -139,6 +167,22 @@ describe("clone reuse (issue 521)", () => {
     expect(sandbox.git(repository, "rev-parse", "--abbrev-ref", "HEAD")).toBe("main");
     expect(existsSync(join(first.startFolder, "example-api", "AGENTS.md"))).toBe(true);
     expect(instance.sessions.get(first.id).closed).toBe(true);
+  });
+
+  test("work from an Assistant chat reads a vault note that it names, and no repository sees the copy (#753)", async () => {
+    sandbox.write(vault, "Notes/plan.md", "Use the blue button.\n");
+    const engine = readingEngine();
+    const instance = start(engine);
+    const asking = instance.createAssistantSession({ source: "web" });
+    const work = await instance.startProjectWork({
+      projectId,
+      request: "Build the page in @file:Notes/plan.md.",
+      reportToSessionId: asking.id,
+    });
+    expect(await workResult(instance, asking.id)).toBe("Use the blue button.");
+    const prompt = engine.requests.find((request) => request.mode === "project")?.prompt ?? "";
+    expect(prompt).not.toContain("Notes/");
+    expect(sandbox.git(join(work.startFolder, "remote"), "status", "--porcelain", "--ignored")).toBe("");
   });
 
   test("a fetch that fails keeps the chat open, and the new chat gets a new clone", async () => {
@@ -312,6 +356,54 @@ describe("specialists (#703)", () => {
     expect(instance.sessions.get(asking.id).turns[0]?.projectReports).toMatchObject([
       { projectId: coachId, clone: null, repositories: [], result: "The week is planned." },
     ]);
+  });
+
+  test("work on a specialist reads the vault notes that it names, and no copy reaches the vault (#753)", async () => {
+    sandbox.write(vault, "Notes/plan.md", "Run three times a week.\n");
+    sandbox.write(vault, `Projects/${coachId}/log.md`, "Ran 5 km.\n");
+    const engine = readingEngine();
+    const instance = start(engine, { sync: syncOn });
+    const asking = instance.createAssistantSession({ source: "web" });
+    await instance.startProjectWork({
+      projectId: coachId,
+      request: `Plan the week from @file:Notes/plan.md and @file:Projects/${coachId}/log.md.`,
+      reportToSessionId: asking.id,
+    });
+    expect(await workResult(instance, asking.id)).toBe("Run three times a week. Ran 5 km.");
+    const prompt = engine.requests.find((request) => request.mode === "project")?.prompt ?? "";
+    expect(prompt).not.toContain("Notes/");
+    expect(prompt).not.toContain("Projects/");
+    expect(existsSync(join(coachFolder(), ".mentions"))).toBe(false);
+    expect(sandbox.git(vault, "status", "--porcelain")).not.toContain(".mentions");
+    expect(sandbox.git(sandbox.remote, "log", "--all", "--name-only", "--format=")).not.toContain(".mentions");
+  });
+
+  test("work on a specialist that names a secret file gets no copy, and its result says so (#753)", async () => {
+    sandbox.write(vault, "Notes/keys.txt", "The key is ghp_0123456789abcdefghijklmnopqrstuvwxyzAB.\n");
+    const engine = readingEngine();
+    const instance = start(engine);
+    const asking = instance.createAssistantSession({ source: "web" });
+    await instance.startProjectWork({
+      projectId: coachId,
+      request: "Use @file:Notes/keys.txt.",
+      reportToSessionId: asking.id,
+    });
+    expect(await workResult(instance, asking.id)).toBe("I did not get the file.");
+    expect(existsSync(join(coachFolder(), ".mentions"))).toBe(false);
+  });
+
+  test("a message to a specialist chat that names a gone file is refused before it is sent (#753)", async () => {
+    const instance = start(new FakeEngine());
+    const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+    const caught = (() => {
+      try {
+        instance.checkMessage(chat.id, "Read @file:Notes/gone.md");
+        return null;
+      } catch (error) {
+        return error;
+      }
+    })();
+    expect(isEvaError(caught, "file_not_found")).toBe(true);
   });
 
   test("the type changes only while the project has no chat and no clone, so no chat changes its kind", async () => {

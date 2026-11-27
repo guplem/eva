@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { ApprovalAnswer, WallRoots } from "../../../../src/shared/engine-port.ts";
-import { mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { moveAssistantPersonality } from "../../../../src/core/migrations/assistant-rules-move.ts";
 import { vaultMigrationRecordPath } from "../../../../src/core/migrations/migration-runner.ts";
@@ -738,6 +738,39 @@ describe("Specialist mode (#703)", () => {
     const caught = await preparer.prepare(coachSession()).catch((error: unknown) => error);
     expect(isEvaError(caught, "project_invalid")).toBe(true);
     expect(sync.calls).toEqual([]);
+  });
+
+  test("a specialist chat gets a copy of a mentioned vault file, removed before the snapshot after its turn (#753)", async () => {
+    const folder = join(vault, "Projects", coachId);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(vault, "Plan.md"), "The plan.");
+    writeFileSync(join(folder, "log.md"), "Ran 5 km.");
+    const copies: string[][] = [];
+    const sync = new FakeSync();
+    const snapshot = sync.snapshot.bind(sync);
+    sync.snapshot = (ref: string): Promise<void> => {
+      copies.push(existsSync(join(folder, ".mentions")) ? readdirSync(join(folder, ".mentions")) : []);
+      return snapshot(ref);
+    };
+    const preparer = new SpecialistPreparer({
+      vaultSync: sync,
+      environment: {},
+      wallRoots: noWall,
+      vaultPath: () => vault,
+    });
+    const chat = coachSession();
+    await preparer.prepare(chat);
+    const text = preparer.engineMessage(chat, `Read @file:Plan.md and @file:Projects/${coachId}/log.md`);
+    expect(text).toMatch(
+      /^Read @file:Plan-[0-9a-f]{12}\.md and @file:log\.md\n\n\[@file:Plan-[0-9a-f]{12}\.md is the file \.mentions\/s1\/Plan-[0-9a-f]{12}\.md\]$/,
+    );
+    expect(readdirSync(join(folder, ".mentions", "s1"))).toHaveLength(1);
+    await preparer.afterTurn(chat, finishedTurn);
+    // The snapshot before the turn has no copy yet, and the one after it has none any more.
+    expect(copies).toEqual([[], []]);
+    expect(existsSync(join(folder, ".mentions"))).toBe(false);
+    // With no vault, a mention stays as it is.
+    expect(specialist().engineMessage(chat, "Read @file:Plan.md")).toBe("Read @file:Plan.md");
   });
 
   test("describes no part of Eva's, and changes nothing", async () => {

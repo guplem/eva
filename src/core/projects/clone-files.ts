@@ -2,10 +2,22 @@
  * The files that the person gives to a chat in a clone (#706): a vault file that a message
  * mentions, or a file that the person attaches. Each one goes into `clone-<n>/.mentions/`, outside
  * every repository, so git never sees it. The chat gets the copy's name and never a vault path,
- * so it does not learn that it runs inside a vault (#702).
+ * so it does not learn that it runs inside a vault (#702). A chat in a project folder, such as a
+ * specialist's, gets its copies in `.mentions/<session id>/` of the folder for one turn (#753).
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, join, relative, sep } from "node:path";
+import { isInside } from "../../shared/path-area.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { mentionsIn, mentionToken } from "../../shared/mentions.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
@@ -23,15 +35,20 @@ const maxCopyBytes = 25 * 1024 * 1024;
  * names only the file, since a system error holds the whole path, which the chat must not see.
  */
 export function saveInClone(clonePath: string, originalName: string, bytes: Uint8Array): string {
+  return saveIn(clonePath, mentionsFolderName, originalName, bytes);
+}
+
+/** Saves bytes into `subfolder` of the chat's folder, named by their content. Gives the path from the chat's folder. */
+function saveIn(chatFolder: string, subfolder: string, originalName: string, bytes: Uint8Array): string {
   const name = contentName(originalName, bytes);
-  const folder = join(clonePath, mentionsFolderName);
+  const folder = join(chatFolder, subfolder);
   try {
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, name), bytes);
   } catch {
     throw new EvaError("file_not_writable", `Eva could not save ${basename(originalName)} for the chat.`);
   }
-  return `${mentionsFolderName}/${name}`;
+  return `${subfolder}/${name}`;
 }
 
 /**
@@ -104,6 +121,66 @@ export function checkMentions(vaultPath: string, text: string): void {
  * mention gets no note, since its note would name a vault folder.
  */
 export function withCloneMentions(text: string, vaultPath: string, clonePath: string): string {
+  return withGivenFiles(text, (vaultRelative) => {
+    const copy = copyVaultFileToClone(vaultPath, clonePath, vaultRelative);
+    return { token: mentionToken("file", basename(copy)), copy };
+  });
+}
+
+/**
+ * The text that a chat in a project folder gets, such as a specialist's (#753). A file inside the
+ * folder keeps its path from the folder, with no copy: the chat reads it there. Each other file
+ * becomes a copy in `.mentions/<session id>/`, so the end of one chat's turn never removes the
+ * copies of another chat that runs at the same time. A file that cannot be given gets a note.
+ */
+export function withFolderMentions(text: string, vaultPath: string, projectFolder: string, sessionId: string): string {
+  return withGivenFiles(text, (vaultRelative) => {
+    const { path, name } = checkedMention(vaultPath, vaultRelative);
+    const inFolder = pathInFolder(projectFolder, path);
+    if (inFolder !== null) return { token: mentionToken("file", inFolder), copy: null };
+    const bytes = readFileSync(path);
+    // As for a clone: the scan reads exactly the bytes that go into the copy.
+    if (containsSecretPattern(bytes.toString("utf8")))
+      throw new EvaError("file_not_downloadable", `${vaultRelative} holds a secret, so Eva does not send it.`);
+    const copy = saveIn(projectFolder, `${mentionsFolderName}/${sessionId}`, name, bytes);
+    return { token: mentionToken("file", basename(copy)), copy };
+  });
+}
+
+/**
+ * Removes the copies of one chat in a project folder, after its turn (#753). The folder is in the
+ * vault, and a specialist has no clone to reset. The mention folder goes once it is empty.
+ */
+export function removeFolderMentions(projectFolder: string, sessionId: string): void {
+  const folder = join(projectFolder, mentionsFolderName);
+  rmSync(join(folder, sessionId), { recursive: true, force: true });
+  try {
+    rmdirSync(folder);
+  } catch {
+    // Another chat still has copies there, or the folder is gone.
+  }
+}
+
+/** The path of a file from the project folder, with `/`, or null for a file outside it. */
+function pathInFolder(projectFolder: string, realPath: string): string | null {
+  let root: string;
+  try {
+    root = realpathSync(projectFolder);
+  } catch {
+    return null;
+  }
+  return isInside(root, realPath) ? relative(root, realPath).split(sep).join("/") : null;
+}
+
+/**
+ * Puts the token of each given file in place of its mention, with one note for each. `give`
+ * answers the new token, and the copy's path from the chat's folder, or null when the chat reads
+ * the file where it is. A file that `give` refuses keeps only its base name, with a note that says why.
+ */
+function withGivenFiles(
+  text: string,
+  give: (vaultRelative: string) => { readonly token: string; readonly copy: string | null },
+): string {
   let result = "";
   let from = 0;
   const notes = new Map<string, string>();
@@ -111,9 +188,9 @@ export function withCloneMentions(text: string, vaultPath: string, clonePath: st
     if (mention.kind !== "file") continue;
     let token: string;
     try {
-      const copy = copyVaultFileToClone(vaultPath, clonePath, mention.name);
-      token = mentionToken("file", basename(copy));
-      notes.set(mention.token, `[${token} is the file ${copy}]`);
+      const given = give(mention.name);
+      token = given.token;
+      if (given.copy !== null) notes.set(mention.token, `[${token} is the file ${given.copy}]`);
     } catch (error) {
       token = mentionToken("file", basename(mention.name));
       notes.set(
@@ -124,8 +201,8 @@ export function withCloneMentions(text: string, vaultPath: string, clonePath: st
     result += text.slice(from, mention.start) + token;
     from = mention.start + mention.token.length;
   }
-  if (notes.size === 0) return text;
-  return `${result}${text.slice(from)}\n\n${[...notes.values()].join("\n")}`;
+  const replaced = `${result}${text.slice(from)}`;
+  return notes.size === 0 ? replaced : `${replaced}\n\n${[...notes.values()].join("\n")}`;
 }
 
 /**

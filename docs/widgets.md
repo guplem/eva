@@ -89,7 +89,7 @@ Each input has these keys:
 | `eva-cases`           | The permission to read the person's open cases.    | No `default` and no `access`.                |
 
 - `access` is `read` or `write`. A write also allows a read.
-- With `write`, the calendar input lets the widget add, change and delete events, and send invitations to other people: see [Calendar writes](#calendar-writes). Ask for `write` only when the widget writes.
+- With `write`, the calendar input lets the widget add, change and delete events. It can also send invitations to other people. See [Calendar writes](#calendar-writes). Ask for `write` only when the widget writes.
 - Eva serves no write of the tasks yet. Ask for `read` for the tasks.
 - `schema` is the path of the JSON Schema of each file that the widget writes, such as `schemas/habits.json`.
 - `files` is a glob pattern of the file names of a folder, such as `*.json` or `????-??-??.json`. `*` matches any text, and `?` matches one character. Neither matches a `/`.
@@ -161,28 +161,30 @@ An `eva-google-calendar` input gives the widget the person's Google Calendar. Ev
 A widget of contract 5 with an `eva-google-calendar` input of access `write` adds, changes and deletes the person's events. Eva calls Google with her own login. The widget never sees a token.
 
 - `POST eva/google-calendar/events.json` adds an event. The body is a JSON event, below. Eva answers `201` with the new event, in the shape of the reads, or `null` when she cannot read Google's answer.
-- `PUT eva/google-calendar/events/<id>.json` changes the event. The body names `calendarId`. Eva changes only the fields that the body gives. She answers `200` with the event.
+- `PUT eva/google-calendar/events/<id>.json` changes the event. The body names `calendarId`. Eva changes only the fields that the body gives. She answers `200` with the event, or `null` when she cannot read Google's answer.
 - `DELETE eva/google-calendar/events/<id>.json?calendarId=…` deletes the event. Eva answers `204`.
-- `<id>` is the `id` of an event of the reads. Eva answers `404` for an id with characters other than letters, digits, `_` and `-`.
+- `<id>` is the `id` of an event of the reads, 1024 characters at most. A widget with `write` access gets `404` for an id with characters other than letters, digits, `_` and `-`.
 - The event of a body has these fields. Eva ignores each other field, such as `id`, `link` and `project`.
 
-| Field              | What it holds                                                                                         |
-| ------------------ | ----------------------------------------------------------------------------------------------------- |
-| `calendarId`       | Required. The `id` of a calendar of `calendars.json`.                                                 |
-| `title`            | A text of 1024 characters at most.                                                                    |
-| `startAt`, `endAt` | A timed event, both in RFC 3339 with seconds and an offset, such as `2026-11-18T09:00:00+01:00`.      |
-| `date`, `endDate`  | An all-day event, both as `YYYY-MM-DD`. `endDate` is the last day, as in the reads.                   |
-| `place`            | A text of 1024 characters at most, or `null` to clear it.                                             |
-| `description`      | Plain text of 8192 characters at most, or `null` to clear it.                                         |
-| `guests`           | The emails of the guests, 100 at most. Only a `POST` takes it. A `PUT` with `guests` answers `400`.   |
-| `sendInvitations`  | `true` sends an email to each guest. `false`, or no value, sends none. Any other value answers `400`. |
+| Field              | What it holds                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `calendarId`       | Required. The `id` of a calendar of `calendars.json`, 1024 characters at most.                                      |
+| `title`            | A text of 1024 characters at most.                                                                                  |
+| `startAt`, `endAt` | A timed event, both in RFC 3339 with seconds and an offset, such as `2026-11-18T09:00:00+01:00`.                    |
+| `date`, `endDate`  | An all-day event, both as `YYYY-MM-DD`. `endDate` is the last day, as in the reads.                                 |
+| `place`            | A text of 1024 characters at most, or `null` to clear it.                                                           |
+| `description`      | Plain text of 8192 characters at most, or `null` to clear it.                                                       |
+| `guests`           | The emails of the guests, 100 at most. Each is one plain address of 254 characters at most. Only a `POST` takes it. |
+| `sendInvitations`  | `true` sends an email to each guest. `false`, or no value, sends none. Any other value answers `400`.               |
 
 - A new event needs a time: `startAt` and `endAt`, or `date` and `endDate`. A body never holds both forms.
-- **Invitations.** Ask the person before you send them. Set `sendInvitations` to `true` only when the person chose it. Eva sends no email to a guest without it. For a `DELETE`, put `sendInvitations=true` in the query to tell the guests.
-- The reads give no guests. So a `PUT` cannot change the guests: it would drop the guests that the widget never saw.
-- A `PUT` with `description` replaces the whole description, also the line `[eva-project:<id>]`. To keep the project, leave out `description`, or write the line again.
+- The end is not before the start. Each day must exist: Eva answers `400` for 30 February.
+- **Invitations.** Ask the person before you send them. Set `sendInvitations` to `true` only when the person chose it. Eva sends no email to a guest without it. For a `DELETE`, put `sendInvitations=true` in the query to tell the guests. `false`, or no value, tells none. Any other value answers `400`.
+- The reads give no guests. So a `PUT` with `guests` answers `400`: it would drop the guests that the widget never saw.
+- A `PUT` with `description` replaces the whole description, including the line `[eva-project:<id>]`. To keep the project, leave out `description`, or write the line again.
 - The reads cut `description` at 2000 characters. A `PUT` that sends a read description back writes the cut text.
 - A `PUT` cannot move an event to another calendar.
+- The event that a write answers can give its times with another offset than the reads. Compare two times by their moment, never as text.
 - The reads give each instance of a repeated event with its own `id`. A write changes or deletes only that instance.
 - Eva does not refuse a secret in an event, as she does in `data/`. Never put one in an event.
 
@@ -200,7 +202,7 @@ Eva answers a refused write with a status code. A `403` has a body with the reas
 | `413`  |               | The body is over 64 KB.                                                                                                |
 | `502`  |               | Google failed. Try again later.                                                                                        |
 
-A write fails outside Eva and in the **Example data** preview: show a note. **My data** writes the person's real calendar with the grant of the preview.
+A write fails outside Eva, and the **Example data** preview answers `405`: show a note. **My data** writes the person's real calendar with the grant of the preview.
 
 ### The tasks
 
@@ -542,7 +544,7 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 
 A widget of contract 1 to 4 works with no change. To use a new size, input, key or path, set `contract` to the contract that adds it.
 
-Eva serves a path by the approval of the widget, not by its contract number. So a widget of contract 2 to 4 can write the calendar too, when its calendar input has `write` access. The person approved "Read and change" for it.
+Eva serves a path by the approval of the widget, not by its contract number. So a widget of contract 2 to 4 can write the calendar too. Its calendar input needs `write` access. The person approved "Read and change" for it.
 
 ## Example: a habits widget
 

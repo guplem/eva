@@ -32,8 +32,8 @@ export function toolCacheVariables(): Record<string, string> {
 const evaHosts = ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "*.ts.net"];
 
 /**
- * The hosts of git and of the package managers. The wall closes files, never the network, but the
- * sandbox asks about each host that no rule names: in auto mode, Claude Code's classifier answers.
+ * The hosts of git and of the package managers. The wall closes files, never the network, but each
+ * engine's sandbox decides about a host that no rule names, such as Claude Code's classifier in auto mode.
  */
 const developmentHosts = [
   "github.com",

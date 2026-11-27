@@ -147,7 +147,6 @@ export function projectWallRoots(
       paths.root,
       userspaceFolders(homedir()).state,
     ],
-    // Each engine opens its own folders, such as Claude Code's shell setup.
     readable: [folders.git, folders.gh, join(paths.root, "bin")],
   };
 }

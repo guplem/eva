@@ -10,6 +10,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -800,5 +801,37 @@ describe("delete and duplicate keep what no commit keeps (#1117 review)", () => 
     deleteVaultEntry(vault, "junction");
     expect(existsSync(join(vault, "junction"))).toBe(false);
     expect(readFileSync(join(vault, "Methods/Plan.md"), "utf-8")).toBe("# Plan\n");
+  });
+});
+
+describe("delete, duplicate and create follow the rules of the vault sync (#1117 second review)", () => {
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a binary file that looks like a loose token by chance still goes, as the sync commits it", () => {
+    write("Media/photo.jpg", Buffer.concat([Buffer.from([0xff, 0xd8, 0]), Buffer.from(`123456789:${"a".repeat(35)}`)]));
+    deleteVaultEntry(vault, "Media");
+    expect(existsSync(join(vault, "Media"))).toBe(false);
+  });
+
+  test("a file larger than the sync commits stays, alone or in a folder", () => {
+    write("Media/film.mp4", "");
+    truncateSync(join(vault, "Media/film.mp4"), 50 * 1024 * 1024 + 1);
+    expect(codeOf(() => deleteVaultEntry(vault, "Media/film.mp4"))).toBe("file_not_writable");
+    expect(codeOf(() => deleteVaultEntry(vault, "Media"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, "Media/film.mp4"))).toBe(true);
+  });
+
+  test("New file and New folder stay out of a clone and out of .eva", () => {
+    const clone = "Projects/2025-03-02-1015-example-app/repos/example-app-0";
+    expect(codeOf(() => createVaultEntry(vault, clone, "a.md", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, ".eva", "a.md", "file"))).toBe("file_not_writable");
+    expect(codeOf(() => createVaultEntry(vault, "Methods.", "a.md", "file"))).toBe("file_not_found");
   });
 });

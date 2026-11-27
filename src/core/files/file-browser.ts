@@ -27,12 +27,12 @@ import {
 import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { isInside } from "../../shared/path-area.ts";
-import { containsSecretPattern } from "../../shared/redaction.ts";
+import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import { projectTitleOf } from "../projects/project-catalog.ts";
 import { fileVersion, matchFileStyle } from "../projects/project-file.ts";
 import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher } from "../vault/secret-files.ts";
 import { encryptedState } from "../vault/vault-crypto.ts";
-import { isCloneFolderFile } from "../vault/vault-sync.ts";
+import { isCloneFolderFile, maxCommittedFileBytes, maxScannedFileBytes } from "../vault/vault-sync.ts";
 import { isScratchPath } from "./scratch-folders.ts";
 import { isEncryptedOnDisk, isPlainSecretName, secretMatcherOf, type SecretPaths } from "./secret-paths.ts";
 
@@ -231,15 +231,21 @@ function placeEntry(vaultPath: string, requested: string, action: string): Place
  * the vault layout. The idle sweep commits a new file. Git keeps no empty folder.
  */
 export function createVaultEntry(vaultPath: string, requested: string, name: string, kind: "file" | "folder"): string {
-  const { root, resolved, notFound } = resolveInVault(vaultPath, requested);
+  const { root, path, resolved, notFound } = resolveInVault(vaultPath, requested);
+  // Windows drops a dot or a space at the end of a name, so `Projects.` would name `Projects`.
+  if (path.split("/").some((part) => /[. ]$/.test(part))) throw notFound;
   const nameProblem = problemOfName(name);
   if (nameProblem !== null) throw notWritable(nameProblem);
   const folderParts = relative(root, resolved)
     .split(sep)
     .filter((part) => part !== "");
   const parts = [...folderParts, name];
+  const entryPath = parts.join("/");
   if (isLayoutEntry(parts)) throw notWritable("Eva makes her projects herself, so pick another folder or name.");
-  if (secretMatcherOf(root).matches(parts.join("/")))
+  // A clone has its own remote, and Eva owns `.eva/`, as for Delete and Duplicate.
+  if (isCloneFolderFile(entryPath) || entryPath.toLowerCase().startsWith(".eva/"))
+    throw notWritable("Eva keeps this folder out of reach of the page, so she makes nothing in it.");
+  if (secretMatcherOf(root).matches(entryPath))
     throw notWritable("A secret file stays out of reach of the page, so Eva does not make it.");
   const target = join(resolved, name);
   try {
@@ -259,8 +265,8 @@ export function createVaultEntry(vaultPath: string, requested: string, name: str
 
 /** A folder this large takes long to check, and a delete of it is rarely what the person wants. */
 const maxDeletedEntries = 20_000;
-/** Only a file this small is read for a token: a larger one is a document or a media file. */
-const tokenScanBytes = 2 * 1024 * 1024;
+/** The most bytes that one delete reads to look for tokens, so a large folder cannot hold the core long. */
+const maxDeleteScanBytes = 200 * 1024 * 1024;
 /** Duplicate reads the whole file into memory, so it stops at the size that Eva sends. */
 const maxCopiedBytes = 50 * 1024 * 1024;
 
@@ -283,9 +289,10 @@ export function deleteVaultEntry(vaultPath: string, requested: string): void {
       removeLink(source);
       return;
     }
-    if (stats.isDirectory()) checkFolderDelete(root, source, matcher);
-    else if (stats.isFile() && holdsToken(source))
-      throw notWritable("This file holds a secret, such as a token, that no commit keeps. Eva does not delete it.");
+    const budget = { left: maxDeleteScanBytes };
+    const why = stats.isFile() ? whyNotCommitted(source, budget) : null;
+    if (why !== null) throw notWritable(`This file ${why}. Eva does not delete it.`);
+    if (stats.isDirectory()) checkFolderDelete(root, source, matcher, budget);
     rmSync(source, { recursive: stats.isDirectory() });
   } catch (error) {
     if (error instanceof EvaError) throw error;
@@ -305,14 +312,23 @@ function removeLink(path: string): void {
   }
 }
 
-/** True for a small file whose text holds a token: the vault sync keeps such a file out of each commit. */
-function holdsToken(path: string): boolean {
-  if (statSync(path).size > tokenScanBytes) return false;
-  return containsSecretPattern(readFileSync(path, "utf-8"));
+/**
+ * Why the vault sync keeps the file out of each commit, or null when a commit keeps it. A file
+ * larger than the sync commits stays out, and so does a file that it scans and finds a token in.
+ * `budget` counts the bytes that one delete reads, so a large folder cannot hold the core long.
+ */
+function whyNotCommitted(path: string, budget: { left: number }): string | null {
+  const size = statSync(path).size;
+  if (size > maxCommittedFileBytes) return "is larger than 50 MB, so no commit keeps it";
+  if (size > maxScannedFileBytes) return null;
+  budget.left -= size;
+  if (budget.left < 0)
+    throw notWritable("This folder holds too much to check from the page. Delete it on the computer.");
+  return bytesContainSecretPattern(readFileSync(path)) ? "holds a secret, such as a token, that no commit keeps" : null;
 }
 
 /** Walks the folder without following a link, and throws at the first entry that no commit keeps. */
-function checkFolderDelete(root: string, folder: string, matcher: SecretPaths): void {
+function checkFolderDelete(root: string, folder: string, matcher: SecretPaths, budget: { left: number }): void {
   let seen = 0;
   const walk = (current: string): void => {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
@@ -322,12 +338,15 @@ function checkFolderDelete(root: string, folder: string, matcher: SecretPaths): 
       const path = join(current, entry.name);
       if (entry.name.toLowerCase() === hiddenName)
         throw notWritable("This folder holds a git repository, so Eva does not delete it from the page.");
-      if (entry.isDirectory()) walk(path);
-      else if (!entry.isFile() || isEncryptedOnDisk(path)) continue;
-      else if (matcher.matches(relative(root, path).split(sep).join("/")))
+      if (entry.isDirectory()) {
+        walk(path);
+        continue;
+      }
+      if (!entry.isFile() || isEncryptedOnDisk(path)) continue;
+      if (matcher.matches(relative(root, path).split(sep).join("/")))
         throw notWritable("This folder holds a secret file that no commit keeps, so Eva does not delete it.");
-      else if (holdsToken(path))
-        throw notWritable("This folder holds a file with a secret, such as a token, so Eva does not delete it.");
+      const why = whyNotCommitted(path, budget);
+      if (why !== null) throw notWritable(`${entry.name} in this folder ${why}. Eva does not delete the folder.`);
     }
   };
   walk(folder);
@@ -351,7 +370,7 @@ export function duplicateVaultFile(vaultPath: string, requested: string): string
   if (matcher.matches([...folderParts, name].join("/")) || isEncryptedOnDisk(source))
     throw notWritable("A secret file stays out of reach of the page, so Eva does not duplicate it.");
   const bytes = readOwnFile(source, notFound);
-  if (bytes.length <= tokenScanBytes && containsSecretPattern(bytes.toString("utf-8")))
+  if (bytes.length <= maxScannedFileBytes && bytesContainSecretPattern(bytes))
     throw notWritable("This file holds a secret, such as a token, so Eva does not duplicate it.");
   for (let number = 1; number <= maxCopyNumber; number += 1) {
     const copy = copyNameOf(name, number);

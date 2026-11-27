@@ -7,7 +7,7 @@ import type { GithubAnswer, GithubRequest } from "../../src/core/projects/reposi
 import type { GithubWrite } from "../../src/core/projects/repository-fixes.ts";
 
 /** The blob SHA that git gives a file with this text, as a real tree lists it. */
-export function gitBlobSha(text: string): string {
+function gitBlobSha(text: string): string {
   const body = Buffer.from(text, "utf-8");
   return createHash("sha1")
     .update(Buffer.concat([Buffer.from(`blob ${String(body.length)}\0`), body]))

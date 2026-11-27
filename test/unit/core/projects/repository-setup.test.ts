@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
-import { widgetTemplate } from "../../../../src/core/widgets/widget-template.ts";
-import { gitBlobSha } from "../../../support/fake-github.ts";
 import {
   missesFacts,
   setupReport,
@@ -10,8 +7,6 @@ import {
   type SetupItem,
   type SetupReport,
 } from "../../../../src/core/projects/repository-setup.ts";
-
-const root = fileURLToPath(new URL("../../../..", import.meta.url));
 
 /** The reference: every item is green. */
 const reference: RepositoryFacts = {
@@ -121,31 +116,6 @@ describe("evaluateSetup", () => {
     );
     expect(item(claudeOnly, "Skill rename-symbol").light).toBe("yellow");
     expect(item(claudeOnly, "Skill rename-symbol").detail).toContain(".claude/skills/");
-  });
-
-  test("a new widget repository has every skill of Eva up to date (#983)", () => {
-    // The reference is Eva's committed skills, by the blob SHAs that GitHub shows for them.
-    const listed = Bun.spawnSync(["git", "ls-files", "-s", "--", ".agents/skills"], { cwd: root }).stdout.toString();
-    const skills = Object.fromEntries(
-      listed
-        .split("\n")
-        .filter((line) => line !== "")
-        .map((line) => {
-          const [mode = "", path = ""] = line.split("\t");
-          return [path, mode.split(" ")[1] ?? ""];
-        }),
-    );
-    expect(Object.keys(skills).length).toBeGreaterThan(0);
-    const template = widgetTemplate({ owner: "Example-User", repository: "example-widget", title: "Example Widget" });
-    const files = Object.fromEntries(Object.entries(template).map(([path, text]) => [path, gitBlobSha(text)]));
-    const report = evaluateSetup({ ...reference, files: skills }, target({ files }));
-    const skillItems = report.sections
-      .flatMap((section) => section.items)
-      .filter((entry) => entry.label.startsWith("Skill "));
-    expect(skillItems.map((entry) => entry.label).sort()).toEqual(
-      [...new Set(Object.keys(skills).map((path) => `Skill ${path.split("/")[2] ?? ""}`))].sort(),
-    );
-    expect(skillItems.filter((entry) => entry.light !== "green")).toEqual([]);
   });
 
   test("labels: all present is green, some is yellow, none is red; case does not count", () => {

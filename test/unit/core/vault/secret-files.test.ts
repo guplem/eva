@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   defaultSecretPatterns,
+  fixedSecretPatterns,
   isNeverEncrypted,
   parseSecretFiles,
   readSecretFiles,
@@ -117,5 +118,20 @@ describe("the files that Eva never encrypts (#707)", () => {
     expect(matcher.matches(".eva/scratch/key.pem")).toBe(true);
     expect(matcher.matches(".EVA/Scratch/received/key.pem")).toBe(true);
     expect(matcher.matches(".eva/key.pem")).toBe(false);
+  });
+});
+
+describe("the fixed secret pattern (#1108)", () => {
+  test("is not a default, so Settings shows no switch for it", () => {
+    expect(fixedSecretPatterns).toEqual(["*.eva-secret"]);
+    expect(defaultSecretPatterns).not.toContain("*.eva-secret");
+  });
+
+  test("covers a file with the .eva-secret end, in any folder and in any letter case", () => {
+    const fixed = new SecretMatcher(fixedSecretPatterns);
+    for (const path of ["photo.jpg.eva-secret", "Life/Health/scan.pdf.eva-secret", "Notes/keys.EVA-SECRET"])
+      expect([path, fixed.matches(path)]).toEqual([path, true]);
+    for (const path of ["photo.jpg", "notes.eva-secret.md", "photo.jpg.secrets"])
+      expect([path, fixed.matches(path)]).toEqual([path, false]);
   });
 });

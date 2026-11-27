@@ -11,7 +11,13 @@ import { closeSync, lstatSync, openSync, readFileSync, readSync, type Stats } fr
 import { basename, join } from "node:path";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { defaultSecretPatterns, readSecretFiles, retiredSecretPatterns, SecretMatcher } from "./secret-files.ts";
+import {
+  defaultSecretPatterns,
+  fixedSecretPatterns,
+  readSecretFiles,
+  retiredSecretPatterns,
+  SecretMatcher,
+} from "./secret-files.ts";
 import { writeSecretAttributes } from "./secret-attributes.ts";
 import { activeSecretPatterns, type SecretPolicy, type SecretPolicyInput } from "./secret-policy.ts";
 import {
@@ -140,6 +146,7 @@ export class VaultSecrets {
     const input = {
       defaults: defaultSecretPatterns,
       retired: retiredSecretPatterns,
+      fixed: fixedSecretPatterns,
       changes: readSecretFiles(this.options.vaultPath),
       signed,
       applied: machine.applied,

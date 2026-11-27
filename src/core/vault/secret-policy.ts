@@ -23,6 +23,8 @@ export interface SecretPolicyInput {
   readonly defaults: readonly string[];
   /** The defaults that a release took out. They apply until a signed removal. */
   readonly retired: readonly string[];
+  /** The patterns that always apply: no line of the file and no signed record takes them out. */
+  readonly fixed: readonly string[];
   /** The person's file of changes. */
   readonly changes: SecretFilesChanges;
   /** A valid signed record, or null. */
@@ -50,8 +52,9 @@ export function activeSecretPatterns(input: SecretPolicyInput): SecretPolicy {
   ]);
   const removed = (pattern: string): boolean =>
     input.signed !== null && input.signed.known.includes(pattern) && !input.signed.active.includes(pattern);
-  const active = [...candidates].filter((pattern) => desired.has(pattern) || !removed(pattern)).sort();
-  return { active, waiting: active.filter((pattern) => !desired.has(pattern)) };
+  const kept = [...candidates].filter((pattern) => desired.has(pattern) || !removed(pattern));
+  const active = [...new Set([...kept, ...input.fixed])].sort();
+  return { active, waiting: active.filter((pattern) => !desired.has(pattern) && !input.fixed.includes(pattern)) };
 }
 
 /** The patterns that a signed record took out, but that the person's file asks for again. */

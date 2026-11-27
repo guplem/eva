@@ -31,6 +31,12 @@ export const defaultSecretPatterns: readonly string[] = [
   "client_secret*.json",
 ];
 
+/**
+ * The patterns that always apply (#1108). The Files page adds `.eva-secret` to encrypt any file. A
+ * switch or a removal would decrypt each such file and push its plain text, so none exists.
+ */
+export const fixedSecretPatterns: readonly string[] = ["*.eva-secret"];
+
 /** The defaults that a release took out. They apply until the person confirms each removal. */
 export const retiredSecretPatterns: readonly string[] = [];
 

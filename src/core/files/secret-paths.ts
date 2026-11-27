@@ -4,7 +4,13 @@
  * vault says them. An encrypted file opens only in the Files page, with the vault password.
  */
 import { closeSync, openSync, readSync } from "node:fs";
-import { defaultSecretPatterns, readSecretFiles, retiredSecretPatterns, SecretMatcher } from "../vault/secret-files.ts";
+import {
+  defaultSecretPatterns,
+  fixedSecretPatterns,
+  readSecretFiles,
+  retiredSecretPatterns,
+  SecretMatcher,
+} from "../vault/secret-files.ts";
 import { activeSecretPatterns } from "../vault/secret-policy.ts";
 import { readSignedState, readVaultKey } from "../vault/secret-state.ts";
 import { encryptedState } from "../vault/vault-crypto.ts";
@@ -28,6 +34,7 @@ export function secretMatcherOf(vaultPath: string): SecretPaths {
   const { active } = activeSecretPatterns({
     defaults: defaultSecretPatterns,
     retired: retiredSecretPatterns,
+    fixed: fixedSecretPatterns,
     changes: readSecretFiles(vaultPath),
     signed,
     applied: [],

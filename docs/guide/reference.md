@@ -264,7 +264,7 @@ Eva can also tell a phone or a computer through the browser, with a system notif
    - **Eva waits for your approval:** a tool call needs your yes or no.
    - **Problems and their fixes:** the alerts above. Only the hub sends them.
 
-A tap on a notification opens its chat. Each device picks its own kinds.
+A tap on a notification opens its chat. Each device picks its own kinds. A notification shows the start of the answer as plain text, with no Markdown marks.
 
 Eva sends a device no notification while her page on that device is in view and in front. Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
 

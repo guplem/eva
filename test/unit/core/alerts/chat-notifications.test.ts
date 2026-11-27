@@ -103,6 +103,27 @@ describe("a chat that is free again", () => {
     expect(sent.map((notification) => notification.body)).toEqual(["Eva finished."]);
   });
 
+  test("shows the text with no Markdown marks: a lock screen shows plain text (#1106)", () => {
+    const { sent, feed, idle } = notifications();
+    feed(
+      "web",
+      received("api"),
+      text("## Result\n**Done.** See [the note](https://example.com) and `a.md`."),
+      finished,
+    );
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["Result Done. See the note and a.md."]);
+  });
+
+  test("says that Eva finished when the answer has no words, only marks or a code block", () => {
+    const { sent, feed, idle } = notifications();
+    feed("web", received("api"), text("---"), finished);
+    idle("web");
+    feed("web", received("api"), text("```bash\nbun run check\n```"), finished);
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["Eva finished.", "Eva finished."]);
+  });
+
   test("cuts a long text", () => {
     const { sent, feed, idle } = notifications();
     feed("web", received("api"), text("word ".repeat(100)), finished);
@@ -224,6 +245,12 @@ describe("an approval", () => {
         body: "Eva waits for your approval: rm -r old",
       },
     ]);
+  });
+
+  test("keeps the marks of the command, so the person approves what runs", () => {
+    const { sent, feed } = notifications();
+    feed("web", received("api"), { ...approval, summary: "rm -rf /tmp/*foo* `x`" });
+    expect(sent[0]?.body).toBe("Eva waits for your approval: rm -rf /tmp/*foo* `x`");
   });
 
   test("says that Eva has a question when the model asks one (#544)", () => {

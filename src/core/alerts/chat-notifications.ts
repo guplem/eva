@@ -5,6 +5,7 @@
  */
 import type { MessageOrigin, SessionEvent } from "../../shared/events.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
+import { plainLine } from "../../shared/plain-line.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
 /** What a device can get. Each device picks its own kinds. `alerts` are Eva's problem alerts. */
@@ -93,7 +94,12 @@ export class ChatNotifications {
         );
         return;
       case "turn_finished":
-        this.endings.set(sessionId, this.lastTexts.get(sessionId) ?? "Eva finished.");
+        // A lock screen shows plain text, so Markdown marks would show as they are (#1106). An
+        // approval keeps its marks: they are part of the command that the person approves.
+        this.endings.set(
+          sessionId,
+          plainLine(this.lastTexts.get(sessionId) ?? "", maxBodyLength * 4) || "Eva finished.",
+        );
         return;
       case "turn_failed":
         this.endings.set(sessionId, `Eva could not finish: ${event.reason}`);

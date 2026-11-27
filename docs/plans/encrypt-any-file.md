@@ -28,4 +28,11 @@ The Files page encrypts any vault file with one action. The action adds a `.eva-
 
 ## Decisions
 
-Filled in after the research.
+Three researchers (two mid-tier, one top-tier) agreed on each gap.
+
+- **G1. Inside `activeSecretPatterns`.** A new input, `fixed`, joins `active` after the removal filter and never joins `waiting`. Every reader of the patterns goes through this function. The top-tier researcher found one more risk: a signed record and this machine's memory (`applied`) named the fixed pattern, so an older Eva on another computer would show it as a removal that waits, and her confirmation would decrypt its files. `signedPayload` and `applied` now leave the fixed patterns out.
+- **G2. Check first, then encrypt at once, and check the result.** `encryptMoveOf` (file browser) checks the path: no folder or link, no file in `.eva/` (scratch too) or in a clone, no file that Eva never encrypts (`isNeverEncrypted` of the old path, so `AGENTS.md` stays), no taken name, no name over 255 bytes. `VaultEncryption.encryptByRename` checks the key, the size and an existing secret, inside `vault.exclusive`. It renames, encrypts the one file with `VaultSecrets.prepare`, and renames back when the file is not in Eva's encrypted shape. A file that git ignores is encrypted too: it stays on this computer, so no refusal is needed (a change from the issue's assumption). Error codes are existing ones: `file_not_found`, `file_not_writable`, `vault_key_missing`, `vault_key_invalid`.
+- **G3. Only an encrypted file, and only to a `.eva-secret` name.** A file keeps its old path sealed inside, and `decryptFiles` refuses such a file. So another secret name could stop an all-or-none pattern removal. `*.eva-secret` is never removed. #1109 must accept a sealed path that differs.
+- **G4. Any login, as for a rename.** Encryption needs no password and shows nothing. The route lives under `/api/vault/secrets/`, which has no idle limit, because it commits and pushes.
+- **G5. A lock button in the header, beside Rename,** for every open answer that is not a folder and not encrypted. The core refuses with a reason, and the error toast shows it. A plain `.env` also gets the button. An unsaved edit stays behind, because it is plain text.
+- **G6. A `fixed` status field,** shown as "Always on" with no switch.

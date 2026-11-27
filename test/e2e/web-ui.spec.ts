@@ -1405,7 +1405,7 @@ test("an unsent message stays in its chat after a reload, and goes once when the
   page,
 }) => {
   await logIn(page);
-  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page refresh"));
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page loads anew"));
   await waitUntilIdle(page, chatId);
   let online = false;
   await page.route("**/api/sessions/*/messages", async (route) => {
@@ -1437,7 +1437,7 @@ test("an unsent message stays in its chat after a reload, and goes once when the
 test("a message whose try runs when the page reloads, as after an update, reaches Eva once (#946)", async ({
   page,
 }) => {
-  // A turn that starts tells the page that Eva has the message. Without it, the page knows only its own try.
+  // A turn that starts tells the page that Eva has the message. The test hides it, so only the try of the page counts.
   let hideTurnStarts = false;
   await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
     const server = socket.connectToServer();
@@ -1446,7 +1446,7 @@ test("a message whose try runs when the page reloads, as after an update, reache
     });
   });
   await logIn(page);
-  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page refresh mid send"));
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page loads anew mid try"));
   await waitUntilIdle(page, chatId);
   let hold = true;
   const sentIds: string[] = [];
@@ -1463,14 +1463,13 @@ test("a message whose try runs when the page reloads, as after an update, reache
     taken();
     return undefined;
   });
-  const text = `Taken by Eva just before the page refresh (${test.info().project.name})`;
+  const text = `Taken by Eva just before the page loads anew (${test.info().project.name})`;
   hideTurnStarts = true;
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
   await composer.press("Control+Enter");
   await evaTook;
   await page.reload();
-  hideTurnStarts = false;
   await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
   await waitUntilIdle(page, chatId);
   // The page sent the message again after the reload, with the same id, and Eva ran it once.

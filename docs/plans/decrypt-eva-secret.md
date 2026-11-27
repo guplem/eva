@@ -22,4 +22,9 @@ An unlocked `.eva-secret` file gets a **Decrypt** action. It warns that the plai
 
 ## Decisions
 
-Filled in after the research.
+Three researchers (two mid-tier, one top-tier) agreed on each gap, with the additions below.
+
+- **G1. No signed record.** A record exists because an agent can edit `.eva/secret-files`. Decrypt changes no pattern, and only an unlocked device gets the key (`keyFor`). Other computers flag only a file that an active pattern covers (`isPlainSecret`), so the new plain file is a normal file there. A computer with a pattern that this one lacks would encrypt it again: harmless, as the plain text is already on the remote.
+- **G2. The current path decides, with one check.** A file renamed by hand keeps its old sealed path, so an exact match would block the main case. But two researchers found a real risk: an agent can copy a secret to a harmless name, and Decrypt would push its plain text. So a sealed path that differs must be in the same folder, and its name must start with the plain name and a dot, such as `photo.jpg.secrets` for `photo.jpg`. Any other sealed path stays encrypted. A conflict copy, such as `photo.jpg (conflict copy).eva-secret`, stays encrypted too: the person renames it first.
+- **G3. Refusals.** The name must end in `.eva-secret`, in any case, and leave a valid name. The file must be a regular file in Eva's encrypted shape. Eva refuses a new name that `secretMatcherOf` covers (active patterns, the fixed one and plain env names), checks the round's own patterns again inside the lock, and refuses a taken name, a file in a clone and a name that `isNeverEncrypted` covers, such as `AGENTS.md`. A scratch folder needs no refusal. Eva writes the plain file first, then deletes the encrypted one, and removes the plain file when the delete fails.
+- **G4. In the unlocked view.** A text file gets a menu item beside "Lock encrypted files". A file that is not text gets a button beside Download. A `Column` prop carries the page's `decrypt`, which calls the route, drops the draft and opens the new path. The question names the new name, the remote and an unsaved edit.

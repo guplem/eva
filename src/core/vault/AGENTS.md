@@ -18,3 +18,4 @@
 - Never decrypt a file because a pattern went away. Only a removal that the person signs decrypts.
 - Never take out a fixed secret pattern (`fixedSecretPatterns`).
 - Keep each fixed pattern out of the signed record and out of `.eva/secret-files`. An older Eva would offer to remove it.
+- Keep the sealed-path check of the Decrypt action. It stops a decoy copy of another secret that an agent made (#1109).

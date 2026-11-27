@@ -34,6 +34,7 @@ This repository is a widget for Eva's home page: a small web page that Eva shows
 - To create an issue, follow `.agents/skills/create-issue/SKILL.md`.
 - Before each rename, follow `.agents/skills/rename-symbol/SKILL.md`.
 - To resume or stop a pskill run, follow `.agents/skills/pskill/SKILL.md`.
+- The skills `make-change`, `write-commit`, `create-issue` and `rename-symbol` are exact copies of Eva's skills. When one is missing, copy its folder from https://github.com/guplem/eva/tree/main/.agents/skills to `.agents/skills/`. Do not change them here. Put a rule for this repository in this file.
 
 ## Git and GitHub
 

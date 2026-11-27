@@ -422,10 +422,12 @@ export function useContextMenu(
   return { props, menu };
 }
 
-/** True when the press is on an element inside this one that has a menu of its own. */
+/** True when the press is on an element inside this one that has a menu of its own, or outside it. */
 function innerOwnsMenu(event: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>): boolean {
+  // React sends the events of a portal, such as an open menu, through the element that draws it.
+  if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return true;
   const owner = event.target instanceof Element ? event.target.closest("[data-context-menu]") : null;
-  return owner !== null && owner !== event.currentTarget && event.currentTarget.contains(owner);
+  return owner !== null && owner !== event.currentTarget;
 }
 
 /**

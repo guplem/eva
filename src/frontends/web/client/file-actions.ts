@@ -20,6 +20,8 @@ export interface EntryFacts {
   readonly favorite: boolean | null;
   /** The vault folder on this computer, for "Copy full path", or null when it is not known. */
   readonly vaultFolder: string | null;
+  /** False for a file that Eva may not download, such as a secrets file. */
+  readonly downloadable?: boolean;
 }
 
 /** What each item does. The Files page gives one set for every menu. */
@@ -89,7 +91,7 @@ export function entryMenuItems(entry: EntryFacts, actions: EntryActions, open: O
     );
   items.push(...(open.view ?? []).map((view) => ({ ...view, group: "View" })));
   // An encrypted file downloads only from its own bar, with this tab's unlock.
-  if (plain || open.download !== undefined)
+  if ((plain && entry.downloadable !== false) || open.download !== undefined)
     items.push(
       item("Share", {
         label: folder ? "Download as zip" : "Download",

@@ -223,6 +223,8 @@ export function FilesView(): ReactElement {
     // The old answers name a path that is gone, so the new path and its folder read again.
     setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, from))));
     read(parentOf(to) ?? "");
+    // The core moves each favorite with its entry, and the open path may stay, so the star reads them again.
+    api.favorites().then(setFavorites, () => undefined);
     // The old address names nothing now, so Back must not go there.
     if (isUnder(path, from)) window.location.replace(fileAddressOf(to + path.slice(from.length)));
   };
@@ -323,17 +325,18 @@ export function FilesView(): ReactElement {
   // The answer's path is the tidy one that the core stores, so the star matches the favorite.
   const shownPath = last?.state === "shown" ? last.answer.path : null;
   const openName = crumbs[crumbs.length - 1]?.name ?? "";
-  // A text file and a media file show their menu in their own bar. Any other entry shows it here.
+  // A text file, a media file and an encrypted file show their menu in their own bar. A folder and
+  // an unreadable file show it here.
   const headerKind: EntryFacts["kind"] | null =
     last?.state !== "shown"
       ? null
       : last.answer.kind === "folder"
         ? "folder"
-        : last.answer.kind === "encrypted"
-          ? "encrypted"
-          : last.answer.kind === "unreadable" && shownMediaOf(path, last.answer) === null
-            ? "file"
-            : null;
+        : last.answer.kind === "unreadable" && shownMediaOf(path, last.answer) === null
+          ? "file"
+          : null;
+  // A secrets file that Eva shows as unreadable does not download either.
+  const downloadable = last?.state !== "shown" || last.answer.kind !== "unreadable" || last.answer.downloadable;
   return (
     <div className="main">
       <div className={large ? "files-page large" : "files-page"}>
@@ -375,7 +378,7 @@ export function FilesView(): ReactElement {
           )}
           {headerKind !== null && (
             <MoreMenu
-              items={entryMenuItems(factsOf(path, openName, headerKind), actions)}
+              items={entryMenuItems({ ...factsOf(shownPath ?? path, openName, headerKind), downloadable }, actions)}
               label={headerKind === "folder" ? "Folder actions" : "File actions"}
             />
           )}
@@ -812,6 +815,7 @@ function Column({
         onWrap={onWrap}
         smart={smart}
         onDecrypt={onDecrypt}
+        menu={(open) => menuOf(path, name, "encrypted", open)}
       />
     );
   if (shown.kind === "unreadable")
@@ -823,7 +827,7 @@ function Column({
         {shown.downloadable && <DownloadButton key={path} path={path} folder={false} />}
       </div>
     );
-  // A new file starts outside the editor, with its own view.
+  // Each file starts with its own view. Only a file that the person just made starts in the editor.
   return (
     <FilePreview
       key={path}
@@ -860,6 +864,7 @@ function EncryptedFile({
   onWrap,
   smart,
   onDecrypt,
+  menu,
 }: {
   readonly path: string;
   readonly size: number;
@@ -869,6 +874,8 @@ function EncryptedFile({
   readonly onWrap: (wrap: boolean) => void;
   readonly smart: boolean;
   readonly onDecrypt: () => Promise<void>;
+  /** Builds the one menu of the file, as on its row, from the items of the open file (#1117). */
+  readonly menu: (open: OpenFileItems) => MenuItem[];
 }): ReactElement {
   const showError = useShowError();
   const [opened, setOpened] = useState<Opened>({ state: "loading" });
@@ -952,15 +959,27 @@ function EncryptedFile({
       : { name, blob: file.blob };
   };
 
+  /** The bar of a file that does not show as text yet: its size and its menu, where the text shows it. */
+  const bar = (open: OpenFileItems = {}): ReactElement => (
+    <div className="files-file-bar">
+      <span className="files-size">{sizeWords(size)}</span>
+      <div className="files-file-actions">
+        <MoreMenu items={menu(open)} label="File actions" />
+      </div>
+    </div>
+  );
+
   if (opened.state === "loading")
     return (
       <div className="files-pane files-preview">
+        {bar()}
         <ListSkeleton label="Opening the encrypted file…" rows={3} shape="files" />
       </div>
     );
   if (opened.state === "failed")
     return (
       <div className="files-pane files-preview">
+        {bar()}
         <div role="alert" className="callout danger callout-action">
           <span>{opened.reason}</span>
           <button onClick={() => void open()}>Try again</button>
@@ -970,6 +989,7 @@ function EncryptedFile({
   if (opened.state === "locked")
     return (
       <div className="files-pane files-preview">
+        {bar()}
         <div role="status" className="callout">
           <Icon name="lock" /> This file is encrypted. <span className="files-size">({sizeWords(size)})</span>
         </div>
@@ -979,6 +999,8 @@ function EncryptedFile({
   if (opened.state === "binary")
     return (
       <div className="files-pane files-preview">
+        {/* Download, Decrypt and Lock show as buttons here, so the menu holds the actions of the entry. */}
+        {bar()}
         <div role="status" className="callout">
           <Icon name="lock" /> This encrypted file is not text, so it opens as a download.{" "}
           <span className="files-size">({sizeWords(size)})</span>
@@ -1026,6 +1048,7 @@ function EncryptedFile({
         }}
         source={source}
         smart={smart}
+        menu={menu}
       />
       {/* The menu that started it is gone, so the wait shows at the bottom of the screen. */}
       {decrypting && (
@@ -1272,6 +1295,10 @@ function MenuDownload({
     started.current = true;
     void download.start().finally(() => setDone(true));
   }, [download]);
+  // A download that worked needs no message, so the toast goes.
+  useEffect(() => {
+    if (done && download.problem === null) onEnd();
+  }, [done, download.problem, onEnd]);
   if (download.problem !== null) return <Toast message={download.problem} role="alert" onClose={onEnd} />;
   if (!done) {
     const label = folder ? "Packing the folder…" : "Downloading…";

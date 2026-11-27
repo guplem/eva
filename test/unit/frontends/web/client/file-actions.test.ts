@@ -161,3 +161,14 @@ describe("openFileItems (#1117)", () => {
     expect(openFileItems({})).toEqual([]);
   });
 });
+
+describe("entryMenuItems: a file that does not download (#1117)", () => {
+  test("a secrets file that Eva shows as unreadable offers no Download", () => {
+    const { actions } = recorder();
+    const items = entryMenuItems(
+      { path: ".env", name: ".env", kind: "file", favorite: null, vaultFolder: null, downloadable: false },
+      actions,
+    );
+    expect(items.some((item) => item.label === "Download")).toBe(false);
+  });
+});

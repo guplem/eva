@@ -8291,7 +8291,7 @@ test("Files: Encrypt gives a plain file the .eva-secret end, and it opens with t
   await expect(page).toHaveURL(new RegExp(`${name.replace(".", "\\.")}\\.eva-secret$`));
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
   // An encrypted file has no Encrypt item.
-  await page.locator(".files-header").getByRole("button", { name: "More actions" }).click();
+  await page.locator(".files-preview").getByRole("button", { name: "More actions" }).click();
   await expect(
     page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Copy name" }),
   ).toBeVisible();
@@ -8427,6 +8427,8 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   // A choice from the keyboard keeps the focus on the menu button, so the person goes on from there.
   await more.focus();
   await page.keyboard.press("Enter");
+  // The menu opens with the focus on its first item.
+  await expect(page.getByRole("menuitem", { name: "Add to favorites" })).toBeFocused();
   await page.getByRole("menuitem", { name: "Show plain text" }).focus();
   await page.keyboard.press("Enter");
   await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);

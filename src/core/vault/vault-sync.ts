@@ -322,12 +322,20 @@ export class VaultSync {
         );
         if (log.exitCode !== 0) return null;
         for (const commit of log.stdout.split("\n").filter((line) => line !== "")) {
-          const listed = await this.git(["ls-tree", "--name-only", commit, "--", path], localTimeoutMs);
+          const listed = await this.git(["ls-tree", "-l", commit, "--", path], localTimeoutMs);
           if (listed.exitCode !== 0) return null;
-          // A commit that deletes the path holds no version of it.
-          if (listed.stdout.trim() === "") continue;
-          const shown = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
+          // A commit that deletes the path holds no version of it. A line is "<mode> <type> <id> <size>\t<path>".
+          const [, , blob = "", size = "0"] = listed.stdout.trim().split(/\s+/);
+          if (blob === "") continue;
+          // A large version is not read whole while the sync waits: it counts as plain, the safe side.
+          if (Number(size) > maxScannedFileBytes) {
+            found.push(path);
+            break;
+          }
+          const shown = await this.git(["cat-file", "blob", blob], localTimeoutMs);
           if (shown.exitCode !== 0) return null;
+          // An empty version holds no secret.
+          if (shown.stdout.trim() === "") continue;
           if (encryptedState(new TextEncoder().encode(shown.stdout)) === "plain") {
             found.push(path);
             break;

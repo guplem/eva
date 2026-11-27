@@ -103,3 +103,13 @@ describe("two checks at once (review of #1110)", () => {
     ]);
   });
 });
+
+describe("a file whose remote history is clean (second review of #1110)", () => {
+  test("is not read again when Eva encrypts it again: Eva never pushes it plain", async () => {
+    onRemote = () => Promise.resolve([]);
+    await watch().consider([".env.local"], new Map());
+    await watch().consider([".env.local"], new Map());
+    expect(asked).toEqual([[".env.local"]]);
+    expect(notices).toEqual([]);
+  });
+});

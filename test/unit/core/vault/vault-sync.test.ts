@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnvironmentWithToken } from "../../../../src/core/instance/child-environments.ts";
-import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
+import { maxScannedFileBytes, VaultSync } from "../../../../src/core/vault/vault-sync.ts";
 import { VaultSecrets } from "../../../../src/core/vault/vault-secrets.ts";
 import { writeVaultKey } from "../../../../src/core/vault/secret-state.ts";
 import { createVaultKey, encryptedFileLine, type VaultKeyFile } from "../../../../src/core/vault/vault-crypto.ts";
@@ -1435,9 +1435,29 @@ describe("VaultSync answers null when git cannot read the remote history (review
     sandbox.git(vault, "push", "-q", "origin", "main");
   }
 
-  for (const step of ["log", "ls-tree", "show"])
+  for (const step of ["log", "ls-tree", "cat-file"])
     test(`a failed git ${step} is no answer, not a "no"`, async () => {
       pushedPlan();
       expect(await createSync(vault, { runner: failing(step) }).plainOnRemote(["Notes/plan.md"])).toBeNull();
     });
+});
+
+describe("an empty plain version holds no secret (second review of #1110)", () => {
+  test("a path whose only plain version on the remote is empty is not named", async () => {
+    sandbox.write(vault, ".env.secrets", "");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "empty");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    expect(await createSync(vault).plainOnRemote([".env.secrets"])).toEqual([]);
+  });
+});
+
+describe("a large version on the remote (second review of #1110)", () => {
+  test("is not read whole while the sync waits: it counts as plain, the safe side", async () => {
+    sandbox.write(vault, "scan.pdf", "x".repeat(maxScannedFileBytes + 1));
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "scan");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+    expect(await createSync(vault).plainOnRemote(["scan.pdf"])).toEqual(["scan.pdf"]);
+  });
 });

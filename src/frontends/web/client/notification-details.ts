@@ -64,7 +64,7 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
   vault_plain_history: {
     title: "Plain versions on the vault remote",
     meaning:
-      "Eva encrypted a file, but the git history of the vault remote still holds its old plain versions. Eva never rewrites the history, so anyone who can read the remote can read them. Change each key or password that the file holds. Mark the entry as read to close it.",
+      "Eva encrypted a file, but the git history of the vault remote still holds its old plain versions. Eva never rewrites the history, so anyone who can read the remote can read them. Change each key or password that the file holds. To close the notice, press Mark as read on it under Needs you.",
   },
   vault_ahead: {
     title: "Vault from a newer Eva",

@@ -19,6 +19,8 @@ interface PlainHistoryNotices {
   readonly warned: readonly string[];
   /** The files whose notice the person did not read yet. A restart opens them again, unsent. */
   readonly open: readonly string[];
+  /** The files whose remote history held no plain version. Eva pushes them only encrypted, so no read again. */
+  readonly clean: readonly string[];
 }
 
 export interface PlainHistoryWatchOptions {
@@ -56,8 +58,9 @@ export class PlainHistoryWatch {
     // A later report of the same file keeps the old name that an earlier one gave.
     for (const file of encrypted) if (!this.waiting.has(file)) this.waiting.set(file, oldNames.get(file) ?? file);
     for (const [file, old] of oldNames) this.waiting.set(file, old);
-    const warned = new Set(this.notices().warned);
-    for (const file of [...this.waiting.keys()]) if (warned.has(file)) this.waiting.delete(file);
+    const before = this.notices();
+    const known = new Set([...before.warned, ...before.clean]);
+    for (const file of [...this.waiting.keys()]) if (known.has(file)) this.waiting.delete(file);
     if (this.waiting.size === 0) return;
     const checked = new Map(this.waiting);
     const found = await this.options.plainOnRemote([...new Set(checked.values())]);
@@ -66,9 +69,13 @@ export class PlainHistoryWatch {
     for (const file of checked.keys()) this.waiting.delete(file);
     const plain = new Set(found);
     const files = [...checked].filter(([, history]) => plain.has(history)).map(([file]) => file);
-    if (files.length === 0) return;
+    const clean = [...checked].filter(([, history]) => !plain.has(history)).map(([file]) => file);
     const notices = this.notices();
-    this.save({ warned: [...new Set([...notices.warned, ...files])], open: [...new Set([...notices.open, ...files])] });
+    this.save({
+      warned: [...new Set([...notices.warned, ...files])],
+      open: [...new Set([...notices.open, ...files])],
+      clean: [...new Set([...notices.clean, ...clean])],
+    });
     for (const file of files) this.options.notice(plainHistoryKey(file), plainHistoryProblem(file), true);
   }
 
@@ -94,7 +101,7 @@ export class PlainHistoryWatch {
       const raw = typeof value === "object" && value !== null ? (value as Record<string, unknown>)[name] : null;
       return Array.isArray(raw) ? raw.filter((each): each is string => typeof each === "string") : [];
     };
-    return { warned: list("warned"), open: list("open") };
+    return { warned: list("warned"), open: list("open"), clean: list("clean") };
   }
 
   private save(notices: PlainHistoryNotices): void {

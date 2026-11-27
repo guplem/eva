@@ -797,6 +797,18 @@ describe("device login", () => {
     expect(existsSync(join(vaultPath, "memo.md.eva-secret"))).toBe(false);
   });
 
+  test("the Encrypt question asks whether the remote history holds a plain version (#1110)", async () => {
+    const vaultPath = eva.status().vaultPath ?? "";
+    writeFileSync(join(vaultPath, "fresh.md"), "Not pushed\n");
+    const fresh = await call(`/api/vault/secrets/plain-history?path=${encodeURIComponent("fresh.md")}`);
+    expect(fresh.headers.get("cache-control")).toBe("no-store");
+    expect(await json(fresh)).toEqual({ plain: false });
+    // A file that Encrypt refuses gets no answer either way.
+    expect(await json(await call(`/api/vault/secrets/plain-history?path=${encodeURIComponent(".eva")}`))).toEqual({
+      plain: null,
+    });
+  });
+
   test("a password change, by its own path or an older page's new-key path, locks the page (#775)", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());

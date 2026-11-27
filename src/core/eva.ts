@@ -2419,6 +2419,21 @@ export class Eva {
     return { path: move.to };
   }
 
+  /**
+   * Whether the remote history holds a plain version of a file, for the Encrypt question (#1110).
+   * Null when Eva cannot say, such as for a file that Encrypt refuses.
+   */
+  async plainHistoryOf(path: string): Promise<{ plain: boolean | null }> {
+    let from: string;
+    try {
+      from = encryptMoveOf(this.browsedVault(), path).from;
+    } catch {
+      return { plain: null };
+    }
+    const found = await this.vault.plainOnRemote([from]);
+    return { plain: found === null ? null : found.length > 0 };
+  }
+
   private browsedVault(): string {
     const vaultPath = this.options.config.vaultPath;
     if (vaultPath === null)

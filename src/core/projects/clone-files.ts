@@ -162,6 +162,18 @@ export function removeFolderMentions(projectFolder: string, sessionId: string): 
   }
 }
 
+/**
+ * Removes every copy in a project folder, such as one that a crash left behind. Call it only while
+ * the turn holds the folder, so no other chat's turn reads a copy there.
+ */
+export function clearFolderMentions(projectFolder: string): void {
+  try {
+    rmSync(join(projectFolder, mentionsFolderName), { recursive: true, force: true });
+  } catch {
+    // A locked file stays until a later turn. The sync keeps it out of each commit.
+  }
+}
+
 /** The path of a file from the project folder, with `/`, or null for a file outside it. */
 function pathInFolder(projectFolder: string, realPath: string): string | null {
   let root: string;

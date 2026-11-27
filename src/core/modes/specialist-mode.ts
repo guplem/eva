@@ -11,7 +11,7 @@ import type { WallRoots } from "../../shared/engine-port.ts";
 import { EvaError } from "../../shared/errors.ts";
 import type { ModeContext, PreparedTurn, TurnOutcome, TurnPreparer } from "../sessions/session-manager.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
-import { removeFolderMentions, withFolderMentions } from "../projects/clone-files.ts";
+import { clearFolderMentions, removeFolderMentions, withFolderMentions } from "../projects/clone-files.ts";
 import { withGitCeiling } from "./project-mode.ts";
 import { VaultTurns, type VaultSyncPort } from "./vault-turns.ts";
 
@@ -50,6 +50,8 @@ export class SpecialistPreparer implements TurnPreparer {
         "project_invalid",
         "This project works in clones now, so this chat takes no message. Start a new chat in the project.",
       );
+    // The turn holds the folder now (`takeFolder`), so a copy there is a leftover of a crashed turn.
+    clearFolderMentions(session.startFolder);
     await this.vaultTurns.before(session);
     const roots = this.options.wallRoots();
     const received = session.projectId === null ? null : (this.options.receivedFolder?.(session.projectId) ?? null);
@@ -100,8 +102,8 @@ export class SpecialistPreparer implements TurnPreparer {
   }
 
   async afterTurn(session: SessionRecord, _outcome: TurnOutcome): Promise<string | null> {
-    // Before the snapshot and the save: a copy is no change of the turn. The vault sync keeps a
-    // copy out of each commit too, for a copy that a crash leaves behind.
+    // Remove the copies before the snapshot and the save, since a copy is no change of the turn.
+    // The sync keeps a copy out of each commit too, for a copy that a crash leaves behind.
     await this.vaultTurns.after(session, () => {
       removeFolderMentions(session.startFolder, session.id);
       return undefined;

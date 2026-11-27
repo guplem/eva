@@ -91,7 +91,7 @@ A project folder chat is a specialist, such as a gym coach, or a general project
 
 A Project chat is a clean wrapper. It runs as if you opened the folder yourself. Eva hides every instruction file above the project folder, so the chat does not know that it runs inside Eva.
 
-A Project chat cannot open the vault. So Eva gives it a copy of each vault file that its message names as `@file:<vault path>`. The chat gets the name of the copy, never the vault path. A chat in a clone gets the copy in `clone-<n>/.mentions/`, outside every repository. A chat in a project folder reads a file of its own folder where it is. It gets each other file in `.mentions/<chat id>/` of its folder, and Eva removes the copies after the turn. The vault sync never saves a copy. Eva's prompt tells her to name each vault file of `eva work` this way.
+A Project chat cannot open the vault. Eva gives it a copy of each vault file that its message names as `@file:<vault path>`. The chat gets the name of the copy, never the vault path. A chat in a clone gets the copy in `clone-<n>/.mentions/`, outside every repository. A chat in a project folder reads a file of its own folder where it is. It gets each other file in `.mentions/<chat id>/` of its folder, and Eva removes the copies after the turn. A copy that a crash leaves goes at the next turn in that folder. The vault sync never saves a copy. Eva's prompt tells her to name each vault file of `eva work` this way.
 
 **A model call** is one short question to a model, outside every chat, such as a name for a new chat. It runs with no tools, no settings and no saved session, because its text can come from other people.
 

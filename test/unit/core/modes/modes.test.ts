@@ -769,6 +769,11 @@ describe("Specialist mode (#703)", () => {
     // The snapshot before the turn has no copy yet, and the one after it has none any more.
     expect(copies).toEqual([[], []]);
     expect(existsSync(join(folder, ".mentions"))).toBe(false);
+    // A copy that a crash left behind goes at the next turn: one turn holds the folder at a time.
+    mkdirSync(join(folder, ".mentions", "s0"), { recursive: true });
+    writeFileSync(join(folder, ".mentions", "s0", "Old-0123456789ab.md"), "Left behind.");
+    await preparer.prepare(chat);
+    expect(existsSync(join(folder, ".mentions"))).toBe(false);
     // With no vault, a mention stays as it is.
     expect(specialist().engineMessage(chat, "Read @file:Plan.md")).toBe("Read @file:Plan.md");
   });

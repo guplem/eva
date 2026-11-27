@@ -15,8 +15,10 @@ import {
   checkMentions,
   copyVaultFileToClone,
   mentionsFolderName,
+  removeFolderMentions,
   saveInClone,
   withCloneMentions,
+  withFolderMentions,
 } from "../../../../src/core/projects/clone-files.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 
@@ -185,5 +187,54 @@ describe("checkMentions", () => {
   test("passes a text whose files can be copied, and names the first one that cannot", () => {
     expect(() => checkMentions(vault, "Read @file:Projects/2026-01-01-0000-example-app/Meeting.md")).not.toThrow();
     expect(errorOf(() => checkMentions(vault, "Read @file:Notes/Gone.md"))).toBe("file_not_found");
+  });
+});
+
+describe("withFolderMentions (#753)", () => {
+  const coach = (): string => join(vault, "Projects", "2026-01-02-0000-coach");
+
+  beforeEach(() => {
+    write(join(coach(), "AGENTS.md"), "# Coach");
+    write(join(coach(), "log.md"), "Ran 5 km.");
+    write(join(vault, "Notes", "plan.md"), "Run three times a week.");
+  });
+
+  test("copies a file from outside the project folder into the chat's own mention folder", () => {
+    const text = withFolderMentions("Use @file:Notes/plan.md today.", vault, coach(), "s1");
+    expect(text).not.toContain("Notes/");
+    expect(text).toMatch(
+      /^Use @file:plan-[0-9a-f]{12}\.md today\.\n\n\[@file:plan-[0-9a-f]{12}\.md is the file \.mentions\/s1\/plan-[0-9a-f]{12}\.md\]$/,
+    );
+    const [copy] = readdirSync(join(coach(), mentionsFolderName, "s1"));
+    expect(readFileSync(join(coach(), mentionsFolderName, "s1", copy!), "utf8")).toBe("Run three times a week.");
+  });
+
+  test("names a file inside the project folder by its path from the folder, with no copy", () => {
+    const text = withFolderMentions("Read @file:Projects/2026-01-02-0000-coach/log.md", vault, coach(), "s1");
+    expect(text).toBe("Read @file:log.md");
+    expect(existsSync(join(coach(), mentionsFolderName))).toBe(false);
+  });
+
+  test("a secret file gets no copy, and a note that says why with no vault path", () => {
+    write(join(vault, "Notes", "keys.txt"), "The key is ghp_0123456789abcdefghijklmnopqrstuvwxyzAB.");
+    const text = withFolderMentions("Use @file:Notes/keys.txt", vault, coach(), "s1");
+    expect(text).toBe(
+      "Use @file:keys.txt\n\n[@file:keys.txt: Eva could not give this file to the chat. keys.txt holds a secret, so Eva does not send it.]",
+    );
+    expect(existsSync(join(coach(), mentionsFolderName))).toBe(false);
+  });
+
+  test("removeFolderMentions removes the chat's copies, and the mention folder once it is empty", () => {
+    withFolderMentions("Use @file:Notes/plan.md", vault, coach(), "s1");
+    withFolderMentions("Use @file:Notes/plan.md", vault, coach(), "s2");
+    removeFolderMentions(coach(), "s1");
+    expect(readdirSync(join(coach(), mentionsFolderName))).toEqual(["s2"]);
+    removeFolderMentions(coach(), "s2");
+    expect(existsSync(join(coach(), mentionsFolderName))).toBe(false);
+    // A chat with no copies changes nothing.
+    expect(() => removeFolderMentions(coach(), "s3")).not.toThrow();
+    // A removal that fails never throws: the turn must still save the vault.
+    write(join(coach(), mentionsFolderName), "A note of the person's, named like the folder.");
+    expect(() => removeFolderMentions(coach(), "s1")).not.toThrow();
   });
 });

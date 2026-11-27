@@ -13,6 +13,7 @@ import { plainSecretsIn } from "./plain-secrets.ts";
 import { encryptedState } from "./vault-crypto.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
 import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
+import { mentionsFolderName } from "../projects/clone-files.ts";
 import { upgradeBranchVersion } from "./vault-structure.ts";
 import {
   changedLeftOut,
@@ -379,7 +380,7 @@ export class VaultSync {
       ]);
       const oldScratch = keepsOldScratch(this.options.vaultPath);
       for (const path of paths)
-        if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch) && !isCloneFolderFile(path)) prepare(path);
+        if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch) && !isProjectCopyFile(path)) prepare(path);
     });
   }
 
@@ -398,7 +399,7 @@ export class VaultSync {
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (isCloneFolderFile(path)) continue;
+        if (isProjectCopyFile(path)) continue;
         if (!this.isScratchFile(path, oldScratch) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
@@ -943,7 +944,7 @@ export class VaultSync {
     const oldScratch = keepsOldScratch(this.options.vaultPath);
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
-      if (this.isScratchFile(path, oldScratch) || isCloneFolderFile(path)) {
+      if (this.isScratchFile(path, oldScratch) || isProjectCopyFile(path)) {
         // An untracked file stays out of a plain commit anyway; a staged one needs --only.
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
@@ -1457,4 +1458,19 @@ function fileKind(path: string): "file" | "absent" | "other" {
 export function isCloneFolderFile(relativePath: string): boolean {
   const parts = relativePath.split("/").map((part) => part.toLowerCase());
   return parts.length > 3 && parts[0] === "projects" && parts[2] === "repos";
+}
+
+/**
+ * True for a copy of a mentioned file in a project folder, `Projects/<id>/.mentions/` (#753). A
+ * specialist chat gets it for one turn, and Eva removes it after the turn. A copy that a crash
+ * leaves behind must not reach a commit either, whatever the vault's .gitignore says.
+ */
+export function isFolderMentionCopy(relativePath: string): boolean {
+  const parts = relativePath.split("/").map((part) => part.toLowerCase());
+  return parts.length > 3 && parts[0] === "projects" && parts[2] === mentionsFolderName;
+}
+
+/** True for a file that Eva puts in a project for its chats, which never reaches a commit or a snapshot. */
+function isProjectCopyFile(relativePath: string): boolean {
+  return isCloneFolderFile(relativePath) || isFolderMentionCopy(relativePath);
 }

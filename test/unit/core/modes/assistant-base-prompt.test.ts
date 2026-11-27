@@ -30,6 +30,10 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("[eva-project:<project-id>]");
   });
 
+  test("names each vault file of project work as a file mention, since Eva copies only a mention (#753)", () => {
+    expect(assistantBasePrompt).toContain("`@file:<vault path>`");
+  });
+
   test("asks for each vault path from the vault root, so the web app links it to the right file (#821)", () => {
     expect(assistantBasePrompt).toContain("full path from the vault root");
   });

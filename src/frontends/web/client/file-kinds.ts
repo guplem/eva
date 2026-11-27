@@ -151,10 +151,11 @@ export function shownMediaOf(path: string, shown: ShownPath): Media | null {
 }
 
 /**
- * The name of an encrypted file once it leaves the vault. The core sends the plain bytes, so the
- * `.secrets` end only hides the real type from the device (#1099).
+ * The name of an encrypted file once it leaves the vault. The core sends the plain bytes, so the end
+ * that the Encrypt action added only hides the real type from the device (#1099). Only that end goes:
+ * a `.secrets` end can be a real part of the name that the person chose (#1108).
  */
 export function decryptedNameOf(name: string): string {
-  const plain = name.replace(/\.secrets$/i, "");
+  const plain = name.replace(/\.eva-secret$/i, "");
   return plain === "" ? name : plain;
 }

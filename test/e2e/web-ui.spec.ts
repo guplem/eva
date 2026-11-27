@@ -8188,21 +8188,25 @@ test("Files: an encrypted file shows a lock, opens with the vault password, save
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
 });
 
-test("Files: an unlocked encrypted image downloads as the plain file, without .secrets (#1099)", async ({
-  page,
-}, testInfo) => {
-  const name = `${testInfo.project.name}-photo.png`;
-  await logInAsDevice(page);
-  await page.goto(`/#/files/Private/${name}.secrets`);
-  await page.getByLabel("Vault password").fill(vaultPassword);
-  await page.getByRole("button", { name: "Unlock" }).click();
-  const saved = page.waitForEvent("download");
-  await page.getByRole("button", { name: `Download ${name}` }).click();
-  const download = await saved;
-  expect(download.suggestedFilename()).toBe(name);
-  const bytes = readFileSync(await download.path());
-  expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
-});
+for (const [end, saved] of [
+  [".eva-secret", ""],
+  [".secrets", ".secrets"],
+] as const)
+  test(`Files: an unlocked encrypted image named ${end} downloads as ${saved === "" ? "the plain name" : "it is"} (#1108)`, async ({
+    page,
+  }, testInfo) => {
+    const name = `${testInfo.project.name}-photo.png`;
+    await logInAsDevice(page);
+    await page.goto(`/#/files/Private/${name}${end}`);
+    await page.getByLabel("Vault password").fill(vaultPassword);
+    await page.getByRole("button", { name: "Unlock" }).click();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: `Download ${name}${saved}` }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe(`${name}${saved}`);
+    const bytes = readFileSync(await file.path());
+    expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
 
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({
   page,

@@ -103,15 +103,17 @@ describe("shownMediaOf: which open file the page shows as media", () => {
 });
 
 describe("decryptedNameOf", () => {
-  test("a downloaded encrypted file loses the .secrets end, so the device knows its type (#1099)", () => {
-    expect(decryptedNameOf("photo.jpg.secrets")).toBe("photo.jpg");
-    expect(decryptedNameOf("notes.md.secrets")).toBe("notes.md");
-    expect(decryptedNameOf("keys.SECRETS")).toBe("keys");
+  test("a downloaded encrypted file loses the .eva-secret end that the Encrypt action added (#1108)", () => {
+    expect(decryptedNameOf("photo.jpg.eva-secret")).toBe("photo.jpg");
+    expect(decryptedNameOf("notes.md.eva-secret")).toBe("notes.md");
+    expect(decryptedNameOf("scan.PDF.EVA-SECRET")).toBe("scan.PDF");
   });
 
-  test("any other name stays as it is", () => {
-    expect(decryptedNameOf(".secrets")).toBe(".secrets");
+  test("a name that the person chose stays as it is, .secrets included (#1108)", () => {
+    expect(decryptedNameOf("photo.jpg.secrets")).toBe("photo.jpg.secrets");
+    expect(decryptedNameOf(".env.secrets")).toBe(".env.secrets");
+    expect(decryptedNameOf(".eva-secret")).toBe(".eva-secret");
     expect(decryptedNameOf(".env.local")).toBe(".env.local");
-    expect(decryptedNameOf("my.secrets.txt")).toBe("my.secrets.txt");
+    expect(decryptedNameOf("my.eva-secret.txt")).toBe("my.eva-secret.txt");
   });
 });

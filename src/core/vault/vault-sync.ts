@@ -310,7 +310,10 @@ export class VaultSync {
     return this.serialize(async () => {
       const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
       const branch = await this.defaultBranch(current);
-      if (!(await this.remoteBranchKnown(branch))) return [];
+      const known = await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs);
+      // A timeout or a failed start is no answer: the check must not say "no" when it cannot see.
+      if (known.exitCode < 0) return null;
+      if (known.exitCode !== 0) return [];
       const found: string[] = [];
       for (const path of paths) {
         const log = await this.git(
@@ -319,9 +322,12 @@ export class VaultSync {
         );
         if (log.exitCode !== 0) return null;
         for (const commit of log.stdout.split("\n").filter((line) => line !== "")) {
-          const shown = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
+          const listed = await this.git(["ls-tree", "--name-only", commit, "--", path], localTimeoutMs);
+          if (listed.exitCode !== 0) return null;
           // A commit that deletes the path holds no version of it.
-          if (shown.exitCode !== 0) continue;
+          if (listed.stdout.trim() === "") continue;
+          const shown = await this.git(["show", `${commit}:${path}`], localTimeoutMs);
+          if (shown.exitCode !== 0) return null;
           if (encryptedState(new TextEncoder().encode(shown.stdout)) === "plain") {
             found.push(path);
             break;

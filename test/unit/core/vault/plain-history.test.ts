@@ -89,3 +89,17 @@ describe("the warning about plain versions on the vault remote (#1110)", () => {
     expect(notices).toHaveLength(1);
   });
 });
+
+describe("two checks at once (review of #1110)", () => {
+  test("a second check while the first one waits on git sends no second notice", async () => {
+    onRemote = (paths) => new Promise((resolve) => setTimeout(() => resolve([...paths]), 10));
+    const one = watch();
+    await Promise.all([
+      one.consider(["a.md.eva-secret"], new Map([["a.md.eva-secret", "a.md"]])),
+      one.consider(["a.md.eva-secret"], new Map()),
+    ]);
+    expect(notices.filter((notice) => notice.send).map((notice) => notice.key)).toEqual([
+      plainHistoryKey("a.md.eva-secret"),
+    ]);
+  });
+});

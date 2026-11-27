@@ -165,7 +165,8 @@ export class VaultUpkeep {
 
   /** The paths whose remote history holds a plain version (#1110). None with no vault sync, or null when git cannot say. */
   async plainOnRemote(paths: readonly string[]): Promise<string[] | null> {
-    return (await this.options.vaultSync?.plainOnRemote(paths)) ?? [];
+    const vaultSync = this.options.vaultSync;
+    return vaultSync === null ? [] : vaultSync.plainOnRemote(paths);
   }
 
   /** Encrypts each plain secret file now (#707). With sync off too: the files on disk must not wait. */

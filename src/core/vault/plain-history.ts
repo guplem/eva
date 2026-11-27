@@ -33,18 +33,28 @@ export class PlainHistoryWatch {
   private readonly options: PlainHistoryWatchOptions;
   /** The path whose history to read, for each file that waits for a check: the old name of a renamed file. */
   private readonly waiting: Map<string, string>;
+  private queue: Promise<void>;
 
   constructor(options: PlainHistoryWatchOptions) {
     this.options = options;
     this.waiting = new Map();
+    this.queue = Promise.resolve();
   }
 
   /**
    * Checks the files that became encrypted. `oldNames` maps the new name of each file that the
    * Encrypt action renamed to its old name, under which the plain versions sit.
    */
-  async consider(encrypted: readonly string[], oldNames: ReadonlyMap<string, string>): Promise<void> {
-    for (const file of encrypted) this.waiting.set(file, oldNames.get(file) ?? file);
+  consider(encrypted: readonly string[], oldNames: ReadonlyMap<string, string>): Promise<void> {
+    // One check at a time: a second one that starts while git answers the first would warn twice.
+    const next = this.queue.then(() => this.considerNow(encrypted, oldNames));
+    this.queue = next.catch(() => undefined);
+    return next;
+  }
+
+  private async considerNow(encrypted: readonly string[], oldNames: ReadonlyMap<string, string>): Promise<void> {
+    // A later report of the same file keeps the old name that an earlier one gave.
+    for (const file of encrypted) if (!this.waiting.has(file)) this.waiting.set(file, oldNames.get(file) ?? file);
     for (const [file, old] of oldNames) this.waiting.set(file, old);
     const warned = new Set(this.notices().warned);
     for (const file of [...this.waiting.keys()]) if (warned.has(file)) this.waiting.delete(file);

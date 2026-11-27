@@ -1417,3 +1417,27 @@ describe("VaultSync finds plain versions on the remote (#1110)", () => {
     expect(await createSync(fresh).plainOnRemote(["plan.md"])).toEqual([]);
   });
 });
+
+describe("VaultSync answers null when git cannot read the remote history (review of #1110)", () => {
+  function failing(step: string): ProcessRunner {
+    return {
+      run: (command, options) =>
+        command.includes(step)
+          ? Promise.resolve({ exitCode: -1, stdout: "", stderr: "timed out" })
+          : systemProcessRunner.run(command, options),
+    };
+  }
+
+  function pushedPlan(): void {
+    sandbox.write(vault, "Notes/plan.md", "A plan\n");
+    sandbox.git(vault, "add", "-A");
+    sandbox.git(vault, "commit", "-q", "-m", "plan");
+    sandbox.git(vault, "push", "-q", "origin", "main");
+  }
+
+  for (const step of ["log", "ls-tree", "show"])
+    test(`a failed git ${step} is no answer, not a "no"`, async () => {
+      pushedPlan();
+      expect(await createSync(vault, { runner: failing(step) }).plainOnRemote(["Notes/plan.md"])).toBeNull();
+    });
+});

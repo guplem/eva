@@ -7,6 +7,7 @@ import type { HookCallback, Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildQueryOptions } from "../../../../src/engines/claude-code/claude-code-adapter.ts";
 import {
   chatDataFolders,
+  claudeShellFolders,
   fileWallSandbox,
   outsideMessage,
   searchMessage,
@@ -233,6 +234,18 @@ describe("Claude Code's own folder for the chat (review of #711)", () => {
     expect(chatDataFolders(config, start)).toEqual([shortened]);
     expect(chatDataFolders(join(vault, "none"), start)).toEqual([]);
     expect(chatDataFolders(null, clone)).toEqual([]);
+  });
+
+  test("the shell reads Claude Code's shell setup, skills and plugins, but not its login or its history (#759)", () => {
+    const config = join(vault, "engines", "claude");
+    const request = projectRequest({ environment: { PATH: "/bin", CLAUDE_CONFIG_DIR: config } });
+    const readable = (
+      buildQueryOptions(request, "/bin/claude", "auto").settings as { sandbox: { filesystem: { allowRead: string[] } } }
+    ).sandbox.filesystem.allowRead;
+    for (const name of ["shell-snapshots", "session-env", "skills", "plugins"])
+      expect(readable).toContain(join(config, name));
+    expect(readable.some((folder) => folder.startsWith(join(config, "projects")))).toBe(false);
+    expect(claudeShellFolders(null)).toEqual([]);
   });
 });
 

@@ -220,6 +220,70 @@ describe("the preview of a clone", () => {
     });
   });
 
+  test("Example data never writes the calendar, and My data writes it with the grant of the preview (#974)", async () => {
+    const writes: string[] = [];
+    const source: CalendarSource = {
+      ...noCalendar,
+      calendars: () => Promise.resolve([{ id: "work", name: "Work", color: "#3f51b5", primary: true, writable: true }]),
+      create: (event) => {
+        writes.push(`create ${event.title ?? ""}`);
+        return Promise.resolve({ done: null });
+      },
+      remove: (_calendarId, id) => {
+        writes.push(`remove ${id}`);
+        return Promise.resolve({ done: null });
+      },
+    };
+    widgets = new Widgets({ ...options, calendar: source });
+    const calendar = (access: "read" | "write"): object => ({
+      id: "calendar",
+      type: "eva-google-calendar",
+      access,
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget adds your events.",
+      required: true,
+    });
+    const event = new TextEncoder().encode(
+      JSON.stringify({ calendarId: "work", title: "Trip", date: "2026-11-21", endDate: "2026-11-21" }),
+    );
+    const attempts = async (token: string): Promise<(number | null)[]> => [
+      (await widgets.serve(token, "eva/google-calendar/events.json", "POST", event, new URLSearchParams()))?.status ??
+        null,
+      (
+        await widgets.serve(
+          token,
+          "eva/google-calendar/events/trip.json",
+          "DELETE",
+          null,
+          new URLSearchParams("calendarId=work"),
+        )
+      )?.status ?? null,
+    ];
+
+    write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 5, inputs: [habits, calendar("write")] }));
+    const example = (await widgets.preview(place, "example", theme, ownHosts)).token ?? "";
+    expect(await attempts(example)).toEqual([405, 405]);
+    expect(writes).toEqual([]);
+    const asked = await widgets.preview(place, "mine", theme, ownHosts);
+    expect(asked.ask?.added).toContain("Read and change your Google Calendar, and send invitations to other people.");
+    const mine =
+      (await widgets.approvePreview(place, asked.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ?? "";
+    expect(await attempts(mine)).toEqual([201, 204]);
+    expect(writes).toEqual(["create Trip", "remove trip"]);
+
+    write(clone, "eva-widget.json", JSON.stringify({ ...manifest, contract: 5, inputs: [habits, calendar("read")] }));
+    const askedRead = await widgets.preview(place, "mine", theme, ownHosts);
+    const reader =
+      askedRead.token ??
+      (await widgets.approvePreview(place, askedRead.ask?.digest ?? "", { habits: "Life/Habits" }, theme, ownHosts))
+        .token ??
+      "";
+    expect(await attempts(reader)).toEqual([405, 405]);
+    expect(writes).toHaveLength(2);
+  });
+
   test("the tasks answer 404 with example data, and the person's tasks with My data", async () => {
     const source: TasksSource = {
       lists: () => Promise.resolve([{ id: "home", name: "Home" }]),

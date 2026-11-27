@@ -760,7 +760,8 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   if (request.method === "OPTIONS") {
     if (!widgets.isLive(token)) return answer(404);
     const preflight = answer(204);
-    preflight.headers.set("access-control-allow-methods", "GET, PUT, DELETE");
+    // POST creates a calendar event (#974). The core decides which token may write.
+    preflight.headers.set("access-control-allow-methods", "GET, POST, PUT, DELETE");
     preflight.headers.set("access-control-allow-headers", "content-type");
     preflight.headers.set("access-control-max-age", "600");
     return preflight;
@@ -768,9 +769,10 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   try {
     const path = encoded.map((part) => decodeURIComponent(part)).join("/");
     // A dead token reads no body, and a body stops at the limit, also one with no length or a chunked one.
-    if (request.method === "PUT" && !widgets.isLive(token)) return answer(404);
+    const sendsBody = request.method === "PUT" || request.method === "POST";
+    if (sendsBody && !widgets.isLive(token)) return answer(404);
     let body: Uint8Array | null = null;
-    if (request.method === "PUT") {
+    if (sendsBody) {
       body = await cappedBody(request, maxWidgetWriteBytes);
       if (body === null) return answer(413);
     }

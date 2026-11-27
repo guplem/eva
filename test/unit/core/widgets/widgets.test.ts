@@ -742,6 +742,86 @@ describe("the widget routes", () => {
     expect((await widgets.serve(token, "eva/google-calendar/events.json", "POST", new Uint8Array()))?.status).toBe(405);
   });
 
+  test("only a widget with write access to the calendar adds, changes and deletes an event (#974)", async () => {
+    const writes: string[] = [];
+    const event = {
+      id: "created-1",
+      calendarId: "work",
+      title: "Planning",
+      date: "2026-11-19",
+      endDate: "2026-11-19",
+      place: null,
+      link: null,
+      description: null,
+    };
+    const source: CalendarSource = {
+      ...noCalendar,
+      create: (written, sendInvitations) => {
+        writes.push(`create ${written.calendarId} ${written.title ?? ""} ${String(sendInvitations)}`);
+        return Promise.resolve({ done: event });
+      },
+      change: (id, written, sendInvitations) => {
+        writes.push(`change ${id} ${written.title ?? ""} ${String(sendInvitations)}`);
+        return Promise.resolve({ done: { ...event, title: written.title ?? "" } });
+      },
+      remove: (calendarId, id, sendInvitations) => {
+        writes.push(`remove ${calendarId} ${id} ${String(sendInvitations)}`);
+        return Promise.resolve({ done: null });
+      },
+    };
+    widgets = new Widgets({ ...options, calendar: source });
+    const calendar = (access: "read" | "write"): object => ({
+      id: "calendar",
+      type: "eva-google-calendar",
+      access,
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget shows your events.",
+      required: true,
+    });
+    const body = (value: unknown): Uint8Array => new TextEncoder().encode(JSON.stringify(value));
+    const allDay = { calendarId: "work", title: "Planning", date: "2026-11-19", endDate: "2026-11-19" };
+    const attempts = async (token: string): Promise<(number | undefined)[]> => [
+      (await widgets.serve(token, "eva/google-calendar/events.json", "POST", body(allDay)))?.status,
+      (
+        await widgets.serve(
+          token,
+          "eva/google-calendar/events/created-1.json",
+          "PUT",
+          body({ ...allDay, title: "New" }),
+        )
+      )?.status,
+      (
+        await widgets.serve(
+          token,
+          "eva/google-calendar/events/created-1.json",
+          "DELETE",
+          null,
+          new URLSearchParams("calendarId=work&sendInvitations=true"),
+        )
+      )?.status,
+    ];
+
+    commit({
+      "eva-widget.json": JSON.stringify({ ...manifest, contract: 5, inputs: [...manifest.inputs, calendar("read")] }),
+    });
+    const reader = await approveHabits();
+    expect(await attempts(reader)).toEqual([405, 405, 405]);
+    expect(writes).toEqual([]);
+
+    commit({
+      "eva-widget.json": JSON.stringify({ ...manifest, contract: 5, inputs: [...manifest.inputs, calendar("write")] }),
+    });
+    const writer = await approveHabits();
+    expect(await attempts(writer)).toEqual([201, 200, 204]);
+    expect(writes).toEqual(["create work Planning false", "change created-1 New false", "remove work created-1 true"]);
+    const created = await widgets.serve(writer, "eva/google-calendar/events.json", "POST", body(allDay));
+    expect(JSON.parse(text(created?.body))).toEqual({ ...event, project: null });
+    // A dead token reaches no record, so it writes nothing.
+    expect(await widgets.serve("x".repeat(43), "eva/google-calendar/events.json", "POST", body(allDay))).toBeNull();
+    expect(writes).toHaveLength(4);
+  });
+
   test("a widget with the Google Tasks input reads its tasks through Eva, in a window of at most 62 days", async () => {
     const windows: string[] = [];
     let broken = false;

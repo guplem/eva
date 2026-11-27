@@ -782,3 +782,14 @@ describe("missing files and folder links (coverage of #1108 and #1109)", () => {
     },
   );
 });
+
+describe("the old name of an encrypted file (#1110)", () => {
+  test("the Encrypt action hands over each old name once: the plain versions sit under it", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    write("Notes/plan.md", "A plan\n");
+    await service.encryptByRename("Notes/plan.md", "Notes/plan.md.eva-secret");
+    expect(service.takeOldNames()).toEqual(new Map([["Notes/plan.md.eva-secret", "Notes/plan.md"]]));
+    expect(service.takeOldNames().size).toBe(0);
+  });
+});

@@ -52,16 +52,26 @@ export class VaultSecrets {
   private readonly options: VaultSecretsOptions;
   /** The defaults that an update of Eva added since the last read, for one notice. */
   private newDefaults: Set<string>;
+  /** The plain files that a round encrypted in place since the last read: their history may hold plain text (#1110). */
+  private newlyEncrypted: Set<string>;
 
   constructor(options: VaultSecretsOptions) {
     this.options = options;
     this.newDefaults = new Set();
+    this.newlyEncrypted = new Set();
   }
 
   /** The defaults that an update added and that apply now. Each one comes back once. */
   takeNewDefaults(): string[] {
     const taken = [...this.newDefaults];
     this.newDefaults.clear();
+    return taken;
+  }
+
+  /** The plain files that a round encrypted in place. Each one comes back once. */
+  takeNewlyEncrypted(): string[] {
+    const taken = [...this.newlyEncrypted];
+    this.newlyEncrypted.clear();
     return taken;
   }
 
@@ -115,6 +125,7 @@ export class VaultSecrets {
         if (keyChanged) return "vault_key_changed";
         if (info.size > maxEncryptedBytes) return "too_large";
         writeFileAtomic(path, new TextDecoder().decode(encryptFile(readFileSync(path), key, relativePath)));
+        this.newlyEncrypted.add(relativePath);
         return null;
       } catch {
         return "unreadable";

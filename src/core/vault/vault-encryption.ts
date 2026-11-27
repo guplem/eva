@@ -91,9 +91,19 @@ export interface ConfirmedRemoval {
 
 export class VaultEncryption {
   private readonly options: VaultEncryptionOptions;
+  /** The old name of each file that the Encrypt action renamed: its plain versions sit under it (#1110). */
+  private readonly oldNames: Map<string, string>;
 
   constructor(options: VaultEncryptionOptions) {
     this.options = options;
+    this.oldNames = new Map();
+  }
+
+  /** The old name of each file that the Encrypt action renamed since the last read. */
+  takeOldNames(): Map<string, string> {
+    const taken = new Map(this.oldNames);
+    this.oldNames.clear();
+    return taken;
   }
 
   status(deviceToken: string | null, secret: string | null): VaultSecretsStatus {
@@ -370,6 +380,7 @@ export class VaultEncryption {
             : `Eva could not encrypt this file (${reason}).`,
         );
       }
+      this.oldNames.set(to, from);
     });
     await this.persist();
   }

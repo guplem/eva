@@ -56,13 +56,17 @@ export interface EventChange {
   readonly title?: string;
   readonly place?: string | null;
   readonly description?: string | null;
-  /** The emails of the guests. It replaces the whole guest list. */
-  readonly guests?: readonly string[];
   readonly time?: EventTime;
 }
 
+/**
+ * A change never takes guests: the reads give no guests, so a change would drop the guests that the
+ * widget never saw.
+ */
 export interface NewEvent extends EventChange {
   readonly time: EventTime;
+  /** The emails of the guests. */
+  readonly guests?: readonly string[];
 }
 
 /**
@@ -154,10 +158,12 @@ export class GoogleCalendar implements CalendarSource {
     return "refused" in result ? result : { done: null };
   }
 
-  private async calendarList(): Promise<CalendarList | null> {
+  /** `accessToken` is a token that the caller already has, so a write refreshes the token only once. */
+  private async calendarList(accessToken?: string): Promise<CalendarList | null> {
     const inputs = this.options.inputs();
     if (!isCalendarOn(inputs)) return null;
     return this.cache.cached(`calendars|${inputs.config.email ?? ""}`, async () => {
+      if (accessToken !== undefined) return readCalendarList(inputs, accessToken);
       const access = await googleAccessToken(inputs);
       if ("problem" in access) return null;
       return readCalendarList(inputs, access.accessToken);
@@ -180,9 +186,10 @@ export class GoogleCalendar implements CalendarSource {
     // The same check as the reads. After a change of level, the old login lacks the new scopes.
     const access = await googleAccessToken(inputs);
     if ("problem" in access) return { refused: "logIn" };
-    const list = await this.calendarList();
+    const list = await this.calendarList(access.accessToken);
+    if (list === null) return { refused: "logIn" };
     // Only a calendar that the person shows, as in the reads: a widget never writes to a hidden one.
-    if (list?.calendars.some((calendar) => calendar.id === target.calendarId) !== true) return { refused: "notFound" };
+    if (!list.calendars.some((calendar) => calendar.id === target.calendarId)) return { refused: "notFound" };
     const event = target.id === null ? "" : `/${encodeURIComponent(target.id)}`;
     // Eva always names the choice, so a guest never gets an email that the widget did not ask for.
     const query = new URLSearchParams({ sendUpdates: target.sendInvitations ? "all" : "none" });
@@ -214,7 +221,7 @@ export const noCalendar: CalendarSource = {
 
 /** Google's fields of an event. A patch sends only the given fields. */
 function googleEvent(
-  change: EventChange,
+  change: EventChange & Pick<NewEvent, "guests">,
   options: { readonly patch: boolean } = { patch: false },
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {};
@@ -222,7 +229,13 @@ function googleEvent(
   // An empty text clears a field in Google, and the reads give it as null.
   if (change.place !== undefined) body["location"] = change.place ?? "";
   if (change.description !== undefined) body["description"] = change.description ?? "";
-  if (change.guests !== undefined) body["attendees"] = change.guests.map((email) => ({ email }));
+  // Google refuses or merges a guest twice: Eva sends each address once, whatever its case.
+  if (change.guests !== undefined) {
+    const seen = new Set<string>();
+    body["attendees"] = change.guests
+      .filter((email) => !seen.has(email.toLowerCase()) && Boolean(seen.add(email.toLowerCase())))
+      .map((email) => ({ email }));
+  }
   const time = change.time;
   if (time !== undefined) {
     const timed = "startAt" in time;
@@ -280,10 +293,13 @@ function refusalOf(status: number, answer: unknown): CalendarRefusal | null {
   if (status === 404 || status === 410) return "notFound";
   if (status !== 403) return null;
   const errors = (answer as { error?: { errors?: unknown } } | null)?.error?.errors;
-  const limited =
-    Array.isArray(errors) &&
-    (errors as unknown[]).some((each) => limitReasons.has(String((each as { reason?: unknown } | null)?.reason)));
-  return limited ? null : "notAllowed";
+  const reasons = Array.isArray(errors)
+    ? (errors as unknown[]).map((each) => String((each as { reason?: unknown } | null)?.reason))
+    : [];
+  if (reasons.some((reason) => limitReasons.has(reason))) return null;
+  // A token without the scope that the write needs: only a new login gives it.
+  if (reasons.includes("insufficientPermissions")) return "logIn";
+  return "notAllowed";
 }
 
 function isCalendarOn(inputs: GoogleCalendarInputs): boolean {

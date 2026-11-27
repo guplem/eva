@@ -20,10 +20,14 @@ export interface FakeGoogle {
   /** The events of each calendar, by its id, in Google's format. One page holds at most `eventPageSize`. */
   readonly calendarEvents: Map<string, unknown[]>;
   eventPageSize: number;
+  /** The events that a write deleted, as `<calendar>/<event>`: Google answers 410 for them. */
+  readonly deletedEvents: Set<string>;
   /** Each write of an event: its method, path as sent, query and JSON body. */
   readonly calendarWrites: CalendarWrite[];
   /** A status for every write of an event, with Google's reason in the body, such as 403 and `forbidden`. */
   calendarWriteStatus: { readonly status: number; readonly reason: string; readonly message?: string } | null;
+  /** A write whose connection drops before the answer, as a lost network does. */
+  calendarWriteDropped: boolean;
   /** The task lists, in Google's format. */
   taskLists: unknown[];
   /** The tasks of each task list, by its id, in Google's format. One page holds at most `taskPageSize`. */
@@ -75,7 +79,9 @@ export function fakeGoogle(): FakeGoogle {
     calendarEvents: new Map(),
     eventPageSize: 2500,
     calendarWrites: [],
+    deletedEvents: new Set(),
     calendarWriteStatus: null,
+    calendarWriteDropped: false,
     taskLists: [],
     tasks: new Map(),
     taskPageSize: 100,
@@ -169,10 +175,18 @@ async function writeEvent(
   const id = match[2] === undefined ? null : decodeURIComponent(match[2]);
   const body = request.method === "DELETE" ? null : ((await request.json()) as Record<string, unknown>);
   fake.calendarWrites.push({ method: request.method, path: url.pathname, query: url.searchParams, body });
-  const failure = fake.calendarWriteStatus;
+  if (fake.calendarWriteDropped)
+    return new Response(new ReadableStream({ start: (stream) => stream.error(new Error("dropped")) }));
+  const failure = fake.calendarWriteStatus ?? refusal(fake, calendarId, id, request.method, body);
   if (failure !== null)
     return Response.json(
-      { error: { code: failure.status, message: failure.message ?? "", errors: [{ reason: failure.reason }] } },
+      {
+        error: {
+          code: failure.status,
+          message: failure.message ?? "",
+          errors: [{ domain: "calendar", reason: failure.reason, message: failure.message ?? "" }],
+        },
+      },
       { status: failure.status },
     );
   const events = (fake.calendarEvents.get(calendarId) ?? []) as Record<string, unknown>[];
@@ -191,6 +205,7 @@ async function writeEvent(
   const index = events.findIndex((event) => event["id"] === id);
   if (id === null || index === -1) return Response.json({ error: { code: 404 } }, { status: 404 });
   if (request.method === "DELETE") {
+    fake.deletedEvents.add(`${calendarId}/${id}`);
     events.splice(index, 1);
     return new Response(null, { status: 204 });
   }
@@ -198,6 +213,24 @@ async function writeEvent(
   const patched = patch(events[index] ?? {}, body ?? {});
   events[index] = patched;
   return Response.json(patched);
+}
+
+/** What Google refuses before it writes, as its own API does. */
+function refusal(
+  fake: Omit<FakeGoogle, "url" | "stop">,
+  calendarId: string,
+  id: string | null,
+  method: string,
+  body: Record<string, unknown> | null,
+): { readonly status: number; readonly reason: string; readonly message?: string } | null {
+  const entry = fake.calendarList.find((each) => (each as { id?: unknown }).id === calendarId) as
+    { accessRole?: unknown } | undefined;
+  if (entry?.accessRole === "reader" || entry?.accessRole === "freeBusyReader")
+    return { status: 403, reason: "requiredAccessLevel" };
+  if (id !== null && fake.deletedEvents.has(`${calendarId}/${id}`)) return { status: 410, reason: "deleted" };
+  if (method === "POST" && (body?.["start"] === undefined || body["end"] === undefined))
+    return { status: 400, reason: "required" };
+  return null;
 }
 
 /** Google's patch: a given field replaces the old one, a null removes it, and `start` and `end` merge one level down. */

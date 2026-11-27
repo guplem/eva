@@ -324,7 +324,7 @@ describe("the writes", () => {
     allowWrites();
     const guests = ["guest@example.com", "other@example.com"];
     await calendar.create({ ...meeting, guests }, false);
-    await calendar.create({ ...meeting, guests }, true);
+    await calendar.create({ ...meeting, guests: [...guests, "GUEST@example.com"] }, true);
     expect(google.calendarWrites.map((write) => write.query.get("sendUpdates"))).toEqual(["none", "all"]);
     expect(google.calendarWrites[1]?.body).toMatchObject({
       attendees: [{ email: "guest@example.com" }, { email: "other@example.com" }],
@@ -380,13 +380,17 @@ describe("the writes", () => {
         end: { dateTime: "2026-11-18T09:15:00+01:00" },
       },
     ]);
-    const result = await calendar.change("standup", { calendarId: work.id, title: "Daily", place: null }, false);
+    const result = await calendar.change(
+      "standup",
+      { calendarId: work.id, title: "Daily", place: null, description: null },
+      false,
+    );
     const [write] = google.calendarWrites;
     expect(write?.method).toBe("PATCH");
     expect(write?.path).toBe("/calendar/v3/calendars/work%40example.com/events/standup");
     expect(write?.query.get("sendUpdates")).toBe("none");
-    expect(write?.body).toEqual({ summary: "Daily", location: "" });
-    expect(result).toMatchObject({ done: { id: "standup", title: "Daily", place: null, description: "Agenda" } });
+    expect(write?.body).toEqual({ summary: "Daily", location: "", description: "" });
+    expect(result).toMatchObject({ done: { id: "standup", title: "Daily", place: null, description: null } });
     expect(google.calendarEvents.get(work.id)?.[0]).toMatchObject({ attendees: [{ email: "guest@example.com" }] });
   });
 
@@ -440,18 +444,43 @@ describe("the writes", () => {
 
   test("give each refusal of Google its reason, and throw when Google fails", async () => {
     allowWrites();
-    const refusal = async (status: number, reason: string): Promise<unknown> => {
-      google.calendarWriteStatus = { status, reason };
-      return calendar.remove(work.id, "standup", false);
-    };
-    expect(await refusal(400, "invalid")).toEqual({ refused: "invalid" });
-    expect(await refusal(401, "authError")).toEqual({ refused: "logIn" });
-    expect(await refusal(403, "forbidden")).toEqual({ refused: "notAllowed" });
-    expect(await refusal(403, "requiredAccessLevel")).toEqual({ refused: "notAllowed" });
-    expect(await refusal(404, "notFound")).toEqual({ refused: "notFound" });
-    expect(await refusal(410, "deleted")).toEqual({ refused: "notFound" });
-    google.calendarWriteStatus = { status: 403, reason: "rateLimitExceeded" };
-    expect(await failure(calendar.remove(work.id, "standup", false))).toContain("HTTP 403");
+    const writes = [
+      (): Promise<unknown> => calendar.create(meeting, false),
+      (): Promise<unknown> => calendar.change("standup", { calendarId: work.id, title: "New" }, false),
+      (): Promise<unknown> => calendar.remove(work.id, "standup", false),
+    ];
+    const table: [number, string, string][] = [
+      [400, "invalid", "invalid"],
+      [401, "authError", "logIn"],
+      [403, "insufficientPermissions", "logIn"],
+      [403, "forbidden", "notAllowed"],
+      [403, "requiredAccessLevel", "notAllowed"],
+      [404, "notFound", "notFound"],
+      [410, "deleted", "notFound"],
+    ];
+    for (const send of writes) {
+      for (const [status, reason, refused] of table) {
+        google.calendarWriteStatus = { status, reason };
+        expect({ status, reason, answer: await send() }).toEqual({ status, reason, answer: { refused } });
+      }
+      google.calendarWriteStatus = { status: 403, reason: "rateLimitExceeded" };
+      expect(await failure(send())).toContain("HTTP 403");
+    }
+  });
+
+  test("give Google's own refusals: a calendar that the person may only read, and an event already deleted", async () => {
+    allowWrites();
+    expect(await calendar.create({ ...meeting, calendarId: family.id }, false)).toEqual({ refused: "notAllowed" });
+    google.calendarEvents.set(work.id, [{ id: "a" }]);
+    expect(await calendar.remove(work.id, "a", false)).toEqual({ done: null });
+    expect(await calendar.remove(work.id, "a", false)).toEqual({ refused: "notFound" });
+    expect(google.calendarWrites.map((write) => write.method)).toEqual(["POST", "DELETE", "DELETE"]);
+  });
+
+  test("throw when the connection drops during a write", async () => {
+    allowWrites();
+    google.calendarWriteDropped = true;
+    expect(await failure(calendar.create(meeting, false))).toContain("could not reach Google");
   });
 
   test("keep the event text, Google's text and the token out of a failure", async () => {

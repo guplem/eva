@@ -5,6 +5,7 @@
  */
 import type { MessageOrigin, SessionEvent } from "../../shared/events.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
+import { plainLine } from "../../shared/plain-line.ts";
 import type { SessionRecord } from "../sessions/session-store.ts";
 
 /** What a device can get. Each device picks its own kinds. `alerts` are Eva's problem alerts. */
@@ -165,6 +166,8 @@ export class ChatNotifications {
 }
 
 function shorten(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  // A lock screen shows plain text, so Markdown marks would show as they are (#1106).
+  // A text of marks only keeps them: an empty body says nothing.
+  const flat = plainLine(text, maxBodyLength * 4) || text.replace(/\s+/g, " ").trim();
   return flat.length <= maxBodyLength ? flat : `${flat.slice(0, maxBodyLength - 1).trimEnd()}…`;
 }

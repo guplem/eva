@@ -103,6 +103,25 @@ describe("a chat that is free again", () => {
     expect(sent.map((notification) => notification.body)).toEqual(["Eva finished."]);
   });
 
+  test("shows the text with no Markdown marks: a lock screen shows plain text (#1106)", () => {
+    const { sent, feed, idle } = notifications();
+    feed(
+      "web",
+      received("api"),
+      text("## Result\n**Done.** See [the note](https://example.com) and `a.md`."),
+      finished,
+    );
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["Result Done. See the note and a.md."]);
+  });
+
+  test("keeps a text of marks only as it is, so the body is never empty", () => {
+    const { sent, feed, idle } = notifications();
+    feed("web", received("api"), text("---"), finished);
+    idle("web");
+    expect(sent.map((notification) => notification.body)).toEqual(["---"]);
+  });
+
   test("cuts a long text", () => {
     const { sent, feed, idle } = notifications();
     feed("web", received("api"), text("word ".repeat(100)), finished);

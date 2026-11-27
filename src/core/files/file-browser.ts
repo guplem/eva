@@ -232,6 +232,40 @@ export function encryptMoveOf(vaultPath: string, requested: string): EncryptMove
   return { from, to };
 }
 
+/**
+ * Checks the file that the person wants to decrypt, and gives its name without the `.eva-secret`
+ * end (#1109). `VaultEncryption` decrypts it with the unlocked key, inside a sync step.
+ */
+export function decryptMoveOf(vaultPath: string, requested: string): EncryptMove {
+  const { root, path, notFound } = resolveInVault(vaultPath, requested);
+  if (path === "") throw notWritable("Pick a file to decrypt.");
+  const parts = path.split("/");
+  const oldName = parts.pop() ?? "";
+  const name = oldName.slice(0, -encryptActionEnd.length);
+  if (!oldName.toLowerCase().endsWith(encryptActionEnd) || name === "")
+    throw notWritable("Only a file with the .eva-secret end decrypts here. Change the patterns in Settings.");
+  const nameProblem = problemOfName(name);
+  if (nameProblem !== null) throw notWritable(nameProblem);
+  const folder = resolveInVault(vaultPath, parts.join("/")).resolved;
+  const folderParts = relative(root, folder)
+    .split(sep)
+    .filter((part) => part !== "");
+  const source = join(folder, oldName);
+  if (!existsAt(source)) throw notFound;
+  if (!isPlainFileEntry(source) || !isEncryptedOnDisk(source))
+    throw notWritable("This file is not encrypted, so Eva has nothing to decrypt.");
+  const from = [...folderParts, oldName].join("/");
+  const to = [...folderParts, name].join("/");
+  // A clone has its own remote, and agents and git read the never-encrypted names as their own files.
+  if (isCloneFolderFile(from) || isNeverEncrypted(to))
+    throw notWritable("Eva keeps this file encrypted here. Move it first.");
+  // Eva would encrypt the file again at once, or keep a plain env file with a token out of each save.
+  if (secretMatcherOf(root).matches(to))
+    throw notWritable(`${name} is a secret name too, so Eva would encrypt it again. Rename it first.`);
+  if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);
+  return { from, to };
+}
+
 /** True for a file itself, never a folder or a link. */
 function isPlainFileEntry(path: string): boolean {
   try {

@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   browseVault,
+  decryptMoveOf,
   encryptMoveOf,
   existingVaultPaths,
   maxShownBytes,
@@ -576,5 +577,67 @@ describe("existingVaultPaths (#932)", () => {
       "notes.txt",
       "notes.txt",
     ]);
+  });
+});
+
+describe("decryptMoveOf: the new name of the Decrypt action (#1109)", () => {
+  const encrypted =
+    "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n";
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("an encrypted .eva-secret file loses its end, in any letter case, in its own folder", () => {
+    write("Photos/photo.jpg.eva-secret", encrypted);
+    write("Photos/scan.PDF.EVA-SECRET", encrypted);
+    expect(decryptMoveOf(vault, "Photos/photo.jpg.eva-secret")).toEqual({
+      from: "Photos/photo.jpg.eva-secret",
+      to: "Photos/photo.jpg",
+    });
+    expect(decryptMoveOf(vault, "Photos/scan.PDF.EVA-SECRET").to).toBe("Photos/scan.PDF");
+  });
+
+  test("a file that another pattern encrypts, a plain file and a bare end are refused", () => {
+    write("notes.secrets", encrypted);
+    write("plain.md.eva-secret", "plain\n");
+    write(".eva-secret", encrypted);
+    for (const path of ["notes.secrets", "plain.md.eva-secret", ".eva-secret", "Methods"])
+      expect([path, codeOf(() => decryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
+    expect(codeOf(() => decryptMoveOf(vault, "gone.md.eva-secret"))).toBe("file_not_found");
+  });
+
+  test("a new name that is secret again, a plain env name and a taken name are refused", () => {
+    write("server.key.eva-secret", encrypted);
+    write("prod.env.eva-secret", encrypted);
+    write("notes.txt.eva-secret", encrypted);
+    for (const path of ["server.key.eva-secret", "prod.env.eva-secret", "notes.txt.eva-secret"])
+      expect([path, codeOf(() => decryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
+  });
+});
+
+describe("decryptMoveOf: places and names that stay encrypted (review of #1109)", () => {
+  const encrypted =
+    "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n";
+  const codeOf = (action: () => unknown): string | null => {
+    try {
+      action();
+      return null;
+    } catch (error) {
+      return isEvaError(error) ? error.code : "another error";
+    }
+  };
+
+  test("a file in a clone and a name that agents or git read are refused", () => {
+    const clone = "Projects/2025-03-02-1015-example-app/repos/example-app-0";
+    write(`${clone}/key.txt.eva-secret`, encrypted);
+    write("Life/AGENTS.md.eva-secret", encrypted);
+    write(".gitignore.eva-secret", encrypted);
+    for (const path of [`${clone}/key.txt.eva-secret`, "Life/AGENTS.md.eva-secret", ".gitignore.eva-secret"])
+      expect([path, codeOf(() => decryptMoveOf(vault, path))]).toEqual([path, "file_not_writable"]);
   });
 });

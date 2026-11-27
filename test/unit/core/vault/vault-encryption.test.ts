@@ -539,3 +539,97 @@ describe("the fixed pattern in the person's own list (review of #1108)", () => {
     expect(encryption().status(null, null).added).toEqual([]);
   });
 });
+
+describe("the Decrypt action of the Files page (#1109)", () => {
+  const photo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]);
+
+  async function encrypted(): Promise<{ service: VaultEncryption; secret: string }> {
+    const service = encryption();
+    await service.setPassword(token, password);
+    mkdirSync(join(vault, "Photos"), { recursive: true });
+    writeFileSync(join(vault, "Photos/photo.jpg"), photo);
+    await service.encryptByRename("Photos/photo.jpg", "Photos/photo.jpg.eva-secret");
+    return { service, secret: await service.unlock(token, password) };
+  }
+
+  test("writes the plain file under the name without the end, deletes the encrypted one, and saves", async () => {
+    const { service, secret } = await encrypted();
+    const before = saves;
+    await service.decryptByRename(token, secret, "Photos/photo.jpg.eva-secret", "Photos/photo.jpg");
+    expect([...readFileSync(join(vault, "Photos/photo.jpg"))]).toEqual([...photo]);
+    expect(existsSync(join(vault, "Photos/photo.jpg.eva-secret"))).toBe(false);
+    expect(saves).toBe(before + 1);
+  });
+
+  test("a file that the person renamed by hand keeps its old sealed path, and still decrypts", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const key = readVaultKey(vault);
+    if (key === null) throw new Error("expected a key");
+    write(
+      "Private/photo.jpg.eva-secret",
+      new TextDecoder().decode(encryptFile(photo, key, "Private/photo.jpg.secrets")),
+    );
+    const secret = await service.unlock(token, password);
+    await service.decryptByRename(token, secret, "Private/photo.jpg.eva-secret", "Private/photo.jpg");
+    expect([...readFileSync(join(vault, "Private/photo.jpg"))]).toEqual([...photo]);
+  });
+
+  test("a locked tab and the local API token decrypt nothing", async () => {
+    const { service, secret } = await encrypted();
+    service.lock(token);
+    for (const [device, unlock] of [
+      [token, secret],
+      [null, null],
+    ] as const)
+      expect(
+        isEvaError(
+          await failure(() =>
+            service.decryptByRename(device, unlock, "Photos/photo.jpg.eva-secret", "Photos/photo.jpg"),
+          ),
+          "vault_locked",
+        ),
+      ).toBe(true);
+    expect(existsSync(join(vault, "Photos/photo.jpg.eva-secret"))).toBe(true);
+    expect(existsSync(join(vault, "Photos/photo.jpg"))).toBe(false);
+  });
+
+  test("a taken name and a plain file are refused, and nothing changes", async () => {
+    const { service, secret } = await encrypted();
+    writeFileSync(join(vault, "Photos/photo.jpg"), "another photo");
+    expect(
+      isEvaError(
+        await failure(() => service.decryptByRename(token, secret, "Photos/photo.jpg.eva-secret", "Photos/photo.jpg")),
+        "file_not_writable",
+      ),
+    ).toBe(true);
+    expect(read("Photos/photo.jpg")).toBe("another photo");
+    write("notes.md.eva-secret", "plain\n");
+    expect(
+      isEvaError(
+        await failure(() => service.decryptByRename(token, secret, "notes.md.eva-secret", "notes.md")),
+        "file_not_writable",
+      ),
+    ).toBe(true);
+    expect(read("notes.md.eva-secret")).toBe("plain\n");
+  });
+});
+
+describe("a decoy copy of a secret (review of #1109)", () => {
+  test("a file sealed under an unrelated path stays encrypted: an agent may have copied a secret to a new name", async () => {
+    const service = encryption();
+    await service.setPassword(token, password);
+    const key = readVaultKey(vault);
+    if (key === null) throw new Error("expected a key");
+    write(
+      "Notes/todo.txt.eva-secret",
+      new TextDecoder().decode(encryptFile(new TextEncoder().encode("KEY"), key, "Life/bank.pem")),
+    );
+    const secret = await service.unlock(token, password);
+    const error = await failure(() =>
+      service.decryptByRename(token, secret, "Notes/todo.txt.eva-secret", "Notes/todo.txt"),
+    );
+    expect(isEvaError(error, "file_not_writable")).toBe(true);
+    expect(existsSync(join(vault, "Notes/todo.txt"))).toBe(false);
+  });
+});

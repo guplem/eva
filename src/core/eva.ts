@@ -126,6 +126,7 @@ import { Scheduler } from "./schedules/scheduler.ts";
 import { moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
 import {
   browseVault,
+  decryptMoveOf,
   encryptMoveOf,
   existingVaultPaths,
   normalizedPath,
@@ -2378,6 +2379,22 @@ export class Eva {
       moveFavorites(vaultPath, normalizedPath(path), move.to);
     } catch {
       // The file is encrypted. A favorite that could not follow it shows as missing, and the person can star it again.
+    }
+    return { path: move.to };
+  }
+
+  /**
+   * Decrypts a `.eva-secret` file from the file explorer, for an unlocked device: the plain file
+   * takes the name without the end, and Eva saves (#1109). Answers its new path.
+   */
+  async decryptVaultFile(deviceToken: string | null, secret: string | null, path: string): Promise<{ path: string }> {
+    const vaultPath = this.browsedVault();
+    const move = decryptMoveOf(vaultPath, path);
+    await this.encryption.decryptByRename(deviceToken, secret, move.from, move.to);
+    try {
+      moveFavorites(vaultPath, normalizedPath(path), move.to);
+    } catch {
+      // The file is decrypted. A favorite that could not follow it shows as missing, and the person can star it again.
     }
     return { path: move.to };
   }

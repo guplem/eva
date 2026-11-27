@@ -4,7 +4,7 @@
  * password, which makes a new key (#775), and accept a key that changed on another machine. Each
  * change of the vault runs between two steps of the vault sync, so it never races a commit.
  */
-import { existsSync, lstatSync, readFileSync, renameSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
@@ -28,6 +28,7 @@ import { activeSecretPatterns, addedBack, signedPayload } from "./secret-policy.
 import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
 import {
   createVaultKey,
+  decryptFile,
   encryptedState,
   hasEncryptedShape,
   keyFingerprint,
@@ -368,6 +369,40 @@ export class VaultEncryption {
     await this.persist();
   }
 
+  /**
+   * The Decrypt action of the Files page (#1109): writes the plain file under the name without the
+   * `.eva-secret` end, and deletes the encrypted file. Only an unlocked device can do it, after the
+   * person confirms, so no signed record is needed. The current path decides, as for a read: a file
+   * that the person renamed by hand keeps its old path sealed inside.
+   */
+  async decryptByRename(deviceToken: string | null, secret: string | null, from: string, to: string): Promise<void> {
+    const vaultPath = this.vaultPath();
+    await this.options.vault.exclusive(() => {
+      const unlocked = this.options.keys.keyFor(deviceToken, secret);
+      this.refuseChangedKey();
+      const source = join(vaultPath, from);
+      const target = join(vaultPath, to);
+      if (!isEncrypted(source)) throw notWritable("This file is not encrypted, so Eva has nothing to decrypt.");
+      if (existsSync(target)) throw notWritable(`${to.split("/").pop() ?? to} is in this folder already.`);
+      const opened = decryptFile(new Uint8Array(readFileSync(source)), unlocked);
+      if (!sealedFor(opened.path, from, to))
+        throw notWritable(
+          "Eva sealed this file under another name. It may be a copy of another secret, so it stays encrypted.",
+        );
+      if (new SecretMatcher(activeSecretPatterns(this.secrets().inputs().input).active).matches(to))
+        throw notWritable(`${to.split("/").pop() ?? to} is a secret name too, so Eva would encrypt it again.`);
+      writeFileAtomic(target, opened.plain);
+      try {
+        rmSync(source);
+      } catch (error) {
+        // Two copies, one plain, would go to the remote: the encrypted file stays alone.
+        rmSync(target, { force: true });
+        throw error;
+      }
+    });
+    await this.persist();
+  }
+
   /** Pins a key that changed on another machine. The device must have unlocked that key here. */
   async acceptKey(deviceToken: string | null, secret: string | null): Promise<void> {
     this.options.keys.keyFor(deviceToken, secret);
@@ -435,4 +470,23 @@ function isEncrypted(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * True when the path sealed in a file fits the file that the person decrypts. A file renamed by hand
+ * keeps its old path, such as `photo.jpg.secrets` for `photo.jpg.eva-secret`, so a sealed name in the
+ * same folder that starts with the plain name fits. An unrelated sealed path may be an agent's copy
+ * of another secret under a harmless name (#1109).
+ */
+function sealedFor(sealed: string, from: string, to: string): boolean {
+  if (sealed === from) return true;
+  const folderOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+  const plainName = to.slice(to.lastIndexOf("/") + 1).toLowerCase();
+  return (
+    folderOf(sealed).toLowerCase() === folderOf(from).toLowerCase() &&
+    sealed
+      .slice(sealed.lastIndexOf("/") + 1)
+      .toLowerCase()
+      .startsWith(`${plainName}.`)
+  );
 }

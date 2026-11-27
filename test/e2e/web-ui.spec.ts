@@ -1401,6 +1401,90 @@ test("a message whose answer got lost runs once, though the page sends it again 
   await waitUntilNewestChatSeen(page);
 });
 
+test("an unsent message stays in its chat after a reload, and goes once when the network comes back (#946)", async ({
+  page,
+}) => {
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page refresh"));
+  await waitUntilIdle(page, chatId);
+  let online = false;
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    if (online) await route.fallback();
+    else await route.abort("internetdisconnected");
+  });
+  const text = `Kept by the tab with no network (${test.info().project.name})`;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Control+Enter");
+  const bubble = page.locator(".msg.me", { hasText: text });
+  await expect(bubble.locator(".delivery")).toContainText("Not sent, trying again");
+  await page.reload();
+  // The tab kept the message: it shows in its chat with its state, and the page tries it again.
+  await expect(bubble.locator(".delivery")).toContainText("Not sent, trying again");
+  online = true;
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await expect(bubble.locator(".delivery")).toHaveCount(0);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await waitUntilIdle(page, chatId);
+  const { turns } = (await (await page.request.get(`/api/sessions/${chatId}`)).json()) as {
+    turns: { userText: string }[];
+  };
+  expect(turns.filter((turn) => turn.userText === text)).toHaveLength(1);
+  await waitUntilNewestChatSeen(page);
+});
+
+test("a message whose try runs when the page reloads, as after an update, reaches Eva once (#946)", async ({
+  page,
+}) => {
+  // A turn that starts tells the page that Eva has the message. Without it, the page knows only its own try.
+  let hideTurnStarts = false;
+  await page.routeWebSocket(/\/api\/events(\?devices)?$/, (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((message) => {
+      if (!(hideTurnStarts && String(message).includes('"turn_started"'))) socket.send(message);
+    });
+  });
+  await logIn(page);
+  const chatId = await chatIdNamed(page, await newAnsweredChat(page, "Before the page refresh mid send"));
+  await waitUntilIdle(page, chatId);
+  let hold = true;
+  const sentIds: string[] = [];
+  let taken: () => void = () => undefined;
+  const evaTook = new Promise<void>((resolve) => {
+    taken = resolve;
+  });
+  await page.route("**/api/sessions/*/messages", async (route) => {
+    sentIds.push((route.request().postDataJSON() as { id: string }).id);
+    if (!hold) return route.fallback();
+    hold = false;
+    // Eva takes the message, and the page reloads before it hears the answer.
+    await route.fetch();
+    taken();
+    return undefined;
+  });
+  const text = `Taken by Eva just before the page refresh (${test.info().project.name})`;
+  hideTurnStarts = true;
+  const composer = page.getByLabel("Message").first();
+  await composer.fill(text);
+  await composer.press("Control+Enter");
+  await evaTook;
+  await page.reload();
+  hideTurnStarts = false;
+  await expect(page.locator(".message.answer", { hasText: text })).toBeVisible();
+  await waitUntilIdle(page, chatId);
+  // The page sent the message again after the reload, with the same id, and Eva ran it once.
+  await expect.poll(() => sentIds.length).toBe(2);
+  expect(sentIds[1]).toBe(sentIds[0]);
+  const { turns } = (await (await page.request.get(`/api/sessions/${chatId}`)).json()) as {
+    turns: { userText: string }[];
+  };
+  expect(turns.filter((turn) => turn.userText === text)).toHaveLength(1);
+  await expect(page.locator(".message.user", { hasText: text })).toHaveCount(1);
+  await expect(page.locator(".msg.me", { hasText: text }).locator(".delivery")).toHaveCount(0);
+  await waitUntilNewestChatSeen(page);
+});
+
 test("a retry of an answer that wrote a note asks to undo it, and the undo removes the note (#525)", async ({
   page,
 }) => {

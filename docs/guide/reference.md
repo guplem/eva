@@ -311,7 +311,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Mark a chat as unread:** pick **Mark as unread** in the "More actions" menu (•••) of the chat. It marks the branch in view. You can also right-click a chat or a fork in the list, or a row of the branch map. On a chat in the list, it marks the main line.
   - The last answer of that branch shows as unread again on every device, as a reminder.
   - When you mark the open chat, the page leaves it. It also leaves when the marked answer is on the screen. Chats then opens the New chat page. Projects opens the project page.
-  - The item does not show for a branch with an unread answer, or with no answer. It does not show for a chat that reports to another chat either.
+  - The item does not show for a branch with an unread answer, or with no answer. It does not show for a Project chat that Eva started for another chat, as that chat gets its answers.
 - **Rename a chat automatically:** pick **Rename automatically** in the "More actions" menu. A small AI call reads the branch in view and names the whole chat by your chat name rules. The fork menu has the same item: it names that fork from its own branch. With no rules, Eva uses short default rules.
 - **Compact a chat:** a long chat can confuse the model. To compact it, pick **Compact: start a new chat from a summary** in the "More actions" menu. Eva writes a short summary, and a new chat starts from it. You read and change the summary before you send it. It works with Claude Code and with pi, on the engine's cheapest model.
   - Eva also offers it. When the chat in view fills 75% or more of the model's memory, a notice over the message box says how full it is, with a **Compact** button.

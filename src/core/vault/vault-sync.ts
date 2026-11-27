@@ -138,7 +138,7 @@ const evaIdentity: Readonly<Record<string, string>> = {
 };
 const maxPushAttempts = 3;
 /** Files bigger than this are not scanned for secrets: binaries, archives, exports. */
-const maxScannedFileBytes = 1_000_000;
+export const maxScannedFileBytes = 1_000_000;
 /** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
 const maxCommittedFileBytes = 50 * 1024 * 1024;
 /** A note conflict shows each version only up to this size: the page compares them line by line. */

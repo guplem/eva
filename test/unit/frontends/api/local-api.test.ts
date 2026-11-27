@@ -766,6 +766,37 @@ describe("device login", () => {
     expect((await call("/api/vault/secrets/encrypt-file", { method: "POST", body: {} })).status).toBe(400);
   });
 
+  test("the Decrypt action needs a device that typed the vault password, never the local API token (#1109)", async () => {
+    attachApprover();
+    const cookie = deviceCookieOf(await allowedCookie());
+    const vaultPath = eva.status().vaultPath ?? "";
+    const device = { cookie, "content-type": "application/json" };
+    await call("/api/vault/secrets/password", {
+      method: "POST",
+      body: { password: "correct horse battery" },
+      headers: device,
+    });
+    writeFileSync(join(vaultPath, "memo.md"), "A memo\n");
+    await call("/api/vault/secrets/encrypt-file", { method: "POST", body: { path: "memo.md" } });
+    const body = { path: "memo.md.eva-secret" };
+    const byToken = await call("/api/vault/secrets/decrypt-file", { method: "POST", body });
+    expect(await json(byToken)).toMatchObject({ code: "vault_locked" });
+    const unlocked = await call("/api/vault/secrets/unlock", {
+      method: "POST",
+      body: { password: "correct horse battery" },
+      headers: device,
+    });
+    const { secret } = await json<{ secret: string }>(unlocked);
+    const done = await call("/api/vault/secrets/decrypt-file", {
+      method: "POST",
+      body,
+      headers: { ...device, "x-eva-unlock": secret },
+    });
+    expect(await json(done)).toEqual({ path: "memo.md" });
+    expect(readFileSync(join(vaultPath, "memo.md"), "utf8")).toBe("A memo\n");
+    expect(existsSync(join(vaultPath, "memo.md.eva-secret"))).toBe(false);
+  });
+
   test("a password change, by its own path or an older page's new-key path, locks the page (#775)", async () => {
     attachApprover();
     const cookie = deviceCookieOf(await allowedCookie());

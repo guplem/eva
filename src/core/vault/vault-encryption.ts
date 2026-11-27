@@ -4,10 +4,12 @@
  * password, which makes a new key (#775), and accept a key that changed on another machine. Each
  * change of the vault runs between two steps of the vault sync, so it never races a commit.
  */
-import { existsSync, lstatSync, readFileSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { isInside } from "../../shared/path-area.ts";
+import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import {
   decryptFiles,
   encryptAgain,
@@ -28,6 +30,7 @@ import { activeSecretPatterns, addedBack, signedPayload } from "./secret-policy.
 import { readVaultKey, vaultKeyPath, writeSignedState, writeVaultKey } from "./secret-state.ts";
 import {
   createVaultKey,
+  decryptFile,
   encryptedState,
   hasEncryptedShape,
   keyFingerprint,
@@ -37,6 +40,7 @@ import {
 } from "./vault-crypto.ts";
 import type { VaultKeys } from "./vault-keys.ts";
 import { maxEncryptedBytes, type VaultSecrets } from "./vault-secrets.ts";
+import { maxScannedFileBytes } from "./vault-sync.ts";
 
 /** The steps of the vault sync that a change needs. */
 export interface VaultSteps {
@@ -44,6 +48,8 @@ export interface VaultSteps {
   exclusive<Result>(work: () => Result): Promise<Result>;
   /** Its status tells whether the remote answered. */
   pull(): Promise<{ readonly status: string }>;
+  /** True for a path that the vault's `.gitignore` lists, so no save takes it. */
+  isIgnored(relativePath: string): Promise<boolean>;
   /** Encrypts each plain secret file now, even with the vault sync off. */
   encryptSecrets(): Promise<void>;
   /** Commits and pushes, when the vault sync is on. */
@@ -368,6 +374,56 @@ export class VaultEncryption {
     await this.persist();
   }
 
+  /**
+   * The Decrypt action of the Files page (#1109): writes the plain file under the name without the
+   * `.eva-secret` end, and deletes the encrypted file. Only an unlocked device can do it, after the
+   * person confirms, so no signed record is needed. The current path decides, as for a read: a file
+   * that the person renamed by hand keeps its old path sealed inside.
+   */
+  async decryptByRename(deviceToken: string | null, secret: string | null, from: string, to: string): Promise<void> {
+    const vaultPath = this.vaultPath();
+    const name = to.split("/").pop() ?? to;
+    // No save takes an ignored file, but it would push the delete of the encrypted one.
+    if (await this.options.vault.isIgnored(to))
+      throw notWritable(`The vault's .gitignore lists ${name}, so the remote would lose it. Rename it first.`);
+    await this.options.vault.exclusive(() => {
+      const unlocked = this.options.keys.keyFor(deviceToken, secret);
+      this.refuseChangedKey();
+      const source = join(vaultPath, from);
+      const target = join(vaultPath, to);
+      // Checked again here: a link put in its place since the page's check could lead out of the vault.
+      if (!isFileItself(source) || !isInsideVault(vaultPath, dirname(target)))
+        throw notWritable("Eva decrypts one file at a time, not a folder or a link.");
+      if (!isEncrypted(source)) throw notWritable("This file is not encrypted, so Eva has nothing to decrypt.");
+      if (existsSync(target)) throw notWritable(`${to.split("/").pop() ?? to} is in this folder already.`);
+      const opened = decryptFile(new Uint8Array(readFileSync(source)), unlocked);
+      // A rename by hand leaves no file at the old path. A file there means that this one is a copy.
+      if (!sealedFor(opened.path, from, to) || (opened.path !== from && existsSync(join(vaultPath, opened.path))))
+        throw notWritable(
+          "Eva sealed this file under another name. It may be a copy of another secret, so it stays encrypted.",
+        );
+      // The save leaves out a file that holds a token, but it would push the delete of the encrypted one.
+      if (opened.plain.length <= maxScannedFileBytes && bytesContainSecretPattern(opened.plain))
+        throw notWritable(
+          "This file holds a key or a token. A save leaves such a plain file out, so the remote would lose it. It stays encrypted.",
+        );
+      const pattern = new SecretMatcher(activeSecretPatterns(this.secrets().inputs().input).active).matchingPattern(to);
+      if (pattern !== null)
+        throw notWritable(
+          `${name} matches the secret pattern ${pattern}, so Eva would encrypt it again. Rename it first.`,
+        );
+      writeFileAtomic(target, opened.plain);
+      try {
+        rmSync(source);
+      } catch (error) {
+        // Two copies, one plain, would go to the remote: the encrypted file stays alone.
+        rmSync(target, { force: true });
+        throw error;
+      }
+    });
+    await this.persist();
+  }
+
   /** Pins a key that changed on another machine. The device must have unlocked that key here. */
   async acceptKey(deviceToken: string | null, secret: string | null): Promise<void> {
     this.options.keys.keyFor(deviceToken, secret);
@@ -432,6 +488,41 @@ function isEncrypted(path: string): boolean {
   try {
     const bytes = readFileSync(path);
     return encryptedState(bytes) === "encrypted" && hasEncryptedShape(bytes);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the path sealed in a file fits the file that the person decrypts. A file renamed by hand
+ * keeps its old path, such as `photo.jpg.secrets` for `photo.jpg.eva-secret`, so a sealed name in the
+ * same folder that starts with the plain name fits. An unrelated sealed path may be an agent's copy
+ * of another secret under a harmless name (#1109).
+ */
+function sealedFor(sealed: string, from: string, to: string): boolean {
+  if (sealed === from) return true;
+  const folderOf = (path: string): string => path.slice(0, Math.max(0, path.lastIndexOf("/")));
+  const plainName = to.slice(to.lastIndexOf("/") + 1).toLowerCase();
+  return (
+    folderOf(sealed) === folderOf(from) &&
+    sealed
+      .slice(sealed.lastIndexOf("/") + 1)
+      .toLowerCase()
+      .startsWith(`${plainName}.`)
+  );
+}
+
+function isFileItself(path: string): boolean {
+  try {
+    return lstatSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isInsideVault(vaultPath: string, folder: string): boolean {
+  try {
+    return isInside(realpathSync(vaultPath), realpathSync(folder));
   } catch {
     return false;
   }

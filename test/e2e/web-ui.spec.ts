@@ -8269,6 +8269,53 @@ test("Files: Encrypt refuses a file that Eva keeps plain, and says why (#1108)",
   await expect(page).toHaveURL(/AGENTS\.md$/);
 });
 
+test("Files: Decrypt turns an unlocked .eva-secret image into the plain file, after a warning (#1109)", async ({
+  page,
+}, testInfo) => {
+  const name = `${testInfo.project.name}-badge.png`;
+  await logInAsDevice(page);
+  await page.goto(`/#/files/Private/${name}.eva-secret`);
+  // A locked file shows only the unlock form.
+  await expect(page.getByText("This file is encrypted.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Decrypt" })).toHaveCount(0);
+  await page.getByLabel("Vault password").fill(vaultPassword);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  let question = "";
+  page.once("dialog", (dialog) => {
+    question = dialog.message();
+    void dialog.accept();
+  });
+  await page.getByRole("button", { name: "Decrypt" }).click();
+  await expect(page).toHaveURL(new RegExp(`${name.replace(".", "\\.")}$`));
+  expect(question).toContain(`It becomes ${name}, a plain file`);
+  expect(question).toContain("goes to the vault remote");
+  await expect(page.getByText("This file is encrypted.")).toHaveCount(0);
+});
+
+test("Files: Decrypt of a text file is in its menu, and a .secrets file has no Decrypt (#1109)", async ({
+  page,
+}, testInfo) => {
+  const run = testInfo.project.name;
+  await logInAsDevice(page);
+  await page.goto(`/#/files/Private/${run}.secrets`);
+  await page.getByLabel("Vault password").fill(vaultPassword);
+  await page.getByRole("button", { name: "Unlock" }).click();
+  const secrets = page.getByRole("region", { name: "File text" });
+  await secrets.getByRole("button", { name: "More actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Lock encrypted files" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Decrypt" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await page.goto(`/#/files/Private/${run}-memo.md.eva-secret`);
+  const memo = page.getByRole("region", { name: "File text" });
+  await expect(memo).toContainText("A memo to decrypt.");
+  await memo.getByRole("button", { name: "More actions" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("menuitem", { name: "Decrypt" }).click();
+  await expect(page).toHaveURL(new RegExp(`${run}-memo\\.md$`));
+  await expect(page.getByRole("region", { name: "File text" })).toContainText("A memo to decrypt.");
+});
+
 test("Files: a wide screen shows each folder of the path as a column, and the file can fill the page (issue 308)", async ({
   page,
 }, testInfo) => {

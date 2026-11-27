@@ -48,7 +48,7 @@ import {
 import { decryptedNameOf, fileBadgeOf, nameEnds, shownMediaOf } from "./file-kinds.ts";
 import { MediaPreview } from "./FileMedia.tsx";
 import { Icon } from "./icons.tsx";
-import { ButtonSpinner, ListSkeleton } from "./Loading.tsx";
+import { ButtonSpinner, ListSkeleton, ProgressBar } from "./Loading.tsx";
 import { useContextMenu, type MenuItem } from "./Menu.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
 import { RenameForm } from "./RenameForm.tsx";
@@ -176,6 +176,13 @@ export function FilesView(): ReactElement {
     // An unsaved edit is plain text with no mark of an encrypted file. The confirmation said that it goes.
     keepDraft(path, null, "");
     openMoved(encrypted);
+  };
+
+  const decrypt = async (): Promise<void> => {
+    const decrypted = (await api.decryptFile(path)).path;
+    // The draft's version belongs to the encrypted bytes. The confirmation said that it goes.
+    keepDraft(path, null, "");
+    openMoved(decrypted);
   };
 
   /** Opens the new path of the open entry, after a rename or an encryption. */
@@ -328,6 +335,7 @@ export function FilesView(): ReactElement {
                   wrap={wrap}
                   onWrap={setWrap}
                   onSaved={onSaved}
+                  onDecrypt={decrypt}
                   onTryAgain={() => setAttempt((count) => count + 1)}
                   vaultFolder={vaultFolder}
                   width={widths.get(crumb.path) ?? null}
@@ -574,6 +582,8 @@ interface ColumnProps {
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
   readonly onSaved: (saved: BrowsedPath) => void;
+  /** Decrypts the open `.eva-secret` file, and opens its new path. */
+  readonly onDecrypt: () => Promise<void>;
   readonly onTryAgain: () => void;
   /** The width that the person dragged a folder column to, or null for the usual width. */
   readonly width: number | null;
@@ -597,6 +607,7 @@ function Column({
   wrap,
   onWrap,
   onSaved,
+  onDecrypt,
   onTryAgain,
   width,
   onWidth,
@@ -661,6 +672,7 @@ function Column({
         wrap={wrap}
         onWrap={onWrap}
         smart={smart}
+        onDecrypt={onDecrypt}
       />
     );
   if (shown.kind === "unreadable")
@@ -706,6 +718,7 @@ function EncryptedFile({
   wrap,
   onWrap,
   smart,
+  onDecrypt,
 }: {
   readonly path: string;
   readonly size: number;
@@ -714,9 +727,32 @@ function EncryptedFile({
   readonly wrap: boolean;
   readonly onWrap: (wrap: boolean) => void;
   readonly smart: boolean;
+  readonly onDecrypt: () => Promise<void>;
 }): ReactElement {
+  const showError = useShowError();
   const [opened, setOpened] = useState<Opened>({ state: "loading" });
-  const name = decryptedNameOf(path.split("/").pop() ?? "file");
+  const [decrypting, setDecrypting] = useState(false);
+  const fileName = path.split("/").pop() ?? "file";
+  const name = decryptedNameOf(fileName);
+  // Only the end that the Encrypt action adds: another pattern's file keeps its rules in Settings.
+  const decryptable = name !== fileName;
+
+  const decrypt = async (): Promise<void> => {
+    // The menu item stays live while a decrypt runs: a second one would only fail.
+    if (decrypting) return;
+    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
+    const question = `Decrypt ${fileName}? It becomes ${name}, a plain file, and its plain text goes to the vault remote at the next save.${unsaved}`;
+    if (!window.confirm(question)) return;
+    setDecrypting(true);
+    try {
+      await onDecrypt();
+    } catch (caught) {
+      showError(caught);
+      setDecrypting(false);
+      // The core forgot this device's key, such as after 8 hours: the unlock form shows again.
+      if (caught instanceof ApiError && caught.code === "vault_locked") showLocked();
+    }
+  };
 
   const textFile = useCallback(
     (text: string, version: string): ShownFile => ({
@@ -807,6 +843,13 @@ function EncryptedFile({
           <span className="files-size">({sizeWords(size)})</span>
         </div>
         <DownloadButton path={path} folder={false} label={name} fetchFile={download} />
+        {decryptable && (
+          <button className="ghost" aria-busy={decrypting} disabled={decrypting} onClick={() => void decrypt()}>
+            {decrypting ? <ButtonSpinner /> : <Icon name="lock" />}
+            Decrypt
+          </button>
+        )}
+        {decrypting && <ProgressBar label="Decrypting and saving the file…" />}
         <button className="ghost" onClick={() => void lock()}>
           <Icon name="lock" />
           Lock
@@ -824,21 +867,32 @@ function EncryptedFile({
       return source.load();
     },
     download,
-    items: [{ label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() }],
+    items: [
+      ...(decryptable ? [{ label: "Decrypt", icon: "lock" as const, onChoose: () => void decrypt() }] : []),
+      { label: "Lock encrypted files", icon: "lock", onChoose: () => void lock() },
+    ],
   };
   return (
-    <FilePreview
-      file={opened.file}
-      large={large}
-      onLarge={onLarge}
-      wrap={wrap}
-      onWrap={onWrap}
-      onSaved={(saved) => {
-        if (saved.kind === "file") setOpened({ state: "text", file: saved });
-      }}
-      source={source}
-      smart={smart}
-    />
+    <>
+      <FilePreview
+        file={opened.file}
+        large={large}
+        onLarge={onLarge}
+        wrap={wrap}
+        onWrap={onWrap}
+        onSaved={(saved) => {
+          if (saved.kind === "file") setOpened({ state: "text", file: saved });
+        }}
+        source={source}
+        smart={smart}
+      />
+      {/* The menu that started it is gone, so the wait shows at the bottom of the screen. */}
+      {decrypting && (
+        <Toast message="Decrypting and saving the file…" role={null}>
+          <ProgressBar label="Decrypting and saving the file…" />
+        </Toast>
+      )}
+    </>
   );
 }
 

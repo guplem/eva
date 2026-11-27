@@ -89,23 +89,28 @@ export function isNeverEncrypted(relativePath: string): boolean {
 
 /** Matches vault paths, from the vault root with `/`, against patterns in `.gitignore` syntax. */
 export class SecretMatcher {
-  private readonly rules: readonly { readonly glob: Bun.Glob; readonly negated: boolean }[];
+  private readonly rules: readonly { readonly glob: Bun.Glob; readonly negated: boolean; readonly pattern: string }[];
 
   constructor(patterns: readonly string[]) {
     this.rules = patterns.flatMap((pattern) => {
       const negated = pattern.startsWith("!");
       const glob = globOf(negated ? pattern.slice(1) : pattern);
-      return glob === null ? [] : [{ glob: new Bun.Glob(glob), negated }];
+      return glob === null ? [] : [{ glob: new Bun.Glob(glob), negated, pattern }];
     });
   }
 
   /** True for a file that Eva encrypts. As in `.gitignore`, the last pattern that matches wins. */
   matches(relativePath: string): boolean {
-    if (isNeverEncrypted(relativePath)) return false;
+    return this.matchingPattern(relativePath) !== null;
+  }
+
+  /** The pattern that makes the file secret, so a message can name it, or null. */
+  matchingPattern(relativePath: string): string | null {
+    if (isNeverEncrypted(relativePath)) return null;
     const path = normalized(relativePath);
-    let secret = false;
-    for (const rule of this.rules) if (rule.glob.match(path)) secret = !rule.negated;
-    return secret;
+    let found: string | null = null;
+    for (const rule of this.rules) if (rule.glob.match(path)) found = rule.negated ? null : rule.pattern;
+    return found;
   }
 }
 

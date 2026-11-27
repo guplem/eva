@@ -28,7 +28,7 @@ import { encryptActionEnd, fixedSecretPatterns, isNeverEncrypted, SecretMatcher 
 import { encryptedState } from "../vault/vault-crypto.ts";
 import { isCloneFolderFile } from "../vault/vault-sync.ts";
 import { isScratchPath } from "./scratch-folders.ts";
-import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
+import { isEncryptedOnDisk, isPlainSecretName, secretMatcherOf } from "./secret-paths.ts";
 
 export interface FileEntry {
   readonly name: string;
@@ -228,6 +228,41 @@ export function encryptMoveOf(vaultPath: string, requested: string): EncryptMove
     !new SecretMatcher(fixedSecretPatterns).matches(to)
   )
     throw notWritable("Eva keeps this file plain, so she does not encrypt it.");
+  if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);
+  return { from, to };
+}
+
+/**
+ * Checks the file that the person wants to decrypt, and gives its name without the `.eva-secret`
+ * end (#1109). `VaultEncryption` decrypts it with the unlocked key, inside the vault lock.
+ */
+export function decryptMoveOf(vaultPath: string, requested: string): EncryptMove {
+  const { root, path, notFound } = resolveInVault(vaultPath, requested);
+  if (path === "") throw notWritable("Pick a file to decrypt.");
+  const parts = path.split("/");
+  const oldName = parts.pop() ?? "";
+  const name = oldName.slice(0, -encryptActionEnd.length);
+  if (!oldName.toLowerCase().endsWith(encryptActionEnd) || name === "")
+    throw notWritable("Only a file with the .eva-secret end decrypts here. Change the patterns in Settings.");
+  const nameProblem = problemOfName(name);
+  if (nameProblem !== null) throw notWritable(nameProblem);
+  const folder = resolveInVault(vaultPath, parts.join("/")).resolved;
+  const folderParts = relative(root, folder)
+    .split(sep)
+    .filter((part) => part !== "");
+  const source = join(folder, oldName);
+  if (!existsAt(source)) throw notFound;
+  if (!isPlainFileEntry(source) || !isEncryptedOnDisk(source))
+    throw notWritable("This file is not encrypted, so Eva has nothing to decrypt.");
+  const from = [...folderParts, oldName].join("/");
+  const to = [...folderParts, name].join("/");
+  // A clone has its own remote, and agents and git read the never-encrypted names as their own files.
+  if (isCloneFolderFile(from) || isNeverEncrypted(to))
+    throw notWritable("Eva keeps this file encrypted here. Move it first.");
+  if (isPlainSecretName(to))
+    throw notWritable(
+      `Eva keeps a plain ${name} with a token out of each save, so the remote could lose it. Rename it first.`,
+    );
   if (existsAt(join(folder, name))) throw notWritable(`${name} is in this folder already.`);
   return { from, to };
 }

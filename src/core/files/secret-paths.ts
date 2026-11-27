@@ -41,9 +41,7 @@ export function secretMatcherOf(vaultPath: string): SecretPaths {
   });
   const matcher = new SecretMatcher(active);
   return {
-    matches: (path) =>
-      // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
-      matcher.matches(path) || plainSecretName.test((path.split("/").pop() ?? "").toLowerCase().replace(/[. ]+$/, "")),
+    matches: (path) => matcher.matches(path) || isPlainSecretName(path),
   };
 }
 
@@ -63,4 +61,10 @@ export function isEncryptedOnDisk(absolutePath: string): boolean {
   } finally {
     closeSync(descriptor);
   }
+}
+
+/** True for a plain env file name, which the vault keeps plain but no page shows. */
+export function isPlainSecretName(path: string): boolean {
+  // Windows drops trailing dots and spaces, so `.env.` opens `.env`.
+  return plainSecretName.test((path.split("/").pop() ?? "").toLowerCase().replace(/[. ]+$/, ""));
 }

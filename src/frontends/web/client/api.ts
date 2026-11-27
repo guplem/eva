@@ -405,6 +405,13 @@ export const api = {
   /** A file that changed since `version` answers 409 with `file_changed`. */
   saveFile: (path: string, version: string, text: string): Promise<BrowsedPath> =>
     request("PUT", "/api/files", { path, version, text }),
+  /** Makes an empty file or folder in a vault folder (#1117). Answers its path. */
+  createFile: (folder: string, name: string, kind: "file" | "folder"): Promise<{ path: string }> =>
+    request("POST", "/api/files/new", { folder, name, kind }),
+  /** Deletes a vault file or folder (#1117). */
+  deleteFile: (path: string): Promise<{ path: string }> => request("POST", "/api/files/delete", { path }),
+  /** Copies a vault file next to itself (#1117). Answers the path of the copy. */
+  duplicateFile: (path: string): Promise<{ path: string }> => request("POST", "/api/files/duplicate", { path }),
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),

@@ -8089,9 +8089,18 @@ test("Setup: a person who does not use Telegram skips its step, which stays in t
   await expect(page.getByRole("region", { name: "Telegram", exact: true })).toBeVisible();
 });
 
+/** Opens the "More actions" menu of the open folder, in the header, and picks an item. */
+async function chooseFolderAction(page: Page, item: string): Promise<void> {
+  await page.locator(".files-header").getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menu", { name: "Folder actions" }).getByRole("menuitem", { name: item, exact: true }).click();
+}
+
 /** Opens the "More actions" menu of the open file and picks an item. */
 async function chooseFileAction(page: Page, item: string): Promise<void> {
-  await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();
+  await page
+    .getByRole("region", { name: /^File (text|preview)$/ })
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: item, exact: true }).click();
 }
 
@@ -8148,6 +8157,56 @@ test("Files: a right click on a row copies its real name, its vault path or its 
   expect(await copied()).toMatch(/[\\/]Projects[\\/]2025-03-02-1015-example-app$/);
   // The right click opens no page.
   await expect(page.getByRole("heading", { level: 1, name: "Projects" })).toBeVisible();
+});
+
+test("Files: the person makes a folder and a file, duplicates the file and deletes both from the menus (#1117)", async ({
+  page,
+}, testInfo) => {
+  const box = `${testInfo.project.name}-box`;
+  await logIn(page);
+  await page.goto("/#/files/Notes");
+  await chooseFolderAction(page, "New folder");
+  const folderDialog = page.getByRole("dialog", { name: "New folder" });
+  await folderDialog.getByRole("textbox", { name: "Name" }).fill(box);
+  await folderDialog.getByRole("button", { name: "Save" }).click();
+  await expect(page).toHaveURL(new RegExp(`#/files/Notes/${box}$`));
+  await expect(page.getByText("This folder is empty.")).toBeVisible();
+
+  // A right click on the empty part of a folder makes a new file there.
+  await rightClickInView(page.getByText("This folder is empty."));
+  await page
+    .getByRole("menu", { name: `Actions for ${box}` })
+    .getByRole("menuitem", { name: "New file" })
+    .click();
+  const fileDialog = page.getByRole("dialog", { name: "New file" });
+  await fileDialog.getByRole("textbox", { name: "Name" }).fill("idea.md");
+  await fileDialog.getByRole("button", { name: "Save" }).click();
+  // The new file opens in the editor, so the person types at once.
+  const file = page.getByRole("region", { name: "File text" });
+  const editor = file.getByRole("textbox", { name: `Text of Notes/${box}/idea.md` });
+  await editor.fill("# Idea\n");
+  await file.getByRole("button", { name: "Save" }).click();
+  await expect(file.getByRole("heading", { name: "Idea" })).toBeVisible();
+
+  await page.goto(`/#/files/Notes/${box}`);
+  const list = page.getByRole("list", { name: `Contents of ${box}` });
+  await rightClickInView(list.getByRole("link", { name: /^idea/ }));
+  await page.getByRole("menu", { name: "Actions for idea.md" }).getByRole("menuitem", { name: "Duplicate" }).click();
+  await expect(list.getByRole("link", { name: /idea copy/ })).toBeVisible();
+
+  page.once("dialog", (question) => {
+    expect(question.message()).toContain("Delete idea copy.md?");
+    void question.accept();
+  });
+  await rightClickInView(list.getByRole("link", { name: /idea copy/ }));
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await expect(list.getByRole("link", { name: /idea copy/ })).toHaveCount(0);
+
+  // A delete of the open folder goes up to its folder.
+  page.once("dialog", (question) => void question.accept());
+  await chooseFolderAction(page, "Delete");
+  await expect(page).toHaveURL(/#\/files\/Notes$/);
+  await expect(page.getByRole("list", { name: "Contents of Notes" }).getByRole("link", { name: box })).toHaveCount(0);
 });
 
 /** Only a device's own login decrypts, so the browser logs in as a device, with a login link. */
@@ -8311,10 +8370,15 @@ test("Files: Encrypt gives a plain file the .eva-secret end, and it opens with t
     expect(dialog.message()).toContain(`It becomes ${name}.eva-secret`);
     void dialog.accept();
   });
-  await page.getByRole("button", { name: `Encrypt ${name}` }).click();
+  await chooseFileAction(page, "Encrypt");
   await expect(page).toHaveURL(new RegExp(`${name.replace(".", "\\.")}\\.eva-secret$`));
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
-  await expect(page.getByRole("button", { name: `Encrypt ${name}.eva-secret` })).toHaveCount(0);
+  // An encrypted file has no Encrypt item.
+  await page.locator(".files-preview").getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Copy name" }),
+  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Encrypt" })).toHaveCount(0);
 });
 
 test("Files: Encrypt works on an image too, and warns about an unsaved edit of a text file (#1108)", async ({
@@ -8324,7 +8388,7 @@ test("Files: Encrypt works on an image too, and warns about an unsaved edit of a
   await logIn(page);
   await page.goto(`/#/files/Private/${run}-scan.png`);
   page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: `Encrypt ${run}-scan.png` }).click();
+  await chooseFileAction(page, "Encrypt");
   await expect(page).toHaveURL(/scan\.png\.eva-secret$/);
   await expect(page.getByText("This file is encrypted.")).toBeVisible();
 
@@ -8338,7 +8402,7 @@ test("Files: Encrypt works on an image too, and warns about an unsaved edit of a
     question = dialog.message();
     void dialog.dismiss();
   });
-  await page.getByRole("button", { name: `Encrypt ${run}-draft.md` }).click();
+  await chooseFileAction(page, "Encrypt");
   await expect.poll(() => question).toContain("Your unsaved changes are lost.");
   await expect(page).toHaveURL(/draft\.md$/);
 });
@@ -8355,7 +8419,7 @@ test("Files: the Encrypt question says when old plain versions stay on the vault
     question = dialog.message();
     void dialog.dismiss();
   });
-  await page.getByRole("button", { name: `Encrypt ${name}` }).click();
+  await chooseFileAction(page, "Encrypt");
   await expect.poll(() => question).toContain("Its old plain versions stay on the vault remote");
   expect(question).toContain("change each key or password in it");
   await expect(page).toHaveURL(/draft\.md$/);
@@ -8365,7 +8429,7 @@ test("Files: Encrypt refuses a file that Eva keeps plain, and says why (#1108)",
   await logIn(page);
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
   page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByRole("button", { name: "Encrypt AGENTS.md" }).click();
+  await chooseFileAction(page, "Encrypt");
   await expect(page.getByText("Eva keeps this file plain, so she does not encrypt it.")).toBeVisible();
   await expect(page).toHaveURL(/AGENTS\.md$/);
 });
@@ -8446,6 +8510,9 @@ test("Files: a wide screen shows each folder of the path as a column, and the fi
   // A choice from the keyboard keeps the focus on the menu button, so the person goes on from there.
   await more.focus();
   await page.keyboard.press("Enter");
+  // The menu opens with the focus on its first item.
+  await expect(page.getByRole("menuitem", { name: "Add to favorites" })).toBeFocused();
+  await page.getByRole("menuitem", { name: "Show plain text" }).focus();
   await page.keyboard.press("Enter");
   await expect(file.getByRole("heading", { name: "Example app" })).toHaveCount(0);
   await expect(more).toBeFocused();
@@ -8718,7 +8785,10 @@ test("Files: a phone shows only the open folder (issue 308)", async ({ page }, t
   await expect(page.getByRole("list", { name: "Contents of Vault" })).toBeHidden();
   // The file fills the phone already, so its menu has no large item.
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
-  await page.getByRole("region", { name: "File text" }).getByRole("button", { name: "More actions" }).click();
+  await page
+    .getByRole("region", { name: /^File (text|preview)$/ })
+    .getByRole("button", { name: "More actions" })
+    .click();
   await expect(
     page.getByRole("menu", { name: "File actions" }).getByRole("menuitem", { name: "Download" }),
   ).toBeVisible();
@@ -8732,7 +8802,7 @@ test("Files: on a phone, the buttons leave the folder name room for whole words"
   const path = page.getByRole("navigation", { name: "Folder path" });
   const name = path.getByRole("heading", { name: "Projects" });
   await expect(name).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download this folder as a zip file" })).toBeVisible();
+  await expect(page.locator(".files-header").getByRole("button", { name: "More actions" })).toBeVisible();
   // A squeezed name breaks after each letter, so its box gets tall and narrow.
   const box = await name.boundingBox();
   const lineHeight = await name.evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight));
@@ -8762,14 +8832,17 @@ test("Files: the person edits a note, saves it in the vault, and sees it formatt
   await expect(file.getByRole("listitem").filter({ hasText: "Bread" })).toBeVisible();
 });
 
-test("Files: the person renames a note, and its new address opens it (issue 343)", async ({ page }, testInfo) => {
+test("Files: the person renames a note, and its new address opens it (issue 343, #1117)", async ({
+  page,
+}, testInfo) => {
   await logIn(page);
   const run = testInfo.project.name;
   await page.goto(`/#/files/Notes/${run}-draft.md`);
   const file = page.getByRole("region", { name: "File text" });
   await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
-  await page.getByRole("button", { name: `Rename ${run}-draft.md` }).click();
-  const field = page.getByRole("textbox", { name: `New name of ${run}-draft.md` });
+  await chooseFileAction(page, "Rename");
+  const dialog = page.getByRole("dialog", { name: `Rename ${run}-draft.md` });
+  const field = dialog.getByRole("textbox", { name: "New name" });
   // Escape with a changed name asks first, and the question stays open.
   await field.fill(`${run}-other.md`);
   await field.press("Escape");
@@ -8778,10 +8851,12 @@ test("Files: the person renames a note, and its new address opens it (issue 343)
   await question.getByRole("button", { name: "Stay" }).click();
   await expect(field).toHaveValue(`${run}-other.md`);
   await field.fill("bad:name.md");
-  await page.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("A name cannot hold these characters")).toBeVisible();
+  // On a phone, the toast and the sheet share the bottom of the screen, so the toast closes first.
+  await page.getByRole("button", { name: "Close the message" }).click();
   await field.fill(`${run}-plan.md`);
-  await page.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page).toHaveURL(new RegExp(`#/files/Notes/${run}-plan\\.md$`));
   await expect(page.getByRole("heading", { name: `${run}-plan.md`, level: 1 })).toBeVisible();
   await expect(file.getByRole("heading", { name: "Draft" })).toBeVisible();
@@ -9038,7 +9113,7 @@ test("Files: a favorite that is gone shows as missing, and the person removes it
   await expect(favorites).toHaveCount(0);
 });
 
-test("Files: a file and a folder download from their own button, and a failed download says why", async ({ page }) => {
+test("Files: a file and a folder download from their menus, and a failed download says why", async ({ page }) => {
   await logIn(page);
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");
   const file = page.getByRole("region", { name: "File text" });
@@ -9055,13 +9130,13 @@ test("Files: a file and a folder download from their own button, and a failed do
 
   await page.goto("/#/files/Projects");
   const folderDownload = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  await chooseFolderAction(page, "Download as zip");
   expect((await folderDownload).suggestedFilename()).toBe("Projects.zip");
 
   await page.route("**/api/files/download?path=Projects", (route) =>
     route.fulfill({ status: 409, json: { error: "This is larger than 200 MB, so Eva does not download it." } }),
   );
-  await page.getByRole("button", { name: "Download this folder as a zip file" }).click();
+  await chooseFolderAction(page, "Download as zip");
   await expect(page.getByRole("alert").filter({ hasText: "larger than 200 MB" })).toBeVisible();
 });
 

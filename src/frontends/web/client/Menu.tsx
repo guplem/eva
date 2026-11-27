@@ -20,7 +20,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Icon, type IconName } from "./icons.tsx";
-import { placeMenu, type MenuPlace, type Point } from "./menu-place.ts";
+import { placeMenu, roomBelow, type MenuPlace, type Point } from "./menu-place.ts";
 import { clickAfterLiftMs, longPressMs, longPressSlop } from "./long-press.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
@@ -220,6 +220,18 @@ export function MenuButton({
   const root = useRef<HTMLDivElement>(null);
   const own = useRef<HTMLButtonElement>(null);
   const button = toggle ?? own;
+  const list = useRef<HTMLDivElement>(null);
+  /** A long menu, such as the menu of a vault file, stops at the edge that the person sees, and scrolls. */
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const element = list.current;
+    if (!open || above || element === null) {
+      setMaxHeight(null);
+      return;
+    }
+    const box = element.getBoundingClientRect();
+    setMaxHeight(roomBelow(box.top, box.height, clipBottomOf(element)));
+  }, [open, above]);
   const close = (refocus: boolean): void => {
     setOpen(false);
     if (refocus) button.current?.focus();
@@ -258,6 +270,8 @@ export function MenuButton({
           items={items}
           label={label}
           className={["more-menu", ...(fromStart ? ["from-start"] : []), ...(above ? ["above"] : [])].join(" ")}
+          listRef={list}
+          {...(maxHeight === null ? {} : { style: { maxHeight, overflowY: "auto", overscrollBehavior: "contain" } })}
           onClose={closeList}
         />
       )}
@@ -335,6 +349,8 @@ export function useContextMenu(
   const props: ContextMenuProps = {
     "data-context-menu": true,
     onContextMenu: (event) => {
+      // A row inside a folder column has its own menu, so the column leaves the press to it.
+      if (innerOwnsMenu(event)) return;
       if (keepsBrowserMenu(event)) {
         // The browser shows its own menu, so the timer of a long press must not open Eva's over it.
         stopPress();
@@ -354,6 +370,7 @@ export function useContextMenu(
     },
     onPointerDown: (event) => {
       longPressed.current = false;
+      if (innerOwnsMenu(event)) return;
       // Android sends a contextmenu event on a long press. Safari on an iPhone sends none, so a timer opens it.
       if (event.pointerType !== "touch" || inInnerDialog(event)) return;
       stopPress();
@@ -403,6 +420,14 @@ export function useContextMenu(
       />
     );
   return { props, menu };
+}
+
+/** True when the press is on an element inside this one that has a menu of its own, or outside it. */
+function innerOwnsMenu(event: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>): boolean {
+  // React sends the events of a portal, such as an open menu, through the element that draws it.
+  if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target)) return true;
+  const owner = event.target instanceof Element ? event.target.closest("[data-context-menu]") : null;
+  return owner !== null && owner !== event.currentTarget;
 }
 
 /**
@@ -493,4 +518,14 @@ function ContextMenu({
     />,
     document.body,
   );
+}
+
+/** The lowest edge of the element that the person sees: the screen, or a box around it that clips it. */
+function clipBottomOf(element: HTMLElement): number {
+  let bottom = window.innerHeight;
+  for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+    if (getComputedStyle(parent).overflowY !== "visible")
+      bottom = Math.min(bottom, parent.getBoundingClientRect().bottom);
+  }
+  return bottom;
 }

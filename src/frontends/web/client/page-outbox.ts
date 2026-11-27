@@ -1,4 +1,7 @@
-/** The one outbox of the page (#945). A message keeps going when the person opens another chat, or reloads the page (#946). */
+/**
+ * The one outbox of the page (#945). A message keeps going when the person opens another chat.
+ * A reload of the page keeps it too (#946).
+ */
 import { useSyncExternalStore } from "react";
 import { api } from "./api.ts";
 import { Outbox, type OutboxEntry } from "./outbox.ts";

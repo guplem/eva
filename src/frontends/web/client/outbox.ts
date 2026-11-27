@@ -75,7 +75,7 @@ function storedEntry(value: unknown): OutboxEntry | null {
 
 /**
  * The entries that the tab kept before a reload. A try that ran at the reload has no answer, so its
- * message waits: the next connection sends it again with the same id, and Eva runs it once.
+ * message waits. The next connection sends it again with the same id, and Eva runs it once.
  */
 function restoredEntries(storage: () => OutboxStorage): OutboxEntry[] {
   let kept: unknown;
@@ -334,7 +334,13 @@ export class Outbox {
       if (this.slots.length === 0) storage().removeItem(storageKey);
       else storage().setItem(storageKey, JSON.stringify(this.slots.map((slot) => slot.entry)));
     } catch {
-      // A full or blocked storage loses the messages only at a reload. The memory keeps them.
+      // The memory keeps the messages. An older list must not come back at a reload: it can hold a
+      // message that the person took out for an edit, and Eva would run it as well as the edit.
+      try {
+        storage().removeItem(storageKey);
+      } catch {
+        // A blocked storage holds no list.
+      }
     }
   }
 

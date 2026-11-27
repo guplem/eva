@@ -381,12 +381,8 @@ describe("Outbox in the tab's storage (#946)", () => {
     calls[0]?.resolve();
     await settle();
     expect(calls.map((call) => call.text)).toEqual(["short", long]);
-    // The storage keeps the last list that fitted, so a reload loses only what never fitted.
-    expect(
-      setup(() => storage)
-        .outbox.list("s1")
-        .map((entry) => entry.text),
-    ).toEqual(["short"]);
+    // An older list does not stay in the storage, so a reload never brings back a stale state.
+    expect(storage.items.has(storageKey)).toBe(false);
   });
 
   test("a bad stored value is dropped, and a bad entry does not drop the good ones", () => {
@@ -400,6 +396,9 @@ describe("Outbox in the tab's storage (#946)", () => {
         { ...good, id: "m0", state: "lost" },
         { ...good, id: "m2", turnCount: "3" },
         { ...good, id: 7 },
+        { ...good, id: "m3", turnCount: 1.5 },
+        { ...good, id: "m4", reason: 7 },
+        { ...good, id: "m5", retried: "yes" },
         null,
         good,
       ]),
@@ -407,5 +406,26 @@ describe("Outbox in the tab's storage (#946)", () => {
     expect(setup(() => storage).outbox.list("s1")).toEqual([good as OutboxEntry]);
     storage.setItem(storageKey, JSON.stringify({ entries: [good] }));
     expect(setup(() => storage).outbox.list("s1")).toEqual([]);
+  });
+
+  test("a failed write never lets a reload bring back a message that the person took out for an edit", () => {
+    const storage = memoryStorage();
+    let full = false;
+    const filling: OutboxStorage = {
+      ...storage,
+      setItem: (key, value) => {
+        if (full) throw new DOMException("The quota is full.", "QuotaExceededError");
+        storage.setItem(key, value);
+      },
+    };
+    const { outbox, calls } = setup(() => filling);
+    outbox.add({ sessionId: "s1", text: "first draft", id: "m1", turnCount: 0 });
+    calls[0]?.reject(offline);
+    full = true;
+    outbox.add({ sessionId: "s1", text: "a long paste", id: "m2", turnCount: 0 });
+    outbox.remove("m1");
+    const after = setup(() => storage);
+    after.outbox.retryNow();
+    expect(after.calls.map((call) => call.id)).not.toContain("m1");
   });
 });

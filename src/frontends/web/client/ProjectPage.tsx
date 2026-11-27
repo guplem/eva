@@ -25,6 +25,7 @@ import { ButtonSpinner, CardsSkeleton, ProgressBar } from "./Loading.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { ChatStatePill, chatListItems, type ChatAction } from "./ChatHeader.tsx";
 import { MenuButton, useContextMenu } from "./Menu.tsx";
+import { useMarkUnreadItem } from "./mark-unread.ts";
 import { fileAddressOf } from "./file-paths.ts";
 import { BackButton } from "./MainNav.tsx";
 import { displayFormat } from "./display-format.ts";
@@ -649,8 +650,9 @@ function CloneChat({
   readonly state: ChatState;
   readonly onOpen: (action?: ChatAction) => void;
 }): ReactElement {
+  const markUnreadItem = useMarkUnreadItem();
   const { props, menu } = useContextMenu(
-    chatListItems(() => onOpen(), onOpen),
+    chatListItems(() => onOpen(), onOpen, markUnreadItem(chat)),
     `Actions of “${chat.title}”`,
   );
   return (

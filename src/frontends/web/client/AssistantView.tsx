@@ -8,7 +8,7 @@ import { useOpenedTree } from "./opened-chats.ts";
 import { ChatPanelLoading, ChatSkeleton } from "./Loading.tsx";
 import { latestId, type LiveState } from "./live-state.ts";
 import { chatSubtitle } from "./chat-details.ts";
-import { seenPart } from "./branch-path.ts";
+import { seenPart, showsLastTurn } from "./branch-path.ts";
 import { BranchesButton, useBranchStates, useForkMenu, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
 import { Icon } from "./icons.tsx";
@@ -29,6 +29,7 @@ import { busyProjects } from "./mentions.ts";
 import { assistantChatAddressOf, assistantChatIdOf, linkedChatIdOf, newChatPageId } from "./navigation.ts";
 import { tabLinkProps } from "./new-tab.ts";
 import { goTo, replaceAddress } from "./back-layers.ts";
+import { LeaveMarkedChat, useMarkUnreadItem } from "./mark-unread.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
 
 interface AssistantViewProps {
@@ -217,6 +218,7 @@ export function AssistantView({
     clearAction();
   }, [newChatRequest, clearAction]);
 
+  /** Leaves a chat that the person marked as unread for the New chat page, so the page does not see it again (#1101). */
   const openNewChat = async (chat: SessionRecord): Promise<void> => {
     await onChanged();
     // The chat takes the place of the New chat page, so Back does not open the page again.
@@ -238,143 +240,156 @@ export function AssistantView({
     onNavigate();
   };
 
+  /**
+   * Leaves a chat that the person marks as unread for the New chat page (#1101). The page marks what it shows as
+   * seen, so it must not show the marked answer. A new entry, as New chat makes, also takes the place of each open
+   * layer, such as the list on a phone. Back to the chat then reads it again.
+   */
+  const leaveMarked = (sessionId: string): void => {
+    if (selected === undefined) return;
+    if (sessionId !== selected.id && (branch.id === null || !showsLastTurn(tree, branch.id, sessionId))) return;
+    newChat();
+  };
+
   return (
-    <div className="layout">
-      <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
-        <div className="sidebar-list" ref={listRef}>
-          <div className="chat-list-header">
-            {showArchived ? (
-              <>
-                <BackButton label="Back to the chats" onClick={() => showList(false)} />
-                <h2>
-                  <Icon name="archive" /> Archived
-                </h2>
-              </>
-            ) : (
-              <>
-                <h2>Chats</h2>
-                {/* "New" is short for the header; the name says what it makes. */}
-                <button className="primary wide-only" aria-label="New chat" onClick={newChat}>
-                  <Icon name="plus" /> New
-                </button>
-              </>
+    <LeaveMarkedChat.Provider value={leaveMarked}>
+      <div className="layout">
+        <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
+          <div className="sidebar-list" ref={listRef}>
+            <div className="chat-list-header">
+              {showArchived ? (
+                <>
+                  <BackButton label="Back to the chats" onClick={() => showList(false)} />
+                  <h2>
+                    <Icon name="archive" /> Archived
+                  </h2>
+                </>
+              ) : (
+                <>
+                  <h2>Chats</h2>
+                  {/* "New" is short for the header; the name says what it makes. */}
+                  <button className="primary wide-only" aria-label="New chat" onClick={newChat}>
+                    <Icon name="plus" /> New
+                  </button>
+                </>
+              )}
+            </div>
+            <label className="chat-search">
+              <Icon name="search" />
+              <input
+                type="search"
+                aria-label="Search chats"
+                placeholder="Search chats"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </label>
+            {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
+            {showArchived && chats.length === 0 && <span className="chip">No archived chat.</span>}
+            {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
+              <section key={group} className="chat-group" aria-label={group}>
+                <h3>{group}</h3>
+                {inGroup.map((chat) => (
+                  <ChatItem
+                    key={chat.id}
+                    chat={chat}
+                    time={chatTime(timeOf(chat), now)}
+                    state={stateOf(chat)}
+                    isSelected={chat.id === selected?.id}
+                    onSelect={() => select(chat.id)}
+                    onAction={(action) => select(chat.id, action)}
+                    archiveItem={archiveItem(chat)}
+                    forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
+                      const state = chatState([session], isRunning, approvalSessionIds);
+                      return {
+                        session,
+                        name,
+                        preview: chatPreview(session, state),
+                        state,
+                        isShown: chat.id === selected?.id && session.id === branch.id,
+                      };
+                    })}
+                    forksOpen={expandedIds.has(chat.id)}
+                    onToggleForks={() => toggleForks(chat.id)}
+                    onSelectFork={(branchId) => selectBranch(chat.id, branchId)}
+                  />
+                ))}
+              </section>
+            ))}
+            {!showArchived && archivedCount > 0 && (
+              <button className="ghost archived-link" onClick={() => showList(true)}>
+                {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
+                <Icon name="archive" /> Archived ({archivedCount})
+              </button>
             )}
           </div>
-          <label className="chat-search">
-            <Icon name="search" />
-            <input
-              type="search"
-              aria-label="Search chats"
-              placeholder="Search chats"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </label>
-          {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
-          {showArchived && chats.length === 0 && <span className="chip">No archived chat.</span>}
-          {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
-            <section key={group} className="chat-group" aria-label={group}>
-              <h3>{group}</h3>
-              {inGroup.map((chat) => (
-                <ChatItem
-                  key={chat.id}
-                  chat={chat}
-                  time={chatTime(timeOf(chat), now)}
-                  state={stateOf(chat)}
-                  isSelected={chat.id === selected?.id}
-                  onSelect={() => select(chat.id)}
-                  onAction={(action) => select(chat.id, action)}
-                  archiveItem={archiveItem(chat)}
-                  forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
-                    const state = chatState([session], isRunning, approvalSessionIds);
-                    return {
-                      session,
-                      name,
-                      preview: chatPreview(session, state),
-                      state,
-                      isShown: chat.id === selected?.id && session.id === branch.id,
-                    };
-                  })}
-                  forksOpen={expandedIds.has(chat.id)}
-                  onToggleForks={() => toggleForks(chat.id)}
-                  onSelectFork={(branchId) => selectBranch(chat.id, branchId)}
-                />
-              ))}
-            </section>
-          ))}
-          {!showArchived && archivedCount > 0 && (
-            <button className="ghost archived-link" onClick={() => showList(true)}>
-              {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
-              <Icon name="archive" /> Archived ({archivedCount})
-            </button>
+          {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
+          {!showArchived && (
+            <div className="chat-list-footer phone-only">
+              <button className="primary large" onClick={newChat}>
+                <Icon name="plus" /> New chat
+              </button>
+            </div>
           )}
-        </div>
-        {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
-        {!showArchived && (
-          <div className="chat-list-footer phone-only">
-            <button className="primary large" onClick={newChat}>
-              <Icon name="plus" /> New chat
-            </button>
-          </div>
-        )}
-      </nav>
-      {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
-      <main className="main">
-        <BusyProjects.Provider value={busy}>
-          {selected === undefined ? (
-            <NewChatDraft
-              page={{ kind: "new-chat", onShowList, listHasUnread }}
-              blocker={blocker}
-              voiceNotes={voiceNotes}
-              onStarted={openNewChat}
-            />
-          ) : (
-            <>
-              <ChatHeader
-                key={actionRequest.headerProps(selected.id).key}
-                startWith={actionRequest.headerProps(selected.id).startWith}
-                chat={selected}
-                details={chat}
-                subtitle={chatSubtitle(
-                  selected,
-                  tree.some((session) => isRunning(session.id)),
-                )}
-                onShowList={onShowList}
-                listHasUnread={listHasUnread}
-                onArchived={afterArchive}
-                panelShown={panelShown}
-                extra={<BranchesButton tree={tree} shown={branch} states={states} />}
-                onTogglePanel={togglePanel}
-                onChanged={onChanged}
+        </nav>
+        {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
+        <main className="main">
+          <BusyProjects.Provider value={busy}>
+            {selected === undefined ? (
+              <NewChatDraft
+                page={{ kind: "new-chat", onShowList, listHasUnread }}
+                blocker={blocker}
+                voiceNotes={voiceNotes}
+                onStarted={openNewChat}
               />
-              {openedTree === null ? (
-                <ChatSkeleton />
-              ) : (
-                <Conversation
-                  root={tree[0] ?? { ...selected, turns: [] }}
-                  tree={tree}
-                  shown={branch}
-                  sessions={sessions}
-                  live={live}
+            ) : (
+              <>
+                <ChatHeader
+                  key={actionRequest.headerProps(selected.id).key}
+                  startWith={actionRequest.headerProps(selected.id).startWith}
+                  chat={selected}
+                  details={chat}
+                  subtitle={chatSubtitle(
+                    selected,
+                    tree.some((session) => isRunning(session.id)),
+                  )}
+                  onShowList={onShowList}
+                  listHasUnread={listHasUnread}
+                  onArchived={afterArchive}
+                  panelShown={panelShown}
+                  extra={<BranchesButton tree={tree} shown={branch} states={states} />}
+                  onTogglePanel={togglePanel}
                   onChanged={onChanged}
-                  approvals={approvals}
-                  blocker={blocker}
-                  voiceNotes={voiceNotes}
                 />
-              )}
-            </>
-          )}
-        </BusyProjects.Provider>
-      </main>
-      {/* The inspector is about one chat, so a new chat draft has none. */}
-      {selected !== undefined &&
-        (openedTree === null ? (
-          // A panel that slides in skips its skeleton, so it slides only once.
-          panelShown && !panelEnters && <ChatPanelLoading />
-        ) : (
-          <ChatPanel shown={panelShown} enters={panelEnters} {...chat} />
-        ))}
-    </div>
+                {openedTree === null ? (
+                  <ChatSkeleton />
+                ) : (
+                  <Conversation
+                    root={tree[0] ?? { ...selected, turns: [] }}
+                    tree={tree}
+                    shown={branch}
+                    sessions={sessions}
+                    live={live}
+                    onChanged={onChanged}
+                    approvals={approvals}
+                    blocker={blocker}
+                    voiceNotes={voiceNotes}
+                  />
+                )}
+              </>
+            )}
+          </BusyProjects.Provider>
+        </main>
+        {/* The inspector is about one chat, so a new chat draft has none. */}
+        {selected !== undefined &&
+          (openedTree === null ? (
+            // A panel that slides in skips its skeleton, so it slides only once.
+            panelShown && !panelEnters && <ChatPanelLoading />
+          ) : (
+            <ChatPanel shown={panelShown} enters={panelEnters} {...chat} />
+          ))}
+      </div>
+    </LeaveMarkedChat.Provider>
   );
 }
 
@@ -419,7 +434,11 @@ function ChatItem({
   readonly onToggleForks: () => void;
   readonly onSelectFork: (branchId: string) => void;
 }): ReactElement {
-  const { props, menu } = useContextMenu(chatListItems(onSelect, onAction, archiveItem), `Actions of “${chat.title}”`);
+  const markUnreadItem = useMarkUnreadItem();
+  const { props, menu } = useContextMenu(
+    chatListItems(onSelect, onAction, [...markUnreadItem(chat), archiveItem]),
+    `Actions of “${chat.title}”`,
+  );
   return (
     <>
       <button

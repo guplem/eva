@@ -15,12 +15,14 @@ import {
   type ForkPoint,
   type MapLine,
   type MapRow,
+  type UnseenFacts,
 } from "./branch-path.ts";
 import { DeleteQuestion, RenameDialog, useAutoRename, useIsPhone } from "./ChatHeader.tsx";
 import { Dialog } from "./Dialog.tsx";
 import { Icon } from "./icons.tsx";
 import { latestId, type LiveState } from "./live-state.ts";
 import { useContextMenu, type ContextMenuProps, type MenuItem } from "./Menu.tsx";
+import { useMarkUnreadItem } from "./mark-unread.ts";
 import { branchRowActions, type BranchRowAction } from "./answer-actions.ts";
 import type { AnswerActions } from "./AnswerActions.tsx";
 import { useCopyToast } from "./MessageMenu.tsx";
@@ -235,14 +237,14 @@ function scrollToEnd(row: HTMLElement): void {
 }
 
 /**
- * The context menu of a branch: Open when the place gives it, then Rename, Rename automatically and Delete
- * fork (issues 637, 647, 996).
+ * The context menu of a branch: Open when the place gives it, then Rename, Rename automatically, Mark as unread
+ * and Delete fork (issues 637, 647, 996, 1101).
  * A row of the branch map puts the actions of its turn first (#990): `turnItems` then gives them,
  * and each part gets a heading. Spread `props` on the fork's element, and draw `parts` next to it.
  * With no fork, the element keeps the browser's menu, as it has no Eva action.
  */
 export function useForkMenu(
-  fork: ChatFacts | undefined,
+  fork: (ChatFacts & UnseenFacts) | undefined,
   forkName: string,
   onOpen?: () => void,
   turnItems?: readonly MenuItem[],
@@ -257,10 +259,12 @@ export function useForkMenu(
   };
   // The fork_named event reloads the list, on this page and on every other one.
   const autoRename = useAutoRename(() => Promise.resolve());
+  const markUnreadItem = useMarkUnreadItem();
   const forkItems: MenuItem[] = [
     ...(onOpen === undefined ? [] : [{ label: "Open", icon: "chat" as const, onChoose: onOpen }]),
     { label: "Rename", icon: "pen", onChoose: () => setAsking("rename") },
     ...(fork === undefined ? [] : [autoRename.item(fork.id, "fork")]),
+    ...(fork === undefined ? [] : markUnreadItem(fork)),
     { label: "Delete fork", icon: "trash", danger: true, onChoose: () => setAsking("delete") },
   ];
   const items: MenuItem[] =
@@ -359,7 +363,12 @@ function BranchRow({
       group: row.label,
       ...(position === 0 ? { groupIcon: "chat" as const } : {}),
     }));
-  const { props: menuProps, parts } = useForkMenu(fork, forkName, undefined, turnItems);
+  const { props: menuProps, parts } = useForkMenu(
+    fork === undefined ? undefined : { ...fork, turnCount: fork.turns.length },
+    forkName,
+    undefined,
+    turnItems,
+  );
   return (
     <li>
       {parts}

@@ -103,7 +103,10 @@ export type EngineEventPayload =
   | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
   /** The person gave a fork its own name (issue 637). Only the web app shows it. */
   | { readonly kind: "fork_named"; readonly name: string }
-  /** The person saw the first `seenTurns` turns of the chat in the web app (issue 381). */
+  /**
+   * The person saw the first `seenTurns` turns of the chat in the web app (issue 381). The count goes back when
+   * the person marks the chat as unread (#1101).
+   */
   | { readonly kind: "session_seen"; readonly seenTurns: number }
   /** The person archived the chat, or brought it back to the chat list (issue 388). */
   | { readonly kind: "session_archived"; readonly archived: boolean }

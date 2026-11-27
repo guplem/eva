@@ -1150,6 +1150,31 @@ describe("seen turns (issue 381)", () => {
     expect(events.filter((event) => event.kind === "session_seen")).toHaveLength(1);
   });
 
+  test("a chat marked as unread has its last answer unseen again, on every front end (#1101)", async () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    manager.markSeen(sessionId, 2);
+    events = [];
+    expect(manager.markUnread(sessionId).seenTurns).toBe(1);
+    expect(events.filter((event) => event.kind === "session_seen")).toMatchObject([
+      { kind: "session_seen", sessionId, seenTurns: 1 },
+    ]);
+    expect(createManager(new FakeEngine()).get(sessionId).seenTurns).toBe(1);
+    // It is unread already: nothing changes, and no front end hears of it.
+    expect(manager.markUnread(sessionId).seenTurns).toBe(1);
+    expect(events.filter((event) => event.kind === "session_seen")).toHaveLength(1);
+  });
+
+  test("a chat with no turn has nothing to mark as unread", () => {
+    const manager = createManager(new FakeEngine());
+    const sessionId = newAssistantSession(manager);
+    events = [];
+    expect(manager.markUnread(sessionId).seenTurns).toBe(0);
+    expect(events.filter((event) => event.kind === "session_seen")).toHaveLength(0);
+  });
+
   test("an answer to a Telegram message is seen, because Telegram showed it", async () => {
     const manager = createManager(new FakeEngine());
     const sessionId = newAssistantSession(manager);

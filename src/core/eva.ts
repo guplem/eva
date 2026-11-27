@@ -3139,6 +3139,8 @@ export class Eva {
         if (relayed.get(file)?.has(key) === true) continue;
         // Windows sends its gap as news now, so "The shell stays out of the vault" would be false (#825).
         if (key.endsWith(":shell_wall")) this.alerts.dismiss(key);
+        // A read notice about plain versions is no fix: the remote still holds them, so "resolved" would be false (#1110).
+        else if (key.includes(":vault_plain_history:")) this.alerts.dismiss(key);
         else this.alerts.report(key, null);
       }
     this.relayed = relayed;

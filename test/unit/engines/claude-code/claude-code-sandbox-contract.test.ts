@@ -146,6 +146,31 @@ describe("the sandbox of a Claude Code Project chat stays the same (#759)", () =
     expect(JSON.stringify(sandboxOf(cloneWall(false)))).toBe(JSON.stringify(expectedSandbox(false)));
   });
 
+  test("in a chat in the project folder, which reads the files sent to its project", () => {
+    const folders = engineFolders(paths);
+    const received = join(vault, ".eva", "scratch", "received", "2025-03-02-1015-example-app");
+    const roots = projectWallRoots(paths, vault, ["/srv/projects"]);
+    const wall: FileWall = { area: project, ...roots, socketFilter: true, readOnly: [received] };
+    const filesystem = (sandboxOf(wall) as { filesystem: unknown }).filesystem;
+    expect(JSON.stringify(filesystem)).toBe(
+      JSON.stringify({
+        denyRead: [vault, "/srv/projects", paths.root, userspaceFolders(homedir()).state],
+        allowRead: [
+          project,
+          received,
+          folders.git,
+          folders.gh,
+          join(paths.root, "bin"),
+          join(folders.claude, "shell-snapshots"),
+          join(folders.claude, "session-env"),
+          join(folders.claude, "skills"),
+          join(folders.claude, "plugins"),
+        ],
+        allowWrite: [project, tmpdir(), join(homedir(), ".npm", "_cacache")],
+      }),
+    );
+  });
+
   test("the package caches move to the temporary folder", () => {
     const folder = join(tmpdir(), "eva-tool-caches");
     expect(optionsOf(cloneWall(true)).env).toMatchObject({

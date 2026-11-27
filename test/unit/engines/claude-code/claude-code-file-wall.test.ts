@@ -245,6 +245,7 @@ describe("Claude Code's own folder for the chat (review of #711)", () => {
     for (const name of ["shell-snapshots", "session-env", "skills", "plugins"])
       expect(readable).toContain(join(config, name));
     expect(readable.some((folder) => folder.startsWith(join(config, "projects")))).toBe(false);
+    expect(readable.some((folder) => join(config, ".credentials.json").startsWith(folder))).toBe(false);
     expect(claudeShellFolders(null)).toEqual([]);
   });
 });

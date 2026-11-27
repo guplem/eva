@@ -380,6 +380,7 @@ A request from Eva's own computer can come from any program there, so only the t
   - Eva syncs the vault around each of its turns, so a file that it writes reaches your other computers. Its hooks and Claude Code's own memory are off: it keeps its memory in its folder.
   - It has no clones and no repository. A fork or a retry stays in its folder. A retry can undo the files that the chat changed, as in a chat with Eva. The web app shows no `@` file picker in its chat.
   - When Eva gives it work and names a vault file, the chat gets a copy of the file for that turn, in `.mentions/` of its folder. A file in its own folder keeps its path from the folder, with no copy. Eva removes the copies after the turn, and the sync never saves one.
+  - The `.mentions/` folder of a project folder belongs to Eva. She empties it at the start of each turn, and the sync never saves it. Keep no file of your own there.
   - A file that you send to its chat lands in `.eva/scratch/received/<project-id>/`, not in the project folder. The chat can read it, but not change it. Ask the chat to copy a file worth keeping into the project folder: the copy in `.eva/scratch/` goes after a week.
   - A specialist must be in the vault's `Projects/` folder. The type changes in **Details**: to general at any time, to software only while the project has no chats and no clones. The project page shows a warning for a specialist outside the vault, with `repos`, or with a clone on this computer.
   - In Telegram, the chat list names it "Specialist".

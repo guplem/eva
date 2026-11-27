@@ -168,6 +168,18 @@ export function FilesView(): ReactElement {
     const renamed = (await api.renameFile(path, name)).path;
     if (renamed === path) return;
     moveDrafts(path, renamed);
+    openMoved(renamed);
+  };
+
+  const encrypt = async (): Promise<void> => {
+    const encrypted = (await api.encryptFile(path)).path;
+    // An unsaved edit is plain text in this tab, with no mark of an encrypted file: it must not follow.
+    keepDraft(path, null, "");
+    openMoved(encrypted);
+  };
+
+  /** Opens the new path of the open entry, after a rename or an encryption. */
+  const openMoved = (renamed: string): void => {
     // A renamed folder keeps the width that the person gave it.
     setWidths(
       (current) =>
@@ -248,6 +260,12 @@ export function FilesView(): ReactElement {
               <Icon name="pen" />
             </button>
           )}
+          {naming === null &&
+            last?.state === "shown" &&
+            last.answer.kind !== "folder" &&
+            last.answer.kind !== "encrypted" && (
+              <EncryptButton key={`encrypt:${path}`} name={crumbs[crumbs.length - 1]?.name ?? ""} onEncrypt={encrypt} />
+            )}
           {naming === null && shownPath !== null && shownPath !== "" && (
             <StarButton key={`star:${shownPath}`} path={shownPath} favorites={favorites} onChange={setFavorites} />
           )}
@@ -854,6 +872,48 @@ function StarButton({
       onClick={() => void toggle()}
     >
       <Icon name="star" />
+    </button>
+  );
+}
+
+/**
+ * Encrypts the open file (#1108). The core refuses a file that it keeps plain, with the reason, so
+ * the button shows for every plain file.
+ */
+function EncryptButton({
+  name,
+  onEncrypt,
+}: {
+  readonly name: string;
+  readonly onEncrypt: () => Promise<void>;
+}): ReactElement {
+  const showError = useShowError();
+  const [busy, setBusy] = useState(false);
+  const encrypt = async (): Promise<void> => {
+    if (
+      !window.confirm(
+        `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it. Its old versions stay in the git history.`,
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await onEncrypt();
+    } catch (caught) {
+      showError(caught);
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      className="files-encrypt icon-button"
+      aria-label={`Encrypt ${name}`}
+      data-tooltip="Encrypt"
+      aria-busy={busy}
+      disabled={busy}
+      onClick={() => void encrypt()}
+    >
+      {busy ? <ButtonSpinner /> : <Icon name="lock" />}
     </button>
   );
 }

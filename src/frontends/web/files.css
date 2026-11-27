@@ -650,8 +650,9 @@ a.files-entry[aria-current="true"] {
   }
 }
 
-/* The rename button keeps its size, so a long path wraps instead. */
-.files-rename {
+/* The rename and encrypt buttons keep their size, so a long path wraps instead. */
+.files-rename,
+.files-encrypt {
   flex-shrink: 0;
   color: var(--ink);
 }

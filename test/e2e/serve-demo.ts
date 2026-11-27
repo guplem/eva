@@ -121,6 +121,9 @@ const pngStart = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 for (const run of ["desktop", "phone"])
   for (const name of [`Private/${run}-photo.png.eva-secret`, `Private/${run}-photo.png.secrets`])
     sandbox.write(vault, name, new TextDecoder().decode(encryptFile(pngStart, vaultKey, name)));
+// A plain file that the Encrypt action of the Files page encrypts (#1108).
+for (const run of ["desktop", "phone"])
+  sandbox.write(vault, `Private/${run}-plan.md`, "A plan that only I may read.\n");
 // The message box menu shows the examples that each vault gets (issue 661).
 for (const path of [".eva/settings/text-actions/Polish.md", ".eva/settings/saved-prompts/Summary.md"]) {
   sandbox.write(vault, path, templateParts[path] ?? "");

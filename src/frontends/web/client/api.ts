@@ -414,6 +414,9 @@ export const api = {
       await request<{ plain: boolean | null }>(
         "GET",
         `/api/vault/secrets/plain-history?path=${encodeURIComponent(path)}`,
+        undefined,
+        // The check waits behind a running sync: the question shows its neutral line instead (#1110).
+        { limit: { ms: 5_000, message: "Eva could not read the git history in 5 seconds." } },
       )
     ).plain,
   /** Gives a file its `.eva-secret` name and encrypts it (#1108). Answers the new path. */

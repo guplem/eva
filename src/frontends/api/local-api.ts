@@ -1716,10 +1716,10 @@ async function secretsRoute(request: Request, url: URL, eva: Eva, deviceToken: s
     await encryption.changePassword(deviceToken, secret, passwordSchema.parse(await request.json()).password);
     return noStore(encryption.status(deviceToken, null));
   }
-  // A file that the person encrypts from the Files page: it commits and pushes, so it needs no idle limit (#1108).
   // The Encrypt question asks first, so it can say that old plain versions stay on the remote (#1110).
   if (method === "GET" && path === "/api/vault/secrets/plain-history")
     return noStore(await eva.plainHistoryOf(url.searchParams.get("path") ?? ""));
+  // A file that the person encrypts from the Files page: it commits and pushes, so it needs no idle limit (#1108).
   if (method === "POST" && path === "/api/vault/secrets/encrypt-file")
     return noStore(await eva.encryptVaultFile(vaultFilePathSchema.parse(await request.json()).path));
   // Only an unlocked device decrypts: the token alone gets no key (#1109).

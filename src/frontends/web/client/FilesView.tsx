@@ -96,7 +96,8 @@ export function FilesView(): ReactElement {
   const [asking, setAsking] = useState<Asking | null>(null);
   /** A download from a menu. The key starts a new one for the same path. */
   const [downloading, setDownloading] = useState<{ path: string; folder: boolean; key: number } | null>(null);
-  const [encrypting, setEncrypting] = useState(false);
+  /** The wait of an action from a menu, such as "Deleting…". The menu closed, so a toast shows it. */
+  const [working, setWorking] = useState<string | null>(null);
   /** A short message, such as "Copied.". The count starts the toast again for the same message. */
   const [notice, setNotice] = useState<{ text: string; count: number } | null>(null);
   /** A new file opens in the editor, so the person types at once. */
@@ -241,7 +242,7 @@ export function FilesView(): ReactElement {
     const unsaved = draftOf(entryPath) === undefined ? "" : " Your unsaved changes are lost.";
     const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it.${history}${unsaved}`;
     if (!window.confirm(question)) return;
-    setEncrypting(true);
+    setWorking("Encrypting and saving the file…");
     try {
       const encrypted = (await api.encryptFile(entryPath)).path;
       // An unsaved edit is plain text with no mark of an encrypted file. The confirmation said that it goes.
@@ -250,7 +251,7 @@ export function FilesView(): ReactElement {
     } catch (caught) {
       showError(caught);
     } finally {
-      setEncrypting(false);
+      setWorking(null);
     }
   };
 
@@ -259,11 +260,14 @@ export function FilesView(): ReactElement {
     const unsaved = hasDraftUnder(entryPath);
     const question = `Delete ${what}? The vault's history keeps the last saved version.${unsaved ? " Your unsaved changes are lost." : ""}`;
     if (!window.confirm(question)) return;
+    setWorking(`Deleting ${name}…`);
     try {
       await api.deleteFile(entryPath);
     } catch (caught) {
       showError(caught);
       return;
+    } finally {
+      setWorking(null);
     }
     dropDrafts(entryPath);
     setAnswers((current) => new Map([...current].filter(([known]) => !isUnder(known, entryPath))));
@@ -279,13 +283,19 @@ export function FilesView(): ReactElement {
     newEntry: (folder, kind) => setAsking({ kind: "new", folder, entry: kind }),
     rename: (entryPath, name) => setAsking({ kind: "rename", path: entryPath, name }),
     duplicate: (entryPath) => {
-      api.duplicateFile(entryPath).then(
-        (copy) => {
-          read(parentOf(copy.path) ?? "");
-          notify(`Made ${copy.path.split("/").pop() ?? copy.path}.`);
-        },
-        (caught: unknown) => showError(caught),
-      );
+      // A second tap while a copy runs would make a second copy.
+      if (working !== null) return;
+      setWorking("Making a copy…");
+      api
+        .duplicateFile(entryPath)
+        .then(
+          (copy) => {
+            read(parentOf(copy.path) ?? "");
+            notify(`Made ${copy.path.split("/").pop() ?? copy.path}.`);
+          },
+          (caught: unknown) => showError(caught),
+        )
+        .finally(() => setWorking(null));
     },
     remove: (entryPath, name, folder) => void remove(entryPath, name, folder),
     copy: (text) => {
@@ -406,9 +416,9 @@ export function FilesView(): ReactElement {
             onEnd={() => setDownloading(null)}
           />
         )}
-        {encrypting && (
-          <Toast message="Encrypting and saving the file…" role={null}>
-            <ProgressBar label="Encrypting and saving the file…" />
+        {working !== null && (
+          <Toast message={working} role={null}>
+            <ProgressBar label={working} />
           </Toast>
         )}
         {notice !== null && <Toast key={notice.count} message={notice.text} onClose={() => setNotice(null)} />}

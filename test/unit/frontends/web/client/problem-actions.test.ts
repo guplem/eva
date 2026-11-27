@@ -138,3 +138,9 @@ describe("withPendingHides", () => {
     ]);
   });
 });
+
+describe("the notice about plain versions on the vault remote (#1110)", () => {
+  test("has no button: only a new key or password in the file helps", () => {
+    expect(problemAction("vault_plain_history:deploy/id.key", "ok")).toBeNull();
+  });
+});

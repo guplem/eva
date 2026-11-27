@@ -90,3 +90,11 @@ describe("entryState", () => {
     expect(entryState(entry(1, "unclean_exit", "warn"), new Set())).toBeNull();
   });
 });
+
+describe("the notice about plain versions on the vault remote (#1110)", () => {
+  test("has its own topic, and a read notice never shows as solved, here or relayed from another computer", () => {
+    expect(notificationTopic("vault_plain_history:deploy/id.key").title).toBe("Plain versions on the vault remote");
+    expect(entryState(entry(1, "vault_plain_history:deploy/id.key", "warn"), new Set())).toBeNull();
+    expect(entryState(entry(1, "machine:laptop:vault_plain_history:deploy/id.key", "warn"), new Set())).toBeNull();
+  });
+});

@@ -10,6 +10,7 @@ import { failureReason, type ProcessRunner } from "../../shared/process-runner.t
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { bytesContainSecretPattern } from "../../shared/redaction.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
+import { encryptedState } from "./vault-crypto.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
 import { keepsOldScratch, scratchFolders } from "../files/vault-files.ts";
 import { upgradeBranchVersion } from "./vault-structure.ts";
@@ -139,6 +140,8 @@ const evaIdentity: Readonly<Record<string, string>> = {
 const maxPushAttempts = 3;
 /** Files bigger than this are not scanned for secrets: binaries, archives, exports. */
 export const maxScannedFileBytes = 1_000_000;
+/** The commits of one path that the check of the remote history reads, so a long history stays fast (#1110). */
+const maxHistoryCommits = 50;
 /** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
 const maxCommittedFileBytes = 50 * 1024 * 1024;
 /** A note conflict shows each version only up to this size: the page compares them line by line. */
@@ -297,6 +300,50 @@ export class VaultSync {
   /** True for a file that the secret list matches and that is not encrypted: it must never reach the remote. */
   isPlainSecret(relativePath: string, bytes: Uint8Array): boolean {
     return this.options.secrets?.isPlainSecret(relativePath, bytes) ?? false;
+  }
+
+  /**
+   * The paths whose history on the remote branch holds a plain version (#1110). A version only in
+   * unpushed commits does not count: the push check takes it out first. Null when git cannot say.
+   */
+  plainOnRemote(paths: readonly string[]): Promise<string[] | null> {
+    return this.serialize(async () => {
+      const current = (await this.git(["rev-parse", "--abbrev-ref", "HEAD"], localTimeoutMs)).stdout.trim();
+      const branch = await this.defaultBranch(current);
+      const known = await this.git(["rev-parse", "--verify", "--quiet", `origin/${branch}`], localTimeoutMs);
+      // A timeout or a failed start is no answer: the check must not say "no" when it cannot see.
+      if (known.exitCode < 0) return null;
+      if (known.exitCode !== 0) return [];
+      const found: string[] = [];
+      for (const path of paths) {
+        const log = await this.git(
+          ["log", "--full-history", "--format=%H", "-n", String(maxHistoryCommits), `origin/${branch}`, "--", path],
+          localTimeoutMs,
+        );
+        if (log.exitCode !== 0) return null;
+        for (const commit of log.stdout.split("\n").filter((line) => line !== "")) {
+          const listed = await this.git(["ls-tree", "-l", commit, "--", path], localTimeoutMs);
+          if (listed.exitCode !== 0) return null;
+          // A commit that deletes the path holds no version of it. A line is "<mode> <type> <id> <size>\t<path>".
+          const [, , blob = "", size = "0"] = listed.stdout.trim().split(/\s+/);
+          if (blob === "") continue;
+          // A large version is not read whole while the sync waits: it counts as plain, the safe side.
+          if (Number(size) > maxScannedFileBytes) {
+            found.push(path);
+            break;
+          }
+          const shown = await this.git(["cat-file", "blob", blob], localTimeoutMs);
+          if (shown.exitCode !== 0) return null;
+          // An empty version holds no secret.
+          if (shown.stdout.trim() === "") continue;
+          if (encryptedState(new TextEncoder().encode(shown.stdout)) === "plain") {
+            found.push(path);
+            break;
+          }
+        }
+      }
+      return found;
+    });
   }
 
   /** The branch that Eva syncs. */

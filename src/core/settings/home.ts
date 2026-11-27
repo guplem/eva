@@ -111,6 +111,8 @@ export interface HomePaths {
   readonly updatesState: string;
   /** The hub's memory of the vault structure notices: the version of the last alert and prompt line (#773). */
   readonly vaultStructureState: string;
+  /** This computer's memory of the notices about plain versions on the vault remote (#1110). */
+  readonly plainHistoryState: string;
   /** The code that pairs the first Telegram chat; present only while no chat is paired. */
   readonly telegramPairingCode: string;
   /** Present while Eva runs; a start that finds it knows the last run ended uncleanly. */
@@ -156,6 +158,7 @@ export function homePaths(root: string): HomePaths {
     notificationHistory: join(stateFolder, "notification-history.json"),
     updatesState: join(stateFolder, "updates.json"),
     vaultStructureState: join(stateFolder, "vault-structure.json"),
+    plainHistoryState: join(stateFolder, "plain-history.json"),
     telegramPairingCode: join(stateFolder, "telegram-pairing-code.txt"),
     runningMarker: join(stateFolder, "running"),
     devices: join(stateFolder, "devices.json"),

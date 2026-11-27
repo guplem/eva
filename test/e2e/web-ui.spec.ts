@@ -8260,6 +8260,24 @@ test("Files: Encrypt works on an image too, and warns about an unsaved edit of a
   await expect(page).toHaveURL(/draft\.md$/);
 });
 
+test("Files: the Encrypt question says when old plain versions stay on the vault remote (#1110)", async ({
+  page,
+}, testInfo) => {
+  const name = `${testInfo.project.name}-draft.md`;
+  await page.route("**/api/vault/secrets/plain-history*", (route) => route.fulfill({ json: { plain: true } }));
+  await logIn(page);
+  await page.goto(`/#/files/Private/${name}`);
+  let question = "";
+  page.once("dialog", (dialog) => {
+    question = dialog.message();
+    void dialog.dismiss();
+  });
+  await page.getByRole("button", { name: `Encrypt ${name}` }).click();
+  await expect.poll(() => question).toContain("Its old plain versions stay on the vault remote");
+  expect(question).toContain("change each key or password in it");
+  await expect(page).toHaveURL(/draft\.md$/);
+});
+
 test("Files: Encrypt refuses a file that Eva keeps plain, and says why (#1108)", async ({ page }) => {
   await logIn(page);
   await page.goto("/#/files/Projects/2025-03-02-1015-example-app/AGENTS.md");

@@ -61,6 +61,11 @@ const topics: Readonly<Record<string, NotificationTopic>> = {
     meaning:
       "The vault structure is how the folders and notes of your vault are organized. An Eva update never changes it by itself. When a new structure comes, Eva warns you until you mark it as read or update the vault. Press Open Settings to see what changes, then Update the vault, and Eva moves your notes in a chat: she asks every question first, keeps your own changes, and you can go back.",
   },
+  vault_plain_history: {
+    title: "Plain versions on the vault remote",
+    meaning:
+      "Eva encrypted a file, but the git history of the vault remote still holds its old plain versions. Eva never rewrites the history, so anyone who can read the remote can read them. Change each key or password that the file holds. To close the notice, press Mark as read on it under Needs you.",
+  },
   vault_ahead: {
     title: "Vault from a newer Eva",
     meaning:
@@ -131,6 +136,8 @@ export function sameProblemEntries(entries: readonly HistoryEntry[], key: string
  */
 export function entryState(entry: HistoryEntry, openKeys: ReadonlySet<string>): "open" | "solved" | null {
   if (entry.level === "news" || oneOffKinds.has(kindOf(entry.key)) || entry.key === "vault_structure") return null;
+  // A read notice about plain versions is no fix: the old versions stay on the remote (#1110).
+  if (entry.key.startsWith("vault_plain_history:") || entry.key.includes(":vault_plain_history:")) return null;
   if (openKeys.has(entry.key)) return "open";
   // A Windows gap that an older Eva kept open is now news, so its old entry is not solved (#825).
   return entry.key.endsWith("shell_wall") ? null : "solved";

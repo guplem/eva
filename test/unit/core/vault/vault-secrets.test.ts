@@ -250,3 +250,27 @@ describe("the fixed pattern *.eva-secret (#1108)", () => {
     expect(applied).not.toContain("*.eva-secret");
   });
 });
+
+describe("the files that a round encrypts (#1110)", () => {
+  test("are handed over once, so Eva can check their history on the remote", async () => {
+    await withKey();
+    write("deploy/id.key", "KEY\n");
+    write("notes.md", "plain\n");
+    const vaultSecrets = secrets();
+    const prepare = vaultSecrets.round();
+    prepare("deploy/id.key");
+    prepare("notes.md");
+    expect(vaultSecrets.takeNewlyEncrypted()).toEqual(["deploy/id.key"]);
+    expect(vaultSecrets.takeNewlyEncrypted()).toEqual([]);
+  });
+
+  test("a file that is encrypted already is not new", async () => {
+    await withKey();
+    write("deploy/id.key", "KEY\n");
+    const vaultSecrets = secrets();
+    vaultSecrets.prepare("deploy/id.key");
+    vaultSecrets.takeNewlyEncrypted();
+    vaultSecrets.prepare("deploy/id.key");
+    expect(vaultSecrets.takeNewlyEncrypted()).toEqual([]);
+  });
+});

@@ -305,3 +305,35 @@ describe("VaultUpkeep alerts for a save that fails while pulls work (#631)", () 
     expect(state.reports.at(-1)).toMatchObject({ level: "error" });
   });
 });
+
+describe("VaultUpkeep and the remote history (#1110)", () => {
+  test("a vault sync that cannot say passes null on, so the files wait for the next round", async () => {
+    const now = (): Date => new Date(2026, 9, 14, 12, 0);
+    const vaultSync = new VaultSync({
+      vaultPath: vault,
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      now,
+    });
+    vaultSync.plainOnRemote = () => Promise.resolve(null);
+    const upkeep = new VaultUpkeep({
+      vaultSync,
+      now,
+      syncEnabled: () => true,
+      vaultTurnRunning: () => false,
+      reportProblem: () => undefined,
+    });
+    expect(await upkeep.plainOnRemote(["plan.md"])).toBeNull();
+  });
+
+  test("with no vault sync, no path has a plain version on a remote", async () => {
+    const upkeep = new VaultUpkeep({
+      vaultSync: null,
+      now: () => new Date(2026, 9, 14, 12, 0),
+      syncEnabled: () => true,
+      vaultTurnRunning: () => false,
+      reportProblem: () => undefined,
+    });
+    expect(await upkeep.plainOnRemote(["plan.md"])).toEqual([]);
+  });
+});

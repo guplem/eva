@@ -951,10 +951,21 @@ function EncryptButton({
   const showError = useShowError();
   const [busy, setBusy] = useState(false);
   const encrypt = async (): Promise<void> => {
-    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
-    const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it. Its old versions stay in the git history.${unsaved}`;
-    if (!window.confirm(question)) return;
     setBusy(true);
+    // The question says what the git history keeps before the change, not after it (#1110).
+    const plain = await api.plainHistory(path).catch(() => null);
+    const history =
+      plain === true
+        ? " Its old plain versions stay on the vault remote: change each key or password in it."
+        : plain === false
+          ? ""
+          : " Its old versions stay in the git history.";
+    const unsaved = draftOf(path) === undefined ? "" : " Your unsaved changes are lost.";
+    const question = `Encrypt ${name}? It becomes ${name}.eva-secret, and only the vault password opens it.${history}${unsaved}`;
+    if (!window.confirm(question)) {
+      setBusy(false);
+      return;
+    }
     try {
       await onEncrypt();
     } catch (caught) {

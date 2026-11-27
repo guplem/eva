@@ -408,6 +408,17 @@ export const api = {
   /** Answers the new path. A name that is taken or not allowed answers 409 with `file_not_writable`. */
   renameFile: (path: string, name: string): Promise<{ path: string }> =>
     request("POST", "/api/files/rename", { path, name }),
+  /** Whether the remote history holds a plain version of the file, or null when Eva cannot say (#1110). */
+  plainHistory: async (path: string): Promise<boolean | null> =>
+    (
+      await request<{ plain: boolean | null }>(
+        "GET",
+        `/api/vault/secrets/plain-history?path=${encodeURIComponent(path)}`,
+        undefined,
+        // The check waits behind a running sync: the question shows its neutral line instead (#1110).
+        { limit: { ms: 5_000, message: "Eva could not read the git history in 5 seconds." } },
+      )
+    ).plain,
   /** Gives a file its `.eva-secret` name and encrypts it (#1108). Answers the new path. */
   encryptFile: (path: string): Promise<{ path: string }> =>
     request("POST", "/api/vault/secrets/encrypt-file", { path }),

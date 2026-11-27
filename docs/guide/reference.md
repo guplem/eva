@@ -187,7 +187,7 @@ Your vault can hold secrets, such as API keys, but only encrypted. Eva encrypts 
     - Eva refuses these new names. Rename the file first.
       - A name that another pattern covers, such as `server.key`.
       - A plain env name, such as `prod.env`.
-      - A name that is taken.
+      - A name that is taken, or that the vault's `.gitignore` lists.
       - A name that agents or git read, such as `AGENTS.md`.
     - Eva also refuses a file in a clone, and a file that holds a key or a token: the save would leave the plain file out.
     - Eva refuses a file that she sealed under an unrelated name, or a copy that sits beside its original: an agent may have copied another secret to a harmless name. A file that you renamed by hand from `.secrets` still decrypts.

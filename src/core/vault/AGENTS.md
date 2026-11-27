@@ -15,7 +15,7 @@
 # Encrypted files
 
 - Treat a release that takes out a default secret pattern as a breaking change: mark it with `!`. Move the pattern to `retiredSecretPatterns`, never delete it.
-- Never decrypt a file because a pattern went away. Only a removal that the person signs decrypts.
+- Never decrypt a file because a pattern went away. Only a removal that the person signs in Settings decrypts the files of a pattern. The Decrypt action of the Files page decrypts one `.eva-secret` file for an unlocked device, after the person confirms.
 - Never take out a fixed secret pattern (`fixedSecretPatterns`).
 - Keep each fixed pattern out of the signed record and out of `.eva/secret-files`. An older Eva would offer to remove it.
 - Keep the sealed-path check of the Decrypt action. It stops a decoy copy of another secret that an agent made (#1109).

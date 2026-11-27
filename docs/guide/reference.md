@@ -184,8 +184,13 @@ Your vault can hold secrets, such as API keys, but only encrypted. Eva encrypts 
     - The old versions of the file stay plain in the git history. If the file holds a key or a password, change it.
     - To rename an encrypted file to a `.eva-secret` name, such as `photo.jpg.secrets` to `photo.jpg.eva-secret`, use **Rename**. Each other rename of a secret file stays refused.
   - **Decrypt a `.eva-secret` file.** Open it in **Files** and unlock the tab. Then choose **Decrypt** in the file menu, or tap **Decrypt** beside **Download** for a file that is not text. Eva writes the plain file under the name without `.eva-secret`, deletes the encrypted file, and saves. The plain text then goes to your vault remote.
-    - Eva refuses a name that another pattern covers, such as `server.key`, a plain env name such as `prod.env`, a taken name, a file in a clone, and a name that agents or git read, such as `AGENTS.md`. Rename the file first.
-    - Eva refuses a file that she sealed under an unrelated name: an agent may have copied another secret to a harmless name. A file that you renamed by hand from `.secrets` still decrypts.
+    - Eva refuses these new names. Rename the file first.
+      - A name that another pattern covers, such as `server.key`.
+      - A plain env name, such as `prod.env`.
+      - A name that is taken.
+      - A name that agents or git read, such as `AGENTS.md`.
+    - Eva also refuses a file in a clone, and a file that holds a key or a token: the save would leave the plain file out.
+    - Eva refuses a file that she sealed under an unrelated name, or a copy that sits beside its original: an agent may have copied another secret to a harmless name. A file that you renamed by hand from `.secrets` still decrypts.
     - A file of another pattern, such as `notes.secrets`, has no **Decrypt**: change the pattern in Settings.
   - Eva never encrypts `.eva/`, any `AGENTS.md`, `.gitignore` or `.gitattributes`, so the Assistant always works. Keep no secret in those files. The secret patterns still apply inside `.eva/scratch/`: Eva refuses to send such a file there, and the Files page and the search mark it as secret.
 - **Where each secret goes.** The vault map tells Eva:

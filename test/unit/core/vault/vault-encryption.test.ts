@@ -525,3 +525,17 @@ describe("the Encrypt action of the Files page (#1108)", () => {
     expect(status.defaults.map((each) => each.pattern)).not.toContain("*.eva-secret");
   });
 });
+
+describe("the fixed pattern in the person's own list (review of #1108)", () => {
+  test("Settings never writes it as an own pattern, so an older Eva never sees a removal of it", async () => {
+    const service = encryption();
+    await service.setPatterns(null, null, { added: ["*.eva-secret", "Life/Health/**"], off: [] });
+    expect(read(".eva/secret-files")).not.toContain("*.eva-secret");
+    expect(service.status(null, null).added).toEqual(["Life/Health/**"]);
+  });
+
+  test("a hand-written line of it does not show twice in Settings", () => {
+    write(".eva/secret-files", "*.eva-secret\n!*.eva-secret\n");
+    expect(encryption().status(null, null).added).toEqual([]);
+  });
+});

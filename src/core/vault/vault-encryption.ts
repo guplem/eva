@@ -111,7 +111,7 @@ export class VaultEncryption {
       keyChanged,
       unlocked: this.options.keys.isUnlocked(deviceToken, secret),
       defaults: defaultSecretPatterns.map((pattern) => ({ pattern, on: !off.has(pattern) })),
-      added: input.changes.added,
+      added: input.changes.added.filter((pattern) => !fixedSecretPatterns.includes(pattern)),
       fixed: fixedSecretPatterns,
       waiting,
       waitingFiles: waiting.length === 0 ? [] : this.freedFiles(active, waiting),
@@ -215,7 +215,8 @@ export class VaultEncryption {
       );
     const added = changes.added
       .map((pattern) => pattern.trim())
-      .filter((pattern) => pattern !== "" && !pattern.startsWith("!"));
+      // A fixed pattern always applies. As a line of its own, an older Eva could offer to remove it (#1108).
+      .filter((pattern) => pattern !== "" && !pattern.startsWith("!") && !fixedSecretPatterns.includes(pattern));
     const off = changes.off.filter((pattern) => defaultSecretPatterns.includes(pattern));
     const lines = [
       "# The secret files of this vault: Eva encrypts each one. Settings writes this file.",

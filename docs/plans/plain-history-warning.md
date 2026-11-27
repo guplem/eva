@@ -23,4 +23,9 @@ When Eva encrypts a file whose plain text is already on the vault remote, she te
 
 ## Decisions
 
-Filled in after the research.
+Three researchers (two mid-tier, one top-tier) agreed, with the additions below.
+
+- **G1. Both.** The round records each plain file that it encrypts in place (`takeNewlyEncrypted`), and the Encrypt action records the old name of each file that it renames (`takeOldNames`). A password change does not go through the round, so it records nothing. A snapshot round and a commit round never record a file twice: the second sees it encrypted.
+- **G2. One open notice for each file, with a state file.** Two researchers found that one shared key fails: the hub sends a changed message only once a day, so a second file would stay silent. So each file has its own key, `vault_plain_history:<path>`. `alerts.notice` keeps it open, so a satellite's report carries it to the hub and the phone. A state file on this computer (`plain-history.json`) keeps every warned file, so a file that an agent writes plain again and Eva encrypts again never gets a second notice. It also keeps the unread ones, so a restart opens them again, unsent, as the vault structure notice does. Read on the page closes a notice for good.
+- **G3. The history of `origin/<branch>`.** `plainOnRemote` reads up to 50 commits of each path with `git log --full-history`, and `git show` for each. A commit that deletes the path is skipped. An unpushed plain version does not count: the push check takes it out first. With no remote branch, Eva names nothing. Offline, a plain version that another computer pushed and that Eva did not fetch yet is missed: that is the safe side. When git cannot say, the files wait for the next round.
+- **G4. A route that the page asks first.** `GET /api/vault/secrets/plain-history` needs no device: a token holder can read the git history anyway, and the answer is only yes, no or unknown. The question adds the warning on yes, drops the history line on no, and keeps the neutral line on unknown.

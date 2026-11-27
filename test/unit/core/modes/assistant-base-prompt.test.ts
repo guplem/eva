@@ -87,6 +87,7 @@ describe("assistantBasePrompt", () => {
     expect(assistantBasePrompt).toContain("https://www.google.com/maps/search/?api=1&query=<place>");
     // A start from the vault, such as a home address, would put more in the link than the person asked for.
     expect(assistantBasePrompt).toContain("Add `&origin=<place>` only when the person names a start");
+    expect(assistantBasePrompt).toContain("Never take a start from the vault, such as a home address.");
     // Both front ends link a Markdown link and a bare URL, but show a code span as code.
     expect(assistantBasePrompt).toContain("never in a code span");
   });

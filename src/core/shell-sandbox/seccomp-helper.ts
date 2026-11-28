@@ -15,13 +15,9 @@ const helperName = "apply-seccomp";
 
 /** The path of the helper that this build carries, or null on a system that needs none. */
 export async function embeddedSeccompHelper(): Promise<string | null> {
-  if (process.platform === "linux" && process.arch === "x64")
-    return (await import("@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp", { with: { type: "file" } }))
-      .default;
-  if (process.platform === "linux" && process.arch === "arm64")
-    return (
-      await import("@anthropic-ai/sandbox-runtime/vendor/seccomp/arm64/apply-seccomp", { with: { type: "file" } })
-    ).default;
+  // One small module for each processor, so that each build loads only its own.
+  if (process.platform === "linux" && process.arch === "x64") return (await import("./seccomp-x64.ts")).helperPath;
+  if (process.platform === "linux" && process.arch === "arm64") return (await import("./seccomp-arm64.ts")).helperPath;
   return null;
 }
 

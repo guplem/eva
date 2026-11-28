@@ -535,7 +535,7 @@ function RepositoryRow({
           <StatusPill key={pill.text} pill={pill} />
         ))}
       </div>
-      {repository.refused !== null && (
+      {typeof repository.refused === "string" && (
         <div className="callout warning" role="note">
           {repository.refused}
         </div>

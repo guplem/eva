@@ -349,7 +349,7 @@ export class SessionManager {
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
-  /** The last snapshot refusal that each chat showed (#1131), so a refusal shows once, not twice in each turn. */
+  /** The snapshot refusal that each chat showed in its turn (#1131), so it shows once, not at both snapshots. */
   private readonly lastRefusal = new Map<string, string>();
   /** The last message or turn start of each chat, in ms. The record keeps only the turn ends. */
   private readonly lastActivity = new Map<string, number>();
@@ -1381,6 +1381,8 @@ export class SessionManager {
             : "The turn stopped before the engine started.",
         );
       }
+      // A refusal shows again in each turn, so a later undo still says why.
+      this.lastRefusal.delete(session.id);
       await this.restorePending(session, preparer);
       startSnapshot = await this.takeSnapshot(session, preparer);
       const engineText = preparer.engineMessage?.(session, prompt) ?? prompt;
@@ -1705,6 +1707,7 @@ ${engineText}`,
         this.lastRefusal.set(session.id, error.message);
         this.emit(session.id, { kind: "notice", text: this.options.redactor.redact(error.message) });
       }
+      if (!isEvaError(error, "repository_refused")) this.lastRefusal.delete(session.id);
       this.options.logger?.log("warn", "Eva could not keep a snapshot of the files of a chat.", {
         sessionId: session.id,
         reason: error instanceof Error ? error.message : String(error),

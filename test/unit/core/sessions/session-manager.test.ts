@@ -1655,7 +1655,7 @@ describe("file snapshots of Project chats (issue 523)", () => {
     expect(logged.some((line) => line.includes("could not keep a snapshot"))).toBe(true);
   });
 
-  test("a repository that Eva refuses shows its reason once in the chat, and the turn goes on (#1131)", async () => {
+  test("a repository that Eva refuses shows its reason once in each turn, and the turn goes on (#1131)", async () => {
     const log: string[] = [];
     const reason = "Eva runs no git in app: its git data points to git data in another place.";
     const refusing: TurnPreparer = {
@@ -1667,8 +1667,9 @@ describe("file snapshots of Project chats (issue 523)", () => {
     await manager.send(sessionId, "one");
     await manager.send(sessionId, "two");
     expect(log).toEqual(["engine", "engine"]);
+    // Once for each turn, not at both snapshots of a turn.
     const notices = events.filter((event) => event.kind === "notice" && event.text === reason);
-    expect(notices).toHaveLength(1);
+    expect(notices).toHaveLength(2);
   });
 
   test("a specialist chat runs with the specialist preparer, and keeps no clone snapshot (#703)", async () => {

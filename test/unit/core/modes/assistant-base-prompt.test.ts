@@ -171,4 +171,12 @@ describe("assistantBasePrompt and the pages of an answer (#1129)", () => {
     expect(assistantBasePrompt).toContain('<link rel="stylesheet" href="eva/theme.css">');
     expect(assistantBasePrompt).toContain("about 300 px wide and 320 px high");
   });
+
+  test("says where a saved page lives, that Eva edits it there, and that a new page needs a free name (#1130)", () => {
+    expect(assistantBasePrompt).toContain("**`.eva/pages/`** holds the pages that the person saved");
+    expect(assistantBasePrompt).toContain(
+      "When it exists, edit it there, and never write a new copy in `.eva/scratch/`.",
+    );
+    expect(assistantBasePrompt).toContain("free in both `.eva/scratch/` and `.eva/pages/`");
+  });
 });

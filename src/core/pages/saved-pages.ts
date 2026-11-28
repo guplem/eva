@@ -1,16 +1,17 @@
 /**
  * Save and Remove of the pages of the chats (#1130). Save moves a page from a scratch folder, which
- * Eva empties after 7 days, to `.eva/pages/`, which the vault sync commits. It keeps the name, the
- * whole path under the scratch folder, so `resolveShownPage` leads each old `[[show:]]` line to the
- * saved file with no rewrite.
+ * Eva empties after 7 days, to `.eva/pages/`, which the vault sync commits. It keeps the name that
+ * `page-names.ts` gives, so `resolveShownPage` leads each old `[[show:]]` line to the saved file
+ * with no rewrite. Neither action follows a link, and a refusal changes nothing on disk.
  */
 import { lstatSync, mkdirSync, realpathSync, rmSync, type Stats } from "node:fs";
-import { extname, join } from "node:path";
+import { dirname, extname, join, relative } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { errorCode } from "../files/file-browser.ts";
-import { readPage, resolveShownPage, savedPagesFolder, savedPathOf } from "./chat-pages.ts";
+import { pageExtensions, readPage, resolveShownPage } from "./chat-pages.ts";
+import { entryOf, ownSavedEntryOf, pageNameOf } from "./page-names.ts";
 
 /**
  * Saves the page that a marker path shows, and answers the vault path of the saved file. A page
@@ -23,13 +24,20 @@ export function savePage(vaultPath: string, requested: string): string {
   const shown = resolveShownPage(vaultPath, requested);
   if (shown.state === "gone") throw new EvaError("file_not_found", shown.reason);
   if (shown.state !== "ready") throw new EvaError("file_not_writable", shown.reason);
-  if (shown.kept !== "temporary") return shown.relativePath;
-  // A temporary page has a scratch name, so it has a saved path.
-  const saved = savedPathOf(requested) ?? `${savedPagesFolder}/${shown.relativePath}`;
-  const target = savedFile(vaultPath, saved, true);
+  // Only a marker with the name of a page shows a temporary page, so a page with no name is kept already.
+  const page = pageNameOf(vaultPath, requested);
+  if (shown.kept !== "temporary" || page === null) return shown.relativePath;
+  const root = realpathSync(vaultPath);
+  // Save removes the scratch file afterwards. Through a link it would remove another page, which the person never saved.
+  if (isLink(entryOf(root, requested)))
+    throw new EvaError(
+      "file_not_writable",
+      `${requested} is a link, so Eva does not save it. Ask Eva to show the page itself.`,
+    );
+  const target = plainFolders(root, page.saved, true);
   const existing = entryAt(target);
-  if (existing !== null && !(existing.isFile() && isPageName(target)))
-    throw new EvaError("file_not_writable", `${saved} is not a page, so Eva does not write over it.`);
+  if (existing !== null && !(existing.isFile() && pageExtensions.has(extname(target).toLowerCase())))
+    throw new EvaError("file_not_writable", `${page.saved} is not a page, so Eva does not write over it.`);
   const bytes = readPage(shown.path);
   // The file can change between the check and the read, so the bytes that go in pass the checks again.
   if (bytes === null || containsSecretPattern(bytes.toString("utf8")))
@@ -38,11 +46,11 @@ export function savePage(vaultPath: string, requested: string): string {
     // A rename of a whole file: a crash leaves no half page.
     writeFileAtomic(target, bytes);
   } catch (error) {
-    throw new EvaError("file_not_writable", `Eva could not write ${saved}: ${writeProblem(error)}.`);
+    throw new EvaError("file_not_writable", `Eva could not write ${page.saved}: ${writeProblem(error)}.`);
   }
-  // The saved file answers the marker once the scratch copy is gone.
+  // The saved file answers the marker once the scratch file is gone. It is no link, as the check above showed.
   rmSync(shown.path, { force: true });
-  return saved;
+  return page.saved;
 }
 
 /**
@@ -52,10 +60,10 @@ export function savePage(vaultPath: string, requested: string): string {
  * days, and a note goes on the Files page.
  */
 export function removeSavedPage(vaultPath: string, requested: string): string {
-  const saved = savedPathOf(requested);
+  const saved = ownSavedEntryOf(vaultPath, requested) ?? pageNameOf(vaultPath, requested)?.saved ?? null;
   if (saved === null)
     throw new EvaError("file_not_writable", `${requested} is not a saved page, so Eva does not remove it here.`);
-  const target = savedFile(vaultPath, saved, false);
+  const target = plainFolders(realpathSync(vaultPath), saved, false);
   const existing = entryAt(target);
   if (existing === null) throw new EvaError("file_not_found", `${saved} does not exist.`);
   if (existing.isDirectory()) throw new EvaError("file_not_writable", `${saved} is a folder, not a page.`);
@@ -65,21 +73,39 @@ export function removeSavedPage(vaultPath: string, requested: string): string {
 }
 
 /**
- * The real path of a saved page. Each folder from the vault to the page must be a plain folder: a
- * link in its place could lead a write or a delete out of Eva's folder. `make` makes the folders.
+ * The path of a saved page under the real vault root. Each folder from the root to the page must be
+ * a plain folder: a link in its place could lead a write or a delete out of Eva's folder. The check
+ * reads every level that exists before Eva makes one, so a refusal makes nothing. `make` makes the
+ * missing folders; without it, a missing folder means that the page does not exist.
  */
-function savedFile(vaultPath: string, saved: string, make: boolean): string {
-  const root = realpathSync(vaultPath);
+function plainFolders(root: string, saved: string, make: boolean): string {
   const parts = saved.split("/");
   const name = parts.pop() ?? "";
-  const folder = join(root, ...parts);
-  try {
-    if (make) mkdirSync(folder, { recursive: true });
-    if (realpathSync(folder) === folder) return join(folder, name);
-  } catch (error) {
-    if (!make && errorCode(error) === "ENOENT") throw new EvaError("file_not_found", `${saved} does not exist.`);
+  const levels = parts.map((_part, index) => join(root, ...parts.slice(0, index + 1)));
+  const missing: string[] = [];
+  for (const level of levels) {
+    const entry = missing.length > 0 ? null : entryAt(level);
+    if (entry === null) {
+      missing.push(level);
+      continue;
+    }
+    if (entry.isSymbolicLink() || !entry.isDirectory())
+      throw new EvaError(
+        "file_not_writable",
+        `${relative(root, level)} is not a plain folder, so Eva does not touch the page.`,
+      );
   }
-  throw new EvaError("file_not_writable", `${parts.join("/")} is not a plain folder, so Eva does not touch the page.`);
+  if (missing.length > 0 && !make) throw new EvaError("file_not_found", `${saved} does not exist.`);
+  try {
+    for (const level of missing) mkdirSync(level);
+  } catch (error) {
+    throw new EvaError("file_not_writable", `Eva could not make ${dirname(saved)}: ${writeProblem(error)}.`);
+  }
+  return join(root, ...parts, name);
+}
+
+function isLink(path: string | null): boolean {
+  return path !== null && entryAt(path)?.isSymbolicLink() === true;
 }
 
 /** The entry at a path, not followed when it is a link, or null when nothing is there. */
@@ -91,10 +117,6 @@ function entryAt(path: string): Stats | null {
   }
 }
 
-function isPageName(path: string): boolean {
-  return [".html", ".htm"].includes(extname(path).toLowerCase());
-}
-
 /** The cause of a failed write, so the person knows what to fix: a full disk (`ENOSPC`) is not a missing permission. */
 const writeCauses: Readonly<Record<string, string>> = {
   EACCES: "Eva has no permission to write there",
@@ -103,7 +125,7 @@ const writeCauses: Readonly<Record<string, string>> = {
   EROFS: "the disk takes no writes",
 };
 
-function writeProblem(error: unknown): string {
+export function writeProblem(error: unknown): string {
   const code = errorCode(error) ?? "unknown";
   return writeCauses[code] ?? `the file system answered ${code}`;
 }

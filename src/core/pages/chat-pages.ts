@@ -5,10 +5,10 @@
  * bytes, so each request checks the file again.
  */
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { isScratchPath, scratchFolder } from "../files/scratch-folders.ts";
+import { pageNameOf } from "./page-names.ts";
 import { resolveSendableFile } from "../files/vault-files.ts";
 import type { WidgetAnswer } from "../widgets/widget-data.ts";
 import { themeCss, type WidgetTheme } from "../widgets/widget-policy.ts";
@@ -59,65 +59,69 @@ export type PageFrame =
     }
   | RefusedPage;
 
-/** Where Save puts a page, from the vault root. The vault sync commits it, and the weekly clean never enters it. */
-export const savedPagesFolder = ".eva/pages";
-
-const pageExtensions: ReadonlySet<string> = new Set([".html", ".htm"]);
+/** The extensions of a page. Save checks the name of the file that it would replace with them. */
+export const pageExtensions: ReadonlySet<string> = new Set([".html", ".htm"]);
 /** The name of the page under its token. A fixed name keeps the path of the file out of the address. */
 const pageName = "page.html";
 
 /**
- * The name of a page (#1130): its path under a scratch folder or under `.eva/pages/`, with `/`. A
- * name is one page: `.eva/scratch/a/chart.html` saves to `.eva/pages/a/chart.html`. Null for a
- * page elsewhere, such as in a notes folder, and for a path with a `..` part.
- */
-function pageNameOf(requested: string): { readonly name: string; readonly inScratch: boolean } | null {
-  const parts = requested.split(/[/\\]/).filter((part) => part !== "" && part !== ".");
-  if (parts.includes("..")) return null;
-  const lower = parts.map((part) => part.toLowerCase());
-  const [first, second] = lower;
-  const start = first === "scratch" ? 1 : first === ".eva" && (second === "scratch" || second === "pages") ? 2 : 0;
-  if (start === 0 || parts.length <= start) return null;
-  return { name: parts.slice(start).join("/"), inScratch: second !== "pages" };
-}
-
-/**
- * The saved path of a page in a scratch folder or in `.eva/pages/`, or null for a page elsewhere.
+ * The saved path of the page that a marker leads to, or null for a page elsewhere, such as a note.
  * Save keeps the name, so a stored `[[show: .eva/scratch/<name>.html]]` line finds the saved file
  * with no rewrite.
  */
-export function savedPathOf(requested: string): string | null {
-  const page = pageNameOf(requested);
-  return page === null ? null : `${savedPagesFolder}/${page.name}`;
+export function savedPathOf(vaultPath: string, requested: string): string | null {
+  return pageNameOf(vaultPath, requested)?.saved ?? null;
 }
 
 /**
  * Turns the path of a `[[show:]]` marker into the file to serve. The rules of `[[attach:]]` apply:
  * inside the vault after links resolve, no clone, no git data, no encrypted file, no secret.
- * A page has two places (#1130). A scratch file at the marker's path is the newest version, because
- * Save removes the scratch copy. Once it is gone, the saved file of the same name answers. The rule
- * needs no state, and a later edit of the saved file shows in every old answer and in a pin.
+ * A page has two places (#1130), and `page-names.ts` gives both from the real path of the marker.
+ * The scratch file is the newest version, because Save removes the scratch copy, so it answers while
+ * it is a file that Eva shows. Otherwise the saved file of the name answers. The rule needs no
+ * state, and a later edit of the saved file shows in every old answer and in a pin.
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
-  const page = pageNameOf(requested);
-  const scratch = page === null ? requested : page.inScratch ? requested : `${scratchFolder}/${page.name}`;
-  const saved = page === null ? requested : `${savedPagesFolder}/${page.name}`;
-  const shown = [scratch, saved].find((candidate) => existsSync(join(vaultPath, candidate))) ?? requested;
-  const file = resolveSendableFile(vaultPath, shown, { verb: "show", maxBytes: maxPageBytes });
+  const page = pageNameOf(vaultPath, requested);
+  if (page === null) return shownFile(vaultPath, requested, requested, "note");
+  const scratch = isFileAt(vaultPath, page.scratch) ? shownFile(vaultPath, page.scratch, requested, "temporary") : null;
+  if (scratch?.state === "ready" || !hasEntry(vaultPath, page.saved))
+    return scratch ?? { state: "gone", reason: `${requested} does not exist.` };
+  const saved = shownFile(vaultPath, page.saved, requested, "saved");
+  // A saved page that Eva refuses keeps its path, so the person can still remove it from the chat.
+  return saved.state === "ready" ? saved : { ...saved, saved: page.saved };
+}
+
+/** One place of a page, with the checks of `[[attach:]]`. `requested` names the page in each reason. */
+function shownFile(vaultPath: string, path: string, requested: string, kept: PageKept): ShownPage {
+  const file = resolveSendableFile(vaultPath, path, { verb: "show", maxBytes: maxPageBytes });
   if (!file.ok) {
     if (file.missing === true) return { state: "gone", reason: `${requested} does not exist.` };
-    const state = file.tooLarge === true ? "too-large" : "refused";
-    return page !== null && shown === saved ? { state, reason: file.reason, saved } : { state, reason: file.reason };
+    return { state: file.tooLarge === true ? "too-large" : "refused", reason: file.reason };
   }
   // The extension of the real file, so a link named `.html` cannot show a note as a page.
   if (!pageExtensions.has(extname(file.path).toLowerCase()))
     return { state: "refused", reason: `${requested} is not an HTML page.` };
-  return { state: "ready", path: file.path, relativePath: file.relativePath, kept: keptOf(file.relativePath) };
+  return { state: "ready", path: file.path, relativePath: file.relativePath, kept };
 }
 
-function keptOf(relativePath: string): PageKept {
-  if (isScratchPath(relativePath)) return "temporary";
-  return relativePath.toLowerCase().startsWith(`${savedPagesFolder}/`) ? "saved" : "note";
+/** A folder, or a page that does not exist, is no version of a page. */
+function isFileAt(vaultPath: string, path: string): boolean {
+  try {
+    return statSync(join(vaultPath, path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Any entry, also a link that leads nowhere or a folder: the saved place answers then, with its reason. */
+function hasEntry(vaultPath: string, path: string): boolean {
+  try {
+    lstatSync(join(vaultPath, path));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface PageSession {
@@ -162,7 +166,7 @@ export class ChatPages {
       token,
       kept: shown.kept,
       path: shown.relativePath,
-      saved: savedPathOf(requested),
+      saved: savedPathOf(this.options.vaultPath, requested),
     };
   }
 

@@ -178,15 +178,41 @@ describe("resolveShownPage and saved pages (#1130)", () => {
     expect(resolveShownPage(vault, ".eva/scratch/secret.html")).not.toHaveProperty("saved");
   });
 
+  test("shows the saved page when the scratch version is a folder or a file that Eva refuses", () => {
+    write(".eva/pages/folder.html", page);
+    mkdirSync(join(vault, ".eva", "scratch", "folder.html"), { recursive: true });
+    expect(resolveShownPage(vault, ".eva/scratch/folder.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/folder.html",
+      kept: "saved",
+    });
+    write(".eva/pages/leak.html", page);
+    write(".eva/scratch/leak.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/leak.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/leak.html",
+    });
+    // With no saved version, the refusal of the scratch version stands.
+    write(".eva/scratch/alone.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/alone.html")).toMatchObject({ state: "refused" });
+  });
+
+  test("reads the old Scratch folder with a pages subfolder as scratch", () => {
+    write("Scratch/pages/chart.html", page);
+    expect(resolveShownPage(vault, "Scratch/pages/chart.html")).toMatchObject({
+      state: "ready",
+      relativePath: "Scratch/pages/chart.html",
+      kept: "temporary",
+    });
+  });
+
   test("names the saved file of a page by its whole path under the scratch folder", () => {
-    expect(savedPathOf(".eva/scratch/plan.html")).toBe(".eva/pages/plan.html");
-    expect(savedPathOf(".eva/scratch/received/plan.html")).toBe(".eva/pages/received/plan.html");
-    expect(savedPathOf(".EVA\\Scratch\\a\\plan.html")).toBe(".eva/pages/a/plan.html");
-    expect(savedPathOf("Scratch/plan.html")).toBe(".eva/pages/plan.html");
-    expect(savedPathOf(".eva/pages/a/plan.html")).toBe(".eva/pages/a/plan.html");
-    expect(savedPathOf("Notes/plan.html")).toBeNull();
-    expect(savedPathOf(".eva/scratch")).toBeNull();
-    expect(savedPathOf(".eva/scratch/../pages/plan.html")).toBeNull();
+    expect(savedPathOf(vault, ".eva/scratch/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf(vault, ".eva/scratch/received/plan.html")).toBe(".eva/pages/received/plan.html");
+    expect(savedPathOf(vault, "Scratch/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf(vault, ".eva/pages/a/plan.html")).toBe(".eva/pages/a/plan.html");
+    expect(savedPathOf(vault, "Notes/plan.html")).toBeNull();
+    expect(savedPathOf(vault, ".eva/scratch")).toBeNull();
   });
 });
 

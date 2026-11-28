@@ -1,9 +1,20 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { maxPageBytes, resolveShownPage } from "../../../../src/core/pages/chat-pages.ts";
-import { removeSavedPage, savePage } from "../../../../src/core/pages/saved-pages.ts";
+import { removeSavedPage, savePage, writeProblem } from "../../../../src/core/pages/saved-pages.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 
 let folder: string;
@@ -78,17 +89,86 @@ describe("savePage", () => {
   });
 });
 
+/** Every entry under the test folder, with its kind and the bytes of a file, so a test sees that a refusal changed nothing. */
+function snapshot(): string[] {
+  const entries: string[] = [];
+  const walk = (path: string): void => {
+    const stats = lstatSync(path);
+    const shown = relative(folder, path);
+    if (stats.isSymbolicLink()) entries.push(`${shown} -> ${readlinkSync(path)}`);
+    else if (stats.isDirectory()) {
+      entries.push(`${shown}/`);
+      for (const name of readdirSync(path).sort()) walk(join(path, name));
+    } else entries.push(`${shown} = ${readFileSync(path, "utf8")}`);
+  };
+  walk(folder);
+  return entries;
+}
+
+/** The code of the refusal, after a check that the refusal changed nothing on disk. */
+function refusalOf(action: () => unknown): string | null {
+  const before = snapshot();
+  const code = codeOf(action);
+  expect(snapshot()).toEqual(before);
+  return code;
+}
+
 describe("savePage and names", () => {
+  test("names the saved file by the real path of the page, also through `..` parts, and the marker finds it", () => {
+    write(".eva/scratch/sub/x.html", page);
+    write(".eva/scratch/chart.html", page);
+    write("Notes/plan.md", "# Plan");
+    expect(savePage(vault, ".eva/scratch/sub/../chart.html")).toBe(".eva/pages/chart.html");
+    expect(resolveShownPage(vault, ".eva/scratch/sub/../chart.html")).toMatchObject({ kept: "saved" });
+    expect(savePage(vault, "Notes/../.eva/scratch//sub/./x.html")).toBe(".eva/pages/sub/x.html");
+    expect(resolveShownPage(vault, ".eva/scratch/sub/x.html")).toMatchObject({ kept: "saved" });
+    expect(removeSavedPage(vault, "Notes/../.eva/scratch/sub/x.html")).toBe(".eva/pages/sub/x.html");
+  });
+
   test.skipIf(process.platform === "win32")(
-    "names the saved file after the marker, so the marker finds it, also when the scratch file is a link",
+    "refuses a scratch entry that is a link, so it never deletes another page, and changes nothing",
     () => {
-      write(".eva/scratch/real.html", page);
-      symlinkSync(join(vault, ".eva", "scratch", "real.html"), join(vault, ".eva", "scratch", "shown.html"));
-      expect(savePage(vault, ".eva/scratch/shown.html")).toBe(".eva/pages/shown.html");
-      expect(resolveShownPage(vault, ".eva/scratch/shown.html")).toMatchObject({
-        relativePath: ".eva/pages/shown.html",
-        kept: "saved",
-      });
+      write(".eva/scratch/b.html", page);
+      write("Notes/plan.md", "# Plan");
+      symlinkSync(join(vault, ".eva", "scratch", "b.html"), join(vault, ".eva", "scratch", "a.html"));
+      symlinkSync(join(vault, ".eva", "scratch", "b.html"), join(vault, "Notes", "into.html"));
+      expect(refusalOf(() => savePage(vault, ".eva/scratch/a.html"))).toBe("file_not_writable");
+      expect(refusalOf(() => savePage(vault, "Notes/into.html"))).toBe("file_not_writable");
+    },
+  );
+
+  test.skipIf(process.platform === "win32")("saves through a folder link into scratch by the real name", () => {
+    write(".eva/scratch/sub/x.html", page);
+    mkdirSync(join(vault, "Notes"), { recursive: true });
+    symlinkSync(join(vault, ".eva", "scratch", "sub"), join(vault, "Notes", "door"));
+    expect(savePage(vault, "Notes/door/x.html")).toBe(".eva/pages/sub/x.html");
+    expect(resolveShownPage(vault, "Notes/door/x.html")).toMatchObject({ relativePath: ".eva/pages/sub/x.html" });
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "checks each folder before it makes one: a link in .eva/pages, or .eva/pages as a link, makes nothing outside",
+    () => {
+      write(".eva/scratch/a/sub/x.html", page);
+      mkdirSync(join(folder, "outside"), { recursive: true });
+      mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+      symlinkSync(join(folder, "outside"), join(vault, ".eva", "pages", "a"));
+      expect(refusalOf(() => savePage(vault, ".eva/scratch/a/sub/x.html"))).toBe("file_not_writable");
+      expect(existsSync(join(folder, "outside", "sub"))).toBe(false);
+      rmSync(join(vault, ".eva", "pages"), { recursive: true });
+      symlinkSync(join(folder, "outside"), join(vault, ".eva", "pages"));
+      expect(refusalOf(() => savePage(vault, ".eva/scratch/a/sub/x.html"))).toBe("file_not_writable");
+      expect(refusalOf(() => removeSavedPage(vault, ".eva/scratch/a/sub/x.html"))).toBe("file_not_writable");
+    },
+  );
+
+  test.skipIf(process.platform !== "win32")(
+    "takes the case on disk on Windows, where a folder of another case is the same folder",
+    () => {
+      write(".eva/scratch/report/x.html", page);
+      mkdirSync(join(vault, ".eva", "pages", "Report"), { recursive: true });
+      expect(savePage(vault, ".EVA/Scratch/Report/X.html")).toBe(".eva/pages/report/x.html");
+      expect(resolveShownPage(vault, ".eva/scratch/REPORT/x.html")).toMatchObject({ kept: "saved" });
+      expect(removeSavedPage(vault, ".eva/scratch/Report/x.html")).toBe(".eva/pages/report/x.html");
     },
   );
 
@@ -137,6 +217,17 @@ describe("savePage and names", () => {
     write(".eva/pages", "not a folder");
     expect(codeOf(() => savePage(vault, ".eva/scratch/chart.html"))).toBe("file_not_writable");
     expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
+  });
+});
+
+describe("writeProblem", () => {
+  test("names the cause of a failed write, so a full disk is not a missing permission", () => {
+    const failure = (code: string): Error => Object.assign(new Error(code), { code });
+    expect(writeProblem(failure("EACCES"))).toBe("Eva has no permission to write there");
+    expect(writeProblem(failure("ENOSPC"))).toBe("the disk is full");
+    expect(writeProblem(failure("EROFS"))).toBe("the disk takes no writes");
+    expect(writeProblem(failure("ENOTSUP"))).toBe("the file system answered ENOTSUP");
+    expect(writeProblem("odd")).toBe("the file system answered unknown");
   });
 });
 

@@ -467,6 +467,12 @@ describe("the widget routes", () => {
       expect((await fetch(`${bareApi.url}/api/widgets`, { headers: headers() })).status).toBe(409);
       const frame = { origin: "null", "sec-fetch-dest": "empty" };
       expect((await fetch(`${bareApi.url}/widgets/${"a".repeat(43)}/index.html`, { headers: frame })).status).toBe(404);
+      const page = await fetch(`${bareApi.url}/api/pages/frame`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ path: "a.html", scheme: "light" }),
+      });
+      expect(page.status).toBe(409);
     } finally {
       bareApi.stop();
       bare.stop();

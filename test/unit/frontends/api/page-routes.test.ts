@@ -3,7 +3,7 @@
  * the page itself, which a sandboxed frame loads with no cookie.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -157,5 +157,47 @@ describe("the page files", () => {
     expect(gone.status).toBe(404);
     const base = `${api.url}/widgets/${frame.token ?? ""}/`;
     expect(gone.headers.get("content-security-policy")).toBe(widgetPolicy(base, api.url, []));
+  });
+});
+
+describe("Save, Remove and Pin (#1130)", () => {
+  test("save a page to .eva/pages, and the old marker shows the saved file", async () => {
+    const saved = await call("/api/pages/save", { path: ".eva/scratch/chart.html" });
+    expect(await saved.json()).toEqual({ path: ".eva/pages/chart.html" });
+    expect(existsSync(join(vault, ".eva", "pages", "chart.html"))).toBe(true);
+    expect(await frameOf(".eva/scratch/chart.html")).toMatchObject({
+      state: "ready",
+      kept: "saved",
+      path: ".eva/pages/chart.html",
+    });
+    expect((await call("/api/pages/save", { path: ".eva/scratch/old.html" })).status).toBe(404);
+    const refused = await fetch(`${api.url}/api/pages/save`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: ".eva/scratch/chart.html" }),
+    });
+    expect(refused.status).toBe(401);
+  });
+
+  test("pin saves the page, and remove unpins and deletes it", async () => {
+    const chat = eva.createAssistantSession({ source: "web" });
+    const pinned = await call(`/api/sessions/${chat.id}/pin`, { path: ".eva/scratch/chart.html" });
+    expect(await pinned.json()).toMatchObject({ pinnedPage: ".eva/pages/chart.html" });
+    expect(eva.sessions.get(chat.id).pinnedPage).toBe(".eva/pages/chart.html");
+    const removed = await call("/api/pages/remove", { path: ".eva/scratch/chart.html" });
+    expect(await removed.json()).toEqual({ path: ".eva/pages/chart.html" });
+    expect(eva.sessions.get(chat.id).pinnedPage).toBeNull();
+    expect(await frameOf(".eva/scratch/chart.html")).toMatchObject({ state: "gone" });
+    // Unpin keeps the file.
+    writeFileSync(join(vault, ".eva", "pages", "kept.html"), chart);
+    await call(`/api/sessions/${chat.id}/pin`, { path: ".eva/pages/kept.html" });
+    const unpinned = await call(`/api/sessions/${chat.id}/pin`, { path: null });
+    expect(await unpinned.json()).toMatchObject({ pinnedPage: null });
+    expect(existsSync(join(vault, ".eva", "pages", "kept.html"))).toBe(true);
+  });
+
+  test("refuse to remove a page that is not saved", async () => {
+    expect((await call("/api/pages/remove", { path: ".eva/scratch/chart.html" })).status).toBe(409);
+    expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
   });
 });

@@ -23,6 +23,7 @@ import { seenPart, showsLastTurn } from "./branch-path.ts";
 import { LeaveMarkedChat } from "./mark-unread.ts";
 import { BranchesButton, useBranchStates, useShownBranch } from "./Branches.tsx";
 import { chatTree, Conversation, rootChats, rootIdOf } from "./Conversation.tsx";
+import { UnpinnedChatPages } from "./PinnedPage.tsx";
 import { useShowError } from "./error-toast.tsx";
 import { ChatHeader, ChatStatePill, useChatActionRequest } from "./ChatHeader.tsx";
 import { useContextMenu } from "./Menu.tsx";
@@ -820,18 +821,20 @@ export function ProjectView({
               {openedTree === null ? (
                 <ChatSkeleton />
               ) : (
-                <Conversation
-                  root={tree[0] ?? { ...chat, turns: [] }}
-                  tree={tree}
-                  shown={branch}
-                  sessions={sessions}
-                  live={live}
-                  onChanged={onChanged}
-                  approvals={approvals}
-                  blocker={blocker}
-                  voiceNotes={voiceNotes}
-                  projectTitle={page.project.title}
-                />
+                <UnpinnedChatPages tree={tree}>
+                  <Conversation
+                    root={tree[0] ?? { ...chat, turns: [] }}
+                    tree={tree}
+                    shown={branch}
+                    sessions={sessions}
+                    live={live}
+                    onChanged={onChanged}
+                    approvals={approvals}
+                    blocker={blocker}
+                    voiceNotes={voiceNotes}
+                    projectTitle={page.project.title}
+                  />
+                </UnpinnedChatPages>
               )}
             </>
           ) : (

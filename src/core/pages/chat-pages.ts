@@ -5,9 +5,11 @@
  * bytes, so each request checks the file again.
  */
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
-import { extname } from "node:path";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
+import { extname, join } from "node:path";
 import { containsSecretPattern } from "../../shared/redaction.ts";
+import { plainPageFile } from "./page-entries.ts";
+import { pageNameOf, realRoot } from "./page-names.ts";
 import { resolveSendableFile } from "../files/vault-files.ts";
 import type { WidgetAnswer } from "../widgets/widget-data.ts";
 import { themeCss, type WidgetTheme } from "../widgets/widget-policy.ts";
@@ -25,25 +27,82 @@ export const maxPageTokens = 100;
 /** Why Eva does not show a page. */
 export type PageNote = "gone" | "too-large" | "refused";
 
+/**
+ * How a page stays (#1130): `temporary` in a scratch folder, which Eva empties after 7 days,
+ * `saved` in `.eva/pages/`, or `note` in a folder of the person's notes.
+ */
+export type PageKept = "temporary" | "saved" | "note";
+
 export type ShownPage =
-  | { readonly state: "ready"; readonly path: string; readonly relativePath: string }
-  | { readonly state: PageNote; readonly reason: string };
+  | { readonly state: "ready"; readonly path: string; readonly relativePath: string; readonly kept: PageKept }
+  | RefusedPage;
+
+/**
+ * A page that Eva does not show. `saved` names a saved page that she refuses, such as one that grew
+ * past 2 MB or took a secret, so the person can still remove it from the chat (#1130).
+ */
+export interface RefusedPage {
+  readonly state: PageNote;
+  readonly reason: string;
+  readonly saved?: string;
+}
 
 export type PageFrame =
-  | { readonly state: "ready"; readonly src: string; readonly token: string }
-  | { readonly state: PageNote; readonly reason: string };
+  | {
+      readonly state: "ready";
+      readonly src: string;
+      readonly token: string;
+      readonly kept: PageKept;
+      /** The vault path of the file that the frame shows, which can be the saved copy of the marker's path. */
+      readonly path: string;
+      /** The saved path of the page's name, which a pin stores, or null for a page in a notes folder. */
+      readonly saved: string | null;
+    }
+  | RefusedPage;
 
-const pageExtensions: ReadonlySet<string> = new Set([".html", ".htm"]);
+/** The extensions of a page. Save checks the name of the file that it would replace with them. */
+export const pageExtensions: ReadonlySet<string> = new Set([".html", ".htm"]);
 /** The name of the page under its token. A fixed name keeps the path of the file out of the address. */
 const pageName = "page.html";
 
 /**
+ * The saved path of the page that a marker leads to, or null for a page elsewhere, such as a note.
+ * Save keeps the name, so a stored `[[show: .eva/scratch/<name>.html]]` line finds the saved file
+ * with no rewrite.
+ */
+export function savedPathOf(vaultPath: string, requested: string): string | null {
+  return pageNameOf(vaultPath, requested)?.saved ?? null;
+}
+
+/**
  * Turns the path of a `[[show:]]` marker into the file to serve. The rules of `[[attach:]]` apply:
  * inside the vault after links resolve, no clone, no git data, no encrypted file, no secret.
- * A saved or pinned page (#1130) changes only this function.
+ * A page has two places (#1130), and `page-names.ts` gives both from the real path of the marker.
+ * The scratch file is the newest version, because Save removes the scratch copy, so it answers while
+ * it is a file that Eva shows. Otherwise the saved file of the name answers. The rule needs no
+ * state, and a later edit of the saved file shows in every old answer and in a pin.
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
-  const file = resolveSendableFile(vaultPath, requested, { verb: "show", maxBytes: maxPageBytes });
+  const page = pageNameOf(vaultPath, requested);
+  const root = realRoot(vaultPath);
+  if (page === null || root === null) return shownFile(vaultPath, requested, requested, "note");
+  // Each place counts only through plain entries: a link at any level is no version of a page.
+  const scratch =
+    plainPageFile(root, page.scratch) === null ? null : shownFile(vaultPath, page.scratch, requested, "temporary");
+  if (scratch?.state === "ready" || !hasEntry(join(root, page.saved)))
+    return scratch ?? { state: "gone", reason: `${requested} does not exist.` };
+  // A saved place that is no plain file, such as a link, keeps its path, so Remove can take the link away.
+  const saved =
+    plainPageFile(root, page.saved) === null
+      ? { state: "refused" as const, reason: `${page.saved} is not a plain file, so Eva does not show it.` }
+      : shownFile(vaultPath, page.saved, requested, "saved");
+  // A saved page that Eva refuses keeps its path, so the person can still remove it from the chat.
+  return saved.state === "ready" ? saved : { ...saved, saved: page.saved };
+}
+
+/** One place of a page, with the checks of `[[attach:]]`. `requested` names the page in each reason. */
+function shownFile(vaultPath: string, path: string, requested: string, kept: PageKept): ShownPage {
+  const file = resolveSendableFile(vaultPath, path, { verb: "show", maxBytes: maxPageBytes });
   if (!file.ok) {
     if (file.missing === true) return { state: "gone", reason: `${requested} does not exist.` };
     return { state: file.tooLarge === true ? "too-large" : "refused", reason: file.reason };
@@ -51,7 +110,17 @@ export function resolveShownPage(vaultPath: string, requested: string): ShownPag
   // The extension of the real file, so a link named `.html` cannot show a note as a page.
   if (!pageExtensions.has(extname(file.path).toLowerCase()))
     return { state: "refused", reason: `${requested} is not an HTML page.` };
-  return { state: "ready", path: file.path, relativePath: file.relativePath };
+  return { state: "ready", path: file.path, relativePath: file.relativePath, kept };
+}
+
+/** Any entry, also a link that leads nowhere or a folder: the saved place answers then, with its reason. */
+function hasEntry(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface PageSession {
@@ -90,7 +159,14 @@ export class ChatPages {
     }
     const token = randomBytes(32).toString("base64url");
     this.sessions.set(token, { requested, theme, expiresAt: now + pageTokenLifeMs, served: false });
-    return { state: "ready", src: `/widgets/${token}/${pageName}`, token };
+    return {
+      state: "ready",
+      src: `/widgets/${token}/${pageName}`,
+      token,
+      kept: shown.kept,
+      path: shown.relativePath,
+      saved: savedPathOf(this.options.vaultPath, requested),
+    };
   }
 
   /** Ends the tokens of frames that loaded or closed. */
@@ -146,7 +222,7 @@ export class ChatPages {
 const noFollow: number = (constants as Partial<typeof constants>).O_NOFOLLOW ?? 0;
 
 /** The bytes of a real file of 2 MB at most, or null: a link put in its place is not followed. */
-function readPage(path: string): Buffer | null {
+export function readPage(path: string): Buffer | null {
   let handle: number;
   try {
     handle = openSync(path, constants.O_RDONLY | noFollow);

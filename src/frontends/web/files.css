@@ -211,6 +211,12 @@ a.files-favorite[aria-current="page"] {
   z-index: 1;
 }
 
+/* A column at the right of the page, such as a pinned page (#1130), takes its divider on its left edge. */
+.column-divider.at-left {
+  right: auto;
+  left: calc(var(--space-3) / -2);
+}
+
 .column-divider::after {
   content: "";
   position: absolute;
@@ -252,6 +258,11 @@ a.files-favorite[aria-current="page"] {
   .column-divider {
     width: var(--touch-target);
     right: calc((var(--space-3) + var(--touch-target)) / -2);
+  }
+
+  .column-divider.at-left {
+    right: auto;
+    left: calc(var(--touch-target) / -2);
   }
 }
 

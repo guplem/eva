@@ -8,6 +8,7 @@ import {
   maxPageTokens,
   pageTokenLifeMs,
   resolveShownPage,
+  savedPathOf,
 } from "../../../../src/core/pages/chat-pages.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 
@@ -117,7 +118,117 @@ describe("resolveShownPage", () => {
   });
 });
 
+describe("resolveShownPage and saved pages (#1130)", () => {
+  test("says how a page is kept: temporary in the scratch folder, saved in .eva/pages, or a note", () => {
+    write(".eva/scratch/chart.html", page);
+    write(".eva/pages/kept.html", page);
+    write("Notes/Old.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({ state: "ready", kept: "temporary" });
+    expect(resolveShownPage(vault, ".eva/pages/kept.html")).toMatchObject({ state: "ready", kept: "saved" });
+    expect(resolveShownPage(vault, "Notes/Old.html")).toMatchObject({ state: "ready", kept: "note" });
+  });
+
+  test("leads the scratch marker of a saved page to the saved file once the scratch file is gone", () => {
+    write(".eva/pages/chart.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/chart.html",
+      kept: "saved",
+    });
+  });
+
+  test("shows a scratch file that exists at the marker: it is the newest version, and not saved", () => {
+    write(".eva/scratch/chart.html", "<p>new</p>");
+    write(".eva/pages/chart.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({
+      relativePath: ".eva/scratch/chart.html",
+      kept: "temporary",
+    });
+    // A pin names the saved path, and shows the newest version of the same name too.
+    expect(resolveShownPage(vault, ".eva/pages/chart.html")).toMatchObject({
+      relativePath: ".eva/scratch/chart.html",
+      kept: "temporary",
+    });
+  });
+
+  test("keeps pages of different scratch folders apart, also the files that the person sends", () => {
+    write(".eva/pages/a/chart.html", page);
+    write(".eva/scratch/b/chart.html", page);
+    write(".eva/pages/report.html", page);
+    write(".eva/scratch/received/report.html", "<p>sent</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/a/chart.html")).toMatchObject({
+      relativePath: ".eva/pages/a/chart.html",
+    });
+    expect(resolveShownPage(vault, ".eva/scratch/b/chart.html")).toMatchObject({
+      relativePath: ".eva/scratch/b/chart.html",
+    });
+    expect(resolveShownPage(vault, ".eva/scratch/received/report.html")).toMatchObject({
+      relativePath: ".eva/scratch/received/report.html",
+    });
+    expect(resolveShownPage(vault, ".eva/scratch/c/chart.html").state).toBe("gone");
+  });
+
+  test("gives the reason of a saved page that it refuses, and its saved path, so the person can remove it", () => {
+    write(".eva/pages/keys.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/keys.html")).toMatchObject({
+      state: "refused",
+      saved: ".eva/pages/keys.html",
+    });
+    write(".eva/scratch/secret.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/secret.html")).not.toHaveProperty("saved");
+  });
+
+  test("shows the saved page when the scratch version is a folder or a file that Eva refuses", () => {
+    write(".eva/pages/folder.html", page);
+    mkdirSync(join(vault, ".eva", "scratch", "folder.html"), { recursive: true });
+    expect(resolveShownPage(vault, ".eva/scratch/folder.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/folder.html",
+      kept: "saved",
+    });
+    write(".eva/pages/leak.html", page);
+    write(".eva/scratch/leak.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/leak.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/leak.html",
+    });
+    // With no saved version, the refusal of the scratch version stands.
+    write(".eva/scratch/alone.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/alone.html")).toMatchObject({ state: "refused" });
+  });
+
+  test("reads the old Scratch folder with a pages subfolder as scratch", () => {
+    write("Scratch/pages/chart.html", page);
+    expect(resolveShownPage(vault, "Scratch/pages/chart.html")).toMatchObject({
+      state: "ready",
+      relativePath: "Scratch/pages/chart.html",
+      kept: "temporary",
+    });
+  });
+
+  test("names the saved file of a page by its whole path under the scratch folder", () => {
+    expect(savedPathOf(vault, ".eva/scratch/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf(vault, ".eva/scratch/received/plan.html")).toBe(".eva/pages/received/plan.html");
+    expect(savedPathOf(vault, "Scratch/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf(vault, ".eva/pages/a/plan.html")).toBe(".eva/pages/a/plan.html");
+    expect(savedPathOf(vault, "Notes/plan.html")).toBeNull();
+    expect(savedPathOf(vault, ".eva/scratch")).toBeNull();
+  });
+});
+
 describe("ChatPages", () => {
+  test("tells the frame how its page is kept and which file it shows", () => {
+    write(".eva/pages/chart.html", page);
+    expect(pages().frame(".eva/scratch/chart.html", theme)).toMatchObject({
+      state: "ready",
+      kept: "saved",
+      path: ".eva/pages/chart.html",
+      saved: ".eva/pages/chart.html",
+    });
+    write("Notes/plan.html", page);
+    expect(pages().frame("Notes/plan.html", theme)).toMatchObject({ kept: "note", saved: null });
+  });
+
   test("gives a token path for a page, and serves the page and the theme under it", () => {
     write(".eva/scratch/chart.html", page);
     const store = pages();

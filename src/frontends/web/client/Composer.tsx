@@ -18,6 +18,7 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -140,6 +141,8 @@ interface ComposerProps {
   readonly draftKey?: string;
   /** The replies that Eva suggests (#1127). The empty box offers the first, and Tab or a tap sends it. */
   readonly suggestions?: readonly string[];
+  /** A bar that stays above the box, such as the pinned page on a phone (#1130). */
+  readonly above?: ReactNode;
 }
 
 export function Composer({
@@ -154,6 +157,7 @@ export function Composer({
   placeholder = composerPlaceholder(null),
   draftKey,
   suggestions = noSuggestions,
+  above,
 }: ComposerProps): ReactElement {
   // A chat that goes on from a summary starts with it, so the person reads it before it goes (issue 522).
   const summary = session.turns.length === 0 ? (session.firstMessageDraft ?? null) : null;
@@ -378,6 +382,7 @@ export function Composer({
   if (voice.state.phase !== "idle") {
     return (
       <div className="composer">
+        {above}
         <div className="composer-box">
           {voice.state.phase === "recording" ? (
             <div className="composer-row">
@@ -501,6 +506,7 @@ export function Composer({
   return (
     <div className="composer">
       {mentions.menu}
+      {above}
       <div
         ref={shell}
         className={[

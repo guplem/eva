@@ -10,8 +10,11 @@ const keyStep = 16;
 /** A click that moves a few pixels is still a click, so it keeps the usual size. */
 const dragStart = 3;
 
-/** On the right, a drag to the right makes the element wider. On the top, a drag up makes it taller. */
-type Side = "right" | "top";
+/**
+ * On the right, a drag to the right makes the element wider. On the left, as for the pinned page at the right of a
+ * chat (#1130), a drag to the left makes it wider. On the top, a drag up makes it taller.
+ */
+type Side = "right" | "left" | "top";
 
 const sides = {
   right: {
@@ -20,6 +23,13 @@ const sides = {
     grow: "ArrowRight",
     shrink: "ArrowLeft",
     tip: "right",
+  },
+  left: {
+    className: "column-divider at-left",
+    orientation: "vertical",
+    grow: "ArrowLeft",
+    shrink: "ArrowRight",
+    tip: undefined,
   },
   top: { className: "row-divider", orientation: "horizontal", grow: "ArrowUp", shrink: "ArrowDown", tip: undefined },
 } as const;
@@ -112,7 +122,11 @@ export function ColumnDivider({
         stop();
         return;
       }
-      const offset = vertical ? start.at - move.clientY : move.clientX - start.at;
+      const offset = vertical
+        ? start.at - move.clientY
+        : side === "left"
+          ? start.at - move.clientX
+          : move.clientX - start.at;
       if (dragged === null && Math.abs(offset) < dragStart) return;
       // Each move sets the size on the element only: a render of the whole page at each move makes a drag stutter.
       element.classList.add("resized");

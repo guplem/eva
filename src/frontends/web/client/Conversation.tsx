@@ -110,6 +110,8 @@ interface ConversationProps {
   readonly projectTitle?: string | null;
   /** True when Eva's machine can turn a voice note into text. */
   readonly voiceNotes: boolean;
+  /** A bar above the message box, such as the pinned page on a phone (#1130). */
+  readonly aboveComposer?: ReactNode;
 }
 
 export function Conversation({
@@ -123,6 +125,7 @@ export function Conversation({
   blocker,
   voiceNotes,
   projectTitle = null,
+  aboveComposer,
 }: ConversationProps): ReactElement {
   const branch = tree.find((session) => session.id === shown.id) ?? root;
   const states = useBranchStates(tree, branch.id, approvals.pending, live);
@@ -231,6 +234,7 @@ export function Conversation({
         projectTitle={projectTitle}
         forkedFrom={forkedFromNote(root, sessions)}
         answers={answers}
+        aboveComposer={aboveComposer}
       />
     </div>
   );
@@ -249,6 +253,7 @@ function Branch({
   projectTitle,
   forkedFrom,
   answers,
+  aboveComposer,
 }: {
   session: SessionRecord;
   /** The chat and its forks, the chat first. */
@@ -265,6 +270,7 @@ function Branch({
   forkedFrom: { readonly text: string; readonly chatId: string | null } | null;
   /** Retry and Fork of an answer. The branch map shares them, so the view draws their questions. */
   answers: AnswerActions;
+  aboveComposer: ReactNode;
 }): ReactElement {
   const waiting = approvals.pending.filter((approval) => approval.sessionId === session.id);
   const turnCount = session.turns.length;
@@ -496,6 +502,7 @@ function Branch({
           voiceNotes={voiceNotes}
           placeholder={composerPlaceholder(projectTitle)}
           suggestions={replies}
+          above={aboveComposer}
         />
       )}
     </section>

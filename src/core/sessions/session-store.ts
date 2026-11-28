@@ -177,6 +177,11 @@ export const sessionSchema = z
      * A record from before the field, or a bad value, has no name.
      */
     forkName: z.string().nullable().default(null).catch(null),
+    /**
+     * The vault path of the saved page that the web app shows beside this branch (#1130), or null. A
+     * fork starts with none. A record from before the field, or a bad value, has no pin.
+     */
+    pinnedPage: z.string().nullable().default(null).catch(null),
   })
   .transform((session) => ({ ...session, seenTurns: session.seenTurns ?? session.turns.length }));
 

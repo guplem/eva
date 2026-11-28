@@ -177,6 +177,7 @@ When the person asks how to open Eva on their phone or another computer, or for 
 - **`.eva/schedules.json`** holds the schedules. Change it only through the `schedule` skill. Eva skips a broken entry.
 - **`.eva/skills/`** holds the person's own skills. A new vault has none.
 - **`.eva/scratch/`** holds the files of the chats, as _Sending files_ says.
+- **`.eva/pages/`** holds the pages that the person saved, as _Showing a page_ says. Edit a page there when the person asks for a change. Never move or delete one.
 - **`.eva/template.json`** records which of your files came from Eva's template. Never edit it.
 - **`.eva/vault-structure.json`** records the vault structure version that the vault follows. Never edit it: only the `vault-upgrade` skill changes it.
 - **`.eva/machines/`** holds the open problems of each computer. Never edit it: Eva writes it by herself. Delete a file there only when the person asks, for a computer that no longer runs Eva.
@@ -201,6 +202,11 @@ A file made only to send, such as a PDF of an answer, goes in `.eva/scratch/`, n
 In the web app, you can show a small HTML page inside your answer. Use a page when it shows more than text can: a chart of numbers, a table to sort, or a small calculator. A short answer, a list or a small table stays text.
 
 Write the page in `.eva/scratch/<name>.html`, with a name after its content. Then write `[[show: .eva/scratch/<name>.html]]` on a line of its own. Telegram shows a link to the web app instead. Eva deletes the page after a week.
+
+The person can save a page, or pin it beside the chat. Eva then moves it to `.eva/pages/<name>.html`, and each `[[show:]]` line of the page shows the saved file. So:
+
+- To change a page, look for `.eva/pages/<name>.html` first. When it exists, edit it there, and never write a new copy in `.eva/scratch/`. The chat shows the new version after your answer.
+- Give each new page a name that is free in both `.eva/scratch/` and `.eva/pages/`. A new page with the name of a saved page replaces it when the person saves it.
 
 Follow these rules for each page:
 

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertPinnable,
   SessionManager,
   type FirstTurn,
   type ChatDefaults,
@@ -863,6 +864,62 @@ describe("renames (issue 46)", () => {
     // A rename of the chat leaves the fork name.
     restarted.rename(rootId, "Trip plans");
     expect(restarted.get(fork.id).forkName).toBe("Short answer");
+  });
+
+  test("a pinned page is a fact of one branch: it tells every front end, survives a restart, and a fork has none (#1130)", async () => {
+    const manager = createManager(new FakeEngine());
+    const rootId = newAssistantSession(manager);
+    await manager.send(rootId, "Hello there, Eva");
+    events.length = 0;
+    expect(manager.pinPage(rootId, ".eva/pages/chart.html").pinnedPage).toBe(".eva/pages/chart.html");
+    expect(events).toMatchObject([{ kind: "page_pinned", sessionId: rootId, path: ".eva/pages/chart.html" }]);
+    expect(createManager(new FakeEngine()).get(rootId).pinnedPage).toBe(".eva/pages/chart.html");
+    const fork = manager.fork(rootId, manager.get(rootId).turns[0]?.lastMessageId ?? "");
+    expect(fork.pinnedPage).toBeNull();
+    // A pin of another page replaces the first, and Unpin keeps nothing.
+    expect(manager.pinPage(rootId, ".eva/pages/steps.html").pinnedPage).toBe(".eva/pages/steps.html");
+    events.length = 0;
+    expect(manager.pinPage(rootId, null).pinnedPage).toBeNull();
+    expect(events).toMatchObject([{ kind: "page_pinned", sessionId: rootId, path: null }]);
+    // The same pin again tells nobody.
+    events.length = 0;
+    manager.pinPage(rootId, null);
+    expect(events).toEqual([]);
+  });
+
+  test("only a chat with Eva pins a page, and any chat can drop a pin (#1130)", () => {
+    const manager = createManager(new FakeEngine());
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/vault/Projects/p/repos/clone-0",
+      source: "web",
+      projectId: "p",
+      clone: "clone-0",
+    });
+    expect(() => manager.pinPage(project.id, ".eva/pages/chart.html")).toThrow(
+      expect.objectContaining({ code: "page_not_pinnable" }),
+    );
+    expect(() => assertPinnable(project)).toThrow(expect.objectContaining({ code: "page_not_pinnable" }));
+    expect(manager.pinPage(project.id, null).pinnedPage).toBeNull();
+    expect(() => assertPinnable(manager.get(newAssistantSession(manager)))).not.toThrow();
+  });
+
+  test("a removed page leaves the pin of every chat that pins it (#1130)", () => {
+    const manager = createManager(new FakeEngine());
+    const first = newAssistantSession(manager);
+    const second = newAssistantSession(manager);
+    const third = newAssistantSession(manager);
+    manager.pinPage(first, ".eva/pages/chart.html");
+    manager.pinPage(second, ".eva/pages/chart.html");
+    manager.pinPage(third, ".eva/pages/steps.html");
+    events.length = 0;
+    manager.unpinEverywhere(".eva/pages/chart.html");
+    expect(manager.get(first).pinnedPage).toBeNull();
+    expect(manager.get(second).pinnedPage).toBeNull();
+    expect(manager.get(third).pinnedPage).toBe(".eva/pages/steps.html");
+    expect(events.map((event) => event.kind)).toEqual(["page_pinned", "page_pinned"]);
   });
 
   test("a fork name is redacted, and the first branch takes one too (issues 637, 647)", async () => {

@@ -101,7 +101,7 @@ test("full screen of a page that went away shows the note of the bubble", async 
   );
   await page.getByRole("button", { name: "Open steps-this-week in full screen" }).click();
   await expect(page.getByRole("dialog").locator(".page-note")).toHaveText(
-    "This page is gone. Eva deletes a page after 7 days.",
+    "This page is gone. Eva deletes a page that nobody saved after 7 days.",
   );
   await expect(page.getByRole("dialog").getByRole("progressbar")).toHaveCount(0);
 });
@@ -139,7 +139,9 @@ test("a page that is gone shows a short note instead of the frame", async ({ pag
   await logIn(page);
   await ask(page, "the lost drawing");
   const answer = page.locator(".message.answer").first();
-  await expect(answer.locator(".page-note")).toHaveText("This page is gone. Eva deletes a page after 7 days.");
+  await expect(answer.locator(".page-note")).toHaveText(
+    "This page is gone. Eva deletes a page that nobody saved after 7 days.",
+  );
   await expect(answer.locator("iframe")).toHaveCount(0);
 });
 

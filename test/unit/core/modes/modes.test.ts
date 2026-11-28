@@ -97,6 +97,7 @@ function session(overrides: Partial<SessionRecord> = {}): SessionRecord {
     forkedFrom: null,
     reportsTo: null,
     forkName: null,
+    pinnedPage: null,
     turns: [],
     ...overrides,
   };

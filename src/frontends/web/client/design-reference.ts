@@ -327,6 +327,8 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   wrap: "Wrap the long lines of a file",
   code: "Show the plain text or the formatted view of a file",
   star: "A favorite file or folder: filled when it is one",
+  bookmark: "Save a page of a chat, so it stays after 7 days",
+  pin: "Pin a page of a chat beside the chat, or unpin it",
   command: "Open the text actions and saved prompts of the message box",
   wand: "The text actions, which change the typed text",
   clipboard: "The saved prompts",

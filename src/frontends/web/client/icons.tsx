@@ -246,6 +246,15 @@ const drawings = {
       <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
     </>
   ),
+  /** A bookmark: keep a page of a chat (#1130). */
+  bookmark: <path d="M7 3.5h10a1 1 0 0 1 1 1v16l-6-4-6 4v-16a1 1 0 0 1 1-1z" />,
+  /** A push pin: keep a page of a chat in view beside it (#1130). */
+  pin: (
+    <>
+      <path d="M9 3.5h6M10 3.5v6l-3.5 4h11L14 9.5v-6" />
+      <path d="M12 13.5v7" />
+    </>
+  ),
   /** A favorite. The page fills it when the path is one. */
   star: <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.15 1 5.85L12 16.9l-5.25 2.8 1-5.85L3.5 9.7l5.9-.9z" />,
   /** A slash in a key: the menu of text actions and saved prompts in the message box. */

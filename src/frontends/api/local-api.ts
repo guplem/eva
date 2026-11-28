@@ -395,6 +395,10 @@ const pageFrameSchema = z.object({
 });
 /** The token of a page frame that loaded. */
 const pageLoadedSchema = z.object({ token: z.string().max(100) });
+/** A page to save or remove, by the path of its marker. */
+const pagePathSchema = z.object({ path: z.string().min(1).max(1_000) });
+/** The page to pin beside a chat, or null to unpin (#1130). */
+const pinSchema = z.object({ path: z.string().min(1).max(1_000).nullable() });
 /** The default places of a form (#984), by their path from the vault root. */
 const widgetPlacesSchema = z.object({ paths: z.array(z.string().max(1_000)).max(100) });
 const widgetFolderSchema = z.object({ path: z.string().min(1).max(1_000) });
@@ -877,6 +881,10 @@ async function pagesApi(request: Request, url: URL, eva: Eva): Promise<Response 
     pages.release(widgetReleaseSchema.parse(await request.json()).tokens);
     return new Response(null, { status: 204 });
   }
+  // Save and Remove write only in `.eva/` (#1130). They give the page itself no new access.
+  if (url.pathname === "/api/pages/save") return json(eva.savePage(pagePathSchema.parse(await request.json()).path));
+  if (url.pathname === "/api/pages/remove")
+    return json(eva.removePage(pagePathSchema.parse(await request.json()).path));
   return null;
 }
 
@@ -1086,6 +1094,7 @@ async function route(request: Request, url: URL, eva: Eva, deviceToken: string |
       return json(eva.sessions.nameFork(sessionId, name));
     }
     if (action === "delete-branch") return json(eva.sessions.deleteBranch(sessionId));
+    if (action === "pin") return json(eva.pinPage(sessionId, pinSchema.parse(await request.json()).path));
     if (action === "seen") {
       const { turnCount } = seenSchema.parse(await request.json());
       return json(eva.sessions.markSeen(sessionId, turnCount));

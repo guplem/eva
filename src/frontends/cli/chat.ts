@@ -387,7 +387,8 @@ export function describeEvent(event: SessionEvent, clock: Clock | null = null): 
     case "session_seen":
     case "session_archived":
     case "fork_named":
-      // Only the web app has a list with unread and archived chats, and fork names.
+    case "page_pinned":
+      // Only the web app has a list with unread and archived chats, fork names and pinned pages.
       return null;
     case "session_closed":
       return "Eva closed this chat to reuse its clone. Start a new chat to go on.\n";

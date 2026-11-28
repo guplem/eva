@@ -103,6 +103,8 @@ export type EngineEventPayload =
   | { readonly kind: "session_renamed"; readonly title: string; readonly automatic?: true }
   /** The person gave a fork its own name (issue 637). Only the web app shows it. */
   | { readonly kind: "fork_named"; readonly name: string }
+  /** The person pinned a saved page beside the chat, or unpinned it: `path` is null (#1130). Only the web app shows it. */
+  | { readonly kind: "page_pinned"; readonly path: string | null }
   /**
    * The person saw the first `seenTurns` turns of the chat in the web app (issue 381). The count goes back when
    * the person marks the chat as unread (#1101).

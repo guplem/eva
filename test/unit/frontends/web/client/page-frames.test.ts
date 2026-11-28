@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   afterLoad,
   answerPages,
+  keptWords,
+  pinnedLayout,
+  pinnedMinWidth,
   maxPageTries,
   pageFailedNote,
   pageLabel,
@@ -47,12 +50,66 @@ describe("pageLabel", () => {
 
 describe("pageNote", () => {
   test("says why the answer shows no page", () => {
-    expect(pageNote({ state: "gone", reason: "x" })).toBe("This page is gone. Eva deletes a page after 7 days.");
+    // A removed saved page gives the same note, so it does not say that Eva deleted it (#1130).
+    expect(pageNote({ state: "gone", reason: "x" })).toBe(
+      "This page is gone. Eva deletes a page that nobody saved after 7 days.",
+    );
     expect(pageNote({ state: "too-large", reason: "x" })).toBe(
       "This page is larger than 2 MB, so Eva does not show it.",
     );
     expect(pageNote({ state: "refused", reason: "a.html holds a secret, so Eva does not show it." })).toBe(
       "a.html holds a secret, so Eva does not show it.",
     );
+  });
+});
+
+describe("pinnedLayout (#1130)", () => {
+  // The Chats list is 300 px. The chat keeps 480 px, the column 320 px, and the inspector takes 300 px.
+  test("shows the column while the chat keeps its width, and the bar of the phone below that", () => {
+    expect(pinnedLayout({ layout: 1204, list: 300, column: 400, inspector: false })).toMatchObject({
+      place: "column",
+      width: 400,
+    });
+    expect(pinnedLayout({ layout: 1100, list: 300, column: 400, inspector: false })).toMatchObject({
+      place: "column",
+      width: 320,
+    });
+    expect(pinnedLayout({ layout: 1099, list: 300, column: 400, inspector: false }).place).toBe("bar");
+    expect(pinnedLayout({ layout: 700, list: 0, column: 400, inspector: false }).place).toBe("bar");
+  });
+
+  test("keeps the inspector beside the column while the chat stays comfortable, and puts it over the column otherwise", () => {
+    // A 1920 px window: the chat keeps 844 px with both columns.
+    expect(pinnedLayout({ layout: 1844, list: 300, column: 400, inspector: true })).toEqual({
+      place: "column",
+      width: 400,
+      inspector: "beside",
+    });
+    expect(pinnedLayout({ layout: 1640, list: 300, column: 400, inspector: true }).inspector).toBe("beside");
+    // A 1600 px window: three columns would leave the chat 524 px, so the details cover the page.
+    expect(pinnedLayout({ layout: 1524, list: 300, column: 400, inspector: true }).inspector).toBe("over");
+    expect(pinnedLayout({ layout: 1204, list: 300, column: 400, inspector: true })).toEqual({
+      place: "column",
+      width: 400,
+      inspector: "over",
+    });
+    expect(pinnedLayout({ layout: 900, list: 300, column: 400, inspector: true })).toEqual({
+      place: "bar",
+      width: 400,
+      inspector: "beside",
+    });
+  });
+
+  test("never gives the column less than its minimum or more than the chat leaves", () => {
+    expect(pinnedLayout({ layout: 2000, list: 300, column: 100, inspector: false }).width).toBe(pinnedMinWidth);
+    expect(pinnedLayout({ layout: 2000, list: 300, column: 5000, inspector: false }).width).toBe(2000 - 300 - 480);
+  });
+});
+
+describe("keptWords (#1130)", () => {
+  test("names how a page is kept, so the frame shows it in words", () => {
+    expect(keptWords("temporary")).toBeNull();
+    expect(keptWords("saved")).toBe("Saved");
+    expect(keptWords("note")).toBe("In your notes");
   });
 });

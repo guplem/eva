@@ -48,6 +48,7 @@ function session(id: string): SessionRecord {
     forkedFrom: null,
     reportsTo: null,
     forkName: null,
+    pinnedPage: null,
   };
 }
 
@@ -159,6 +160,19 @@ describe("SessionStore", () => {
     writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), forkName: 7 }] }));
     expect(openStore().get("one")?.forkName).toBeNull();
     expect(openStore().get("two")?.forkName).toBeNull();
+    expect(corruptCopies()).toEqual([]);
+  });
+
+  test("a session from before pinned pages, or with a bad pin, has no pinned page (#1130)", () => {
+    const { pinnedPage: _left, ...old } = session("one");
+    writeFileSync(path, JSON.stringify({ version: 1, sessions: [old, { ...session("two"), pinnedPage: 7 }] }));
+    expect(openStore().get("one")?.pinnedPage).toBeNull();
+    expect(openStore().get("two")?.pinnedPage).toBeNull();
+    writeFileSync(
+      path,
+      JSON.stringify({ version: 1, sessions: [{ ...session("three"), pinnedPage: ".eva/pages/chart.html" }] }),
+    );
+    expect(openStore().get("three")?.pinnedPage).toBe(".eva/pages/chart.html");
     expect(corruptCopies()).toEqual([]);
   });
 

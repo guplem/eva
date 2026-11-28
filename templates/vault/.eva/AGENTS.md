@@ -10,4 +10,5 @@ Eva's configuration for this vault. It is not notes: never file notes here.
 | `schedules.json` | Scheduled messages. The `schedule` skill edits it. |
 | `skills/` | Skills that the person wrote. A skill here wins over Eva's own skill with the same name. |
 | `scratch/` | Files sent to a chat or received from it. Git ignores it, and Eva empties it each week. Copy a file worth keeping to its place in the vault. |
+| `pages/` | Pages of the chats that the person saved or pinned. Git saves them. Edit a page here when the person asks for a change. Never move or delete one. |
 | Everything else | Files that Eva manages by herself. Never edit them. |

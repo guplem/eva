@@ -1,6 +1,8 @@
 /** Assistant mode: chats in the sidebar, the conversation, background tasks. */
-import { useEffect, useRef, useState, type ReactElement } from "react";
-import type { ChatBlocker, ChatFacts, ListedSession, SessionRecord } from "./api.ts";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { api, type ChatBlocker, type ChatFacts, type ListedSession, type SessionRecord } from "./api.ts";
+import { ChatPages, useChatPageState } from "./page-context.ts";
+import { PinnedBar, PinnedColumn, turnsKey, usePinnedLayout } from "./PinnedPage.tsx";
 import { useShownChat, type ChatApprovals } from "./ApprovalCard.tsx";
 import { chatForks, chatPreview, chatState, chatTime, groupChats, matchesSearch, type ChatState } from "./chat-list.ts";
 import { useMarkSeen } from "./seen-chats.ts";
@@ -156,6 +158,26 @@ export function AssistantView({
     });
   const states = useBranchStates(tree, branch.id, approvals.pending, live);
   const [panelShown, togglePanel] = useChatPanelShown();
+  // The page that the shown branch pins (#1130): a column at the right of the chat, or a bar above the message box.
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const pinnedLayout = usePinnedLayout(layoutRef);
+  const pinnedPath = sessions.find((session) => session.id === branch.id)?.pinnedPage ?? null;
+  const shownBranchId = branch.id;
+  const onPin = useCallback(
+    async (path: string | null): Promise<void> => {
+      if (shownBranchId === null) return;
+      await api.pinPage(shownBranchId, path);
+      await onChanged();
+    },
+    [shownBranchId, onChanged],
+  );
+  const pages = useChatPageState(turnsKey(tree), pinnedPath, onPin);
+  const pinnedColumn = selected !== undefined && pinnedPath !== null && pinnedLayout.place === "column";
+  // Where the chat and both columns do not fit, the details cover the column, and only while the person asks.
+  const detailsOverPin = pinnedColumn && pinnedLayout.inspector === "over";
+  const [detailsAsked, setDetailsAsked] = useState(false);
+  const detailsShown = detailsOverPin ? detailsAsked : panelShown;
+  const toggleDetails = detailsOverPin ? () => setDetailsAsked((shown) => !shown) : togglePanel;
   const chat = {
     tree,
     shownId: branch.id,
@@ -253,142 +275,160 @@ export function AssistantView({
 
   return (
     <LeaveMarkedChat.Provider value={leaveMarked}>
-      <div className="layout">
-        <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
-          <div className="sidebar-list" ref={listRef}>
-            <div className="chat-list-header">
-              {showArchived ? (
-                <>
-                  <BackButton label="Back to the chats" onClick={() => showList(false)} />
-                  <h2>
-                    <Icon name="archive" /> Archived
-                  </h2>
-                </>
-              ) : (
-                <>
-                  <h2>Chats</h2>
-                  {/* "New" is short for the header; the name says what it makes. */}
-                  <button className="primary wide-only" aria-label="New chat" onClick={newChat}>
-                    <Icon name="plus" /> New
-                  </button>
-                </>
+      <ChatPages.Provider value={pages}>
+        <div
+          ref={layoutRef}
+          className={`layout${pinnedColumn ? " has-pinned" : ""}${detailsOverPin ? " details-over-pin" : ""}`}
+        >
+          <nav className={`sidebar has-list${sidebarOpen ? " open" : ""}`} aria-label="Chats">
+            <div className="sidebar-list" ref={listRef}>
+              <div className="chat-list-header">
+                {showArchived ? (
+                  <>
+                    <BackButton label="Back to the chats" onClick={() => showList(false)} />
+                    <h2>
+                      <Icon name="archive" /> Archived
+                    </h2>
+                  </>
+                ) : (
+                  <>
+                    <h2>Chats</h2>
+                    {/* "New" is short for the header; the name says what it makes. */}
+                    <button className="primary wide-only" aria-label="New chat" onClick={newChat}>
+                      <Icon name="plus" /> New
+                    </button>
+                  </>
+                )}
+              </div>
+              <label className="chat-search">
+                <Icon name="search" />
+                <input
+                  type="search"
+                  aria-label="Search chats"
+                  placeholder="Search chats"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </label>
+              {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
+              {showArchived && chats.length === 0 && <span className="chip">No archived chat.</span>}
+              {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
+                <section key={group} className="chat-group" aria-label={group}>
+                  <h3>{group}</h3>
+                  {inGroup.map((chat) => (
+                    <ChatItem
+                      key={chat.id}
+                      chat={chat}
+                      time={chatTime(timeOf(chat), now)}
+                      state={stateOf(chat)}
+                      isSelected={chat.id === selected?.id}
+                      onSelect={() => select(chat.id)}
+                      onAction={(action) => select(chat.id, action)}
+                      archiveItem={archiveItem(chat)}
+                      forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
+                        const state = chatState([session], isRunning, approvalSessionIds);
+                        return {
+                          session,
+                          name,
+                          preview: chatPreview(session, state),
+                          state,
+                          isShown: chat.id === selected?.id && session.id === branch.id,
+                        };
+                      })}
+                      forksOpen={expandedIds.has(chat.id)}
+                      onToggleForks={() => toggleForks(chat.id)}
+                      onSelectFork={(branchId) => selectBranch(chat.id, branchId)}
+                    />
+                  ))}
+                </section>
+              ))}
+              {!showArchived && archivedCount > 0 && (
+                <button className="ghost archived-link" onClick={() => showList(true)}>
+                  {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
+                  <Icon name="archive" /> Archived ({archivedCount})
+                </button>
               )}
             </div>
-            <label className="chat-search">
-              <Icon name="search" />
-              <input
-                type="search"
-                aria-label="Search chats"
-                placeholder="Search chats"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </label>
-            {chats.length > 0 && shown.length === 0 && <span className="chip">No chat matches.</span>}
-            {showArchived && chats.length === 0 && <span className="chip">No archived chat.</span>}
-            {groupChats(shown, timeOf, now).map(({ group, chats: inGroup }) => (
-              <section key={group} className="chat-group" aria-label={group}>
-                <h3>{group}</h3>
-                {inGroup.map((chat) => (
-                  <ChatItem
-                    key={chat.id}
-                    chat={chat}
-                    time={chatTime(timeOf(chat), now)}
-                    state={stateOf(chat)}
-                    isSelected={chat.id === selected?.id}
-                    onSelect={() => select(chat.id)}
-                    onAction={(action) => select(chat.id, action)}
-                    archiveItem={archiveItem(chat)}
-                    forks={chatForks(chatTree(chat, sessions)).map(({ session, name }) => {
-                      const state = chatState([session], isRunning, approvalSessionIds);
-                      return {
-                        session,
-                        name,
-                        preview: chatPreview(session, state),
-                        state,
-                        isShown: chat.id === selected?.id && session.id === branch.id,
-                      };
-                    })}
-                    forksOpen={expandedIds.has(chat.id)}
-                    onToggleForks={() => toggleForks(chat.id)}
-                    onSelectFork={(branchId) => selectBranch(chat.id, branchId)}
-                  />
-                ))}
-              </section>
-            ))}
-            {!showArchived && archivedCount > 0 && (
-              <button className="ghost archived-link" onClick={() => showList(true)}>
-                {/* "Archived", not "Archived chats": the Chats button of the main menu keeps a name of its own. */}
-                <Icon name="archive" /> Archived ({archivedCount})
-              </button>
+            {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
+            {!showArchived && (
+              <div className="chat-list-footer phone-only">
+                <button className="primary large" onClick={newChat}>
+                  <Icon name="plus" /> New chat
+                </button>
+              </div>
             )}
-          </div>
-          {/* A phone keeps the button at the foot of the list, in reach of the thumb. */}
-          {!showArchived && (
-            <div className="chat-list-footer phone-only">
-              <button className="primary large" onClick={newChat}>
-                <Icon name="plus" /> New chat
-              </button>
-            </div>
-          )}
-        </nav>
-        {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
-        <main className="main">
-          <BusyProjects.Provider value={busy}>
-            {selected === undefined ? (
-              <NewChatDraft
-                page={{ kind: "new-chat", onShowList, listHasUnread }}
-                blocker={blocker}
-                voiceNotes={voiceNotes}
-                onStarted={openNewChat}
-              />
-            ) : (
-              <>
-                <ChatHeader
-                  key={actionRequest.headerProps(selected.id).key}
-                  startWith={actionRequest.headerProps(selected.id).startWith}
-                  chat={selected}
-                  details={chat}
-                  subtitle={chatSubtitle(
-                    selected,
-                    tree.some((session) => isRunning(session.id)),
-                  )}
-                  onShowList={onShowList}
-                  listHasUnread={listHasUnread}
-                  onArchived={afterArchive}
-                  panelShown={panelShown}
-                  extra={<BranchesButton tree={tree} shown={branch} states={states} />}
-                  onTogglePanel={togglePanel}
-                  onChanged={onChanged}
+          </nav>
+          {sidebarOpen && <button className="sidebar-backdrop" aria-label="Close the list" onClick={onNavigate} />}
+          <main className="main">
+            <BusyProjects.Provider value={busy}>
+              {selected === undefined ? (
+                <NewChatDraft
+                  page={{ kind: "new-chat", onShowList, listHasUnread }}
+                  blocker={blocker}
+                  voiceNotes={voiceNotes}
+                  onStarted={openNewChat}
                 />
-                {openedTree === null ? (
-                  <ChatSkeleton />
-                ) : (
-                  <Conversation
-                    root={tree[0] ?? { ...selected, turns: [] }}
-                    tree={tree}
-                    shown={branch}
-                    sessions={sessions}
-                    live={live}
+              ) : (
+                <>
+                  <ChatHeader
+                    key={actionRequest.headerProps(selected.id).key}
+                    startWith={actionRequest.headerProps(selected.id).startWith}
+                    chat={selected}
+                    details={chat}
+                    subtitle={chatSubtitle(
+                      selected,
+                      tree.some((session) => isRunning(session.id)),
+                    )}
+                    onShowList={onShowList}
+                    listHasUnread={listHasUnread}
+                    onArchived={afterArchive}
+                    panelShown={detailsShown}
+                    extra={<BranchesButton tree={tree} shown={branch} states={states} />}
+                    onTogglePanel={toggleDetails}
                     onChanged={onChanged}
-                    approvals={approvals}
-                    blocker={blocker}
-                    voiceNotes={voiceNotes}
                   />
-                )}
-              </>
-            )}
-          </BusyProjects.Provider>
-        </main>
-        {/* The inspector is about one chat, so a new chat draft has none. */}
-        {selected !== undefined &&
-          (openedTree === null ? (
-            // A panel that slides in skips its skeleton, so it slides only once.
-            panelShown && !panelEnters && <ChatPanelLoading />
-          ) : (
-            <ChatPanel shown={panelShown} enters={panelEnters} {...chat} />
-          ))}
-      </div>
+                  {openedTree === null ? (
+                    <ChatSkeleton />
+                  ) : (
+                    <Conversation
+                      root={tree[0] ?? { ...selected, turns: [] }}
+                      tree={tree}
+                      shown={branch}
+                      sessions={sessions}
+                      live={live}
+                      onChanged={onChanged}
+                      approvals={approvals}
+                      blocker={blocker}
+                      voiceNotes={voiceNotes}
+                      aboveComposer={
+                        pinnedPath !== null && pinnedLayout.place === "bar" ? (
+                          <PinnedBar path={pinnedPath} />
+                        ) : undefined
+                      }
+                    />
+                  )}
+                </>
+              )}
+            </BusyProjects.Provider>
+          </main>
+          {pinnedColumn && (
+            <PinnedColumn
+              path={pinnedPath}
+              width={pinnedLayout.width}
+              maxWidth={() => pinnedLayout.maxWidth}
+              onWidth={pinnedLayout.onWidth}
+            />
+          )}
+          {/* The inspector is about one chat, so a new chat draft has none. */}
+          {selected !== undefined &&
+            (openedTree === null ? (
+              // A panel that slides in skips its skeleton, so it slides only once.
+              detailsShown && !panelEnters && <ChatPanelLoading />
+            ) : (
+              <ChatPanel shown={detailsShown} enters={panelEnters} {...chat} />
+            ))}
+        </div>
+      </ChatPages.Provider>
     </LeaveMarkedChat.Provider>
   );
 }

@@ -69,7 +69,9 @@ export type EvaErrorCode =
   /** A vault upgrade command cannot run now, such as on a satellite or with no upgrade open (#773). */
   | "vault_upgrade_refused"
   /** Eva runs no git of her own in a repository of a clone whose git data could start a program (#1131). */
-  | "repository_refused";
+  | "repository_refused"
+  /** Only a chat with Eva pins a page: a Project chat is a clean wrapper of its harness (#1130). */
+  | "page_not_pinnable";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

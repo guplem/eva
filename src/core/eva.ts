@@ -169,7 +169,7 @@ import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { StepExplainer } from "./sessions/step-explainer.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
-import { SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
+import { assertPinnable, SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
 import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls, type ModelCallResult } from "./model-calls/model-calls.ts";
 import { ComposerMenu } from "./composer-menu/composer-menu.ts";
@@ -240,6 +240,7 @@ import { WidgetCopies } from "./widgets/widget-copies.ts";
 import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format-writer.ts";
 import { Widgets } from "./widgets/widgets.ts";
 import { ChatPages } from "./pages/chat-pages.ts";
+import { removeSavedPage, savePage } from "./pages/saved-pages.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
 import { shellSandboxPossible, type ShellWallGap } from "./shell-wall.ts";
@@ -2433,6 +2434,25 @@ export class Eva {
   /** Copies a vault file next to itself from the file explorer (#1117). Answers the path of the copy. */
   duplicateFile(path: string): { path: string } {
     return { path: duplicateVaultFile(this.browsedVault(), path) };
+  }
+
+  /** Keeps the page of a chat answer in `.eva/pages/` (#1130). Answers its saved path. The idle sweep commits it. */
+  savePage(path: string): { path: string } {
+    return { path: savePage(this.browsedVault(), path) };
+  }
+
+  /** Deletes a saved page, and unpins it from each chat, so no column shows a page that is gone (#1130). */
+  removePage(path: string): { path: string } {
+    const removed = removeSavedPage(this.browsedVault(), path);
+    this.sessions.unpinEverywhere(removed);
+    return { path: removed };
+  }
+
+  /** Pins a page beside one branch of a chat, which also saves it, or unpins with null (#1130). */
+  pinPage(sessionId: string, path: string | null): SessionRecord {
+    // Before the save, so a refused pin changes no file.
+    if (path !== null) assertPinnable(this.sessions.get(sessionId));
+    return this.sessions.pinPage(sessionId, path === null ? null : this.savePage(path).path);
   }
 
   /**

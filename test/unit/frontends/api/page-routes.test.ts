@@ -3,7 +3,18 @@
  * the page itself, which a sandboxed frame loads with no cookie.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -158,4 +169,78 @@ describe("the page files", () => {
     const base = `${api.url}/widgets/${frame.token ?? ""}/`;
     expect(gone.headers.get("content-security-policy")).toBe(widgetPolicy(base, api.url, []));
   });
+});
+
+describe("Save, Remove and Pin (#1130)", () => {
+  test("save a page to .eva/pages, and the old marker shows the saved file", async () => {
+    const saved = await call("/api/pages/save", { path: ".eva/scratch/chart.html" });
+    expect(await saved.json()).toEqual({ path: ".eva/pages/chart.html" });
+    expect(existsSync(join(vault, ".eva", "pages", "chart.html"))).toBe(true);
+    expect(await frameOf(".eva/scratch/chart.html")).toMatchObject({
+      state: "ready",
+      kept: "saved",
+      path: ".eva/pages/chart.html",
+    });
+    expect((await call("/api/pages/save", { path: ".eva/scratch/old.html" })).status).toBe(404);
+    const refused = await fetch(`${api.url}/api/pages/save`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: ".eva/scratch/chart.html" }),
+    });
+    expect(refused.status).toBe(401);
+  });
+
+  test("pin saves the page, and remove unpins and deletes it", async () => {
+    const chat = eva.createAssistantSession({ source: "web" });
+    const pinned = await call(`/api/sessions/${chat.id}/pin`, { path: ".eva/scratch/chart.html" });
+    expect(await pinned.json()).toMatchObject({ pinnedPage: ".eva/pages/chart.html" });
+    expect(eva.sessions.get(chat.id).pinnedPage).toBe(".eva/pages/chart.html");
+    const removed = await call("/api/pages/remove", { path: ".eva/scratch/chart.html" });
+    expect(await removed.json()).toEqual({ path: ".eva/pages/chart.html" });
+    expect(eva.sessions.get(chat.id).pinnedPage).toBeNull();
+    expect(await frameOf(".eva/scratch/chart.html")).toMatchObject({ state: "gone" });
+    // Unpin keeps the file.
+    writeFileSync(join(vault, ".eva", "pages", "kept.html"), chart);
+    await call(`/api/sessions/${chat.id}/pin`, { path: ".eva/pages/kept.html" });
+    const unpinned = await call(`/api/sessions/${chat.id}/pin`, { path: null });
+    expect(await unpinned.json()).toMatchObject({ pinnedPage: null });
+    expect(existsSync(join(vault, ".eva", "pages", "kept.html"))).toBe(true);
+  });
+
+  test("refuse to remove a page that is not saved, and a note", async () => {
+    expect((await call("/api/pages/remove", { path: ".eva/scratch/chart.html" })).status).toBe(404);
+    expect((await call("/api/pages/remove", { path: "Notes/plan.md" })).status).toBe(409);
+    expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
+  });
+
+  /** Every entry of the vault, with link targets and file bytes, so a test sees that a refused pin changed nothing. */
+  function vaultEntries(): string[] {
+    const entries: string[] = [];
+    const walk = (path: string): void => {
+      const stats = lstatSync(path);
+      if (stats.isSymbolicLink()) entries.push(`${path} -> ${readlinkSync(path)}`);
+      else if (stats.isDirectory()) for (const name of readdirSync(path).sort()) walk(join(path, name));
+      else entries.push(`${path} = ${readFileSync(path, "utf8")}`);
+    };
+    walk(vault);
+    return entries;
+  }
+
+  test.skipIf(process.platform === "win32")(
+    "Pin never saves, or deletes, a note that a link in the scratch folder names",
+    async () => {
+      const chat = eva.createAssistantSession({ source: "web" });
+      writeFileSync(join(vault, "Notes", "important.html"), chart);
+      writeFileSync(join(vault, "Notes", "b.html"), chart);
+      symlinkSync(join(vault, "Notes"), join(vault, ".eva", "scratch", "sub"));
+      symlinkSync(join(vault, "Notes", "b.html"), join(vault, ".eva", "scratch", "x.html"));
+      const before = vaultEntries();
+      for (const path of [".eva/pages/sub/important.html", ".eva/pages/x.html"]) {
+        const pinned = await call(`/api/sessions/${chat.id}/pin`, { path });
+        expect(pinned.status).toBe(404);
+      }
+      expect(vaultEntries()).toEqual(before);
+      expect(eva.sessions.get(chat.id).pinnedPage).toBeNull();
+    },
+  );
 });

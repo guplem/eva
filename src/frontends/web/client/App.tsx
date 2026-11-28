@@ -525,6 +525,9 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
       } else if (event.kind === "session_renamed" || event.kind === "fork_named") {
         // A rename can come from Telegram, the terminal or another device.
         void refreshSessions();
+      } else if (event.kind === "page_pinned") {
+        // A pin on another device, or a removed page that left each pin (#1130): the column follows the list.
+        void refreshSessions();
       } else if (event.kind === "session_seen") {
         // The person read the chat here or on another device: the list drops its unread mark.
         void refreshSessions();

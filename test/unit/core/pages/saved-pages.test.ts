@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { resolveShownPage } from "../../../../src/core/pages/chat-pages.ts";
+import { maxPageBytes, resolveShownPage } from "../../../../src/core/pages/chat-pages.ts";
 import { removeSavedPage, savePage } from "../../../../src/core/pages/saved-pages.ts";
 import { EvaError } from "../../../../src/shared/errors.ts";
 
@@ -92,14 +92,44 @@ describe("savePage and names", () => {
     },
   );
 
-  test.skipIf(process.platform === "win32")("never writes over another entry of .eva/pages", () => {
+  test("keeps a page of a scratch subfolder in the same subfolder of .eva/pages", () => {
+    write(".eva/scratch/a/chart.html", page);
+    write(".eva/scratch/b/chart.html", "<p>b</p>");
+    expect(savePage(vault, ".eva/scratch/a/chart.html")).toBe(".eva/pages/a/chart.html");
+    expect(resolveShownPage(vault, ".eva/scratch/b/chart.html")).toMatchObject({ kept: "temporary" });
+    expect(savePage(vault, ".eva/scratch/b/chart.html")).toBe(".eva/pages/b/chart.html");
+    expect(readFileSync(join(vault, ".eva", "pages", "a", "chart.html"), "utf8")).toBe(page);
+    expect(readFileSync(join(vault, ".eva", "pages", "b", "chart.html"), "utf8")).toBe("<p>b</p>");
+  });
+
+  test("replaces an older saved page of the same name: the new page is the newest version", () => {
+    write(".eva/pages/sales.html", "<p>old</p>");
+    write(".eva/scratch/sales.html", "<p>new</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/sales.html")).toMatchObject({ kept: "temporary" });
+    expect(savePage(vault, ".eva/scratch/sales.html")).toBe(".eva/pages/sales.html");
+    expect(readFileSync(join(vault, ".eva", "pages", "sales.html"), "utf8")).toBe("<p>new</p>");
+    expect(existsSync(join(vault, ".eva", "scratch", "sales.html"))).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")("never writes over a link or a folder in .eva/pages", () => {
     write(".eva/scratch/chart.html", page);
-    mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
-    // A link that leads nowhere: the marker finds no saved page, but its name is taken.
-    symlinkSync(join(vault, "nowhere.html"), join(vault, ".eva", "pages", "chart.html"));
+    write(".eva/scratch/plan.html", page);
+    mkdirSync(join(vault, ".eva", "pages", "plan.html"), { recursive: true });
+    // A link that leads out of Eva's folder: Save must not write through it.
+    symlinkSync(join(vault, "outside.html"), join(vault, ".eva", "pages", "chart.html"));
     expect(codeOf(() => savePage(vault, ".eva/scratch/chart.html"))).toBe("file_not_writable");
+    expect(codeOf(() => savePage(vault, ".eva/scratch/plan.html"))).toBe("file_not_writable");
     expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
-    expect(existsSync(join(vault, "nowhere.html"))).toBe(false);
+    expect(existsSync(join(vault, "outside.html"))).toBe(false);
+  });
+
+  test.skipIf(process.platform === "win32")("refuses a subfolder of .eva/pages that is a link", () => {
+    write(".eva/scratch/a/chart.html", page);
+    mkdirSync(join(vault, "Notes"), { recursive: true });
+    mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+    symlinkSync(join(vault, "Notes"), join(vault, ".eva", "pages", "a"));
+    expect(codeOf(() => savePage(vault, ".eva/scratch/a/chart.html"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, "Notes", "chart.html"))).toBe(false);
   });
 
   test("refuses a file in the place of the pages folder", () => {
@@ -118,12 +148,32 @@ describe("removeSavedPage", () => {
     expect(resolveShownPage(vault, ".eva/scratch/chart.html").state).toBe("gone");
   });
 
+  test("removes a saved page that Eva does not show any more, such as one with a secret or above 2 MB", () => {
+    write(".eva/pages/keys.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    write(".eva/pages/big.html", "x".repeat(maxPageBytes + 1));
+    expect(removeSavedPage(vault, ".eva/scratch/keys.html")).toBe(".eva/pages/keys.html");
+    expect(removeSavedPage(vault, ".eva/pages/big.html")).toBe(".eva/pages/big.html");
+    expect(existsSync(join(vault, ".eva", "pages", "keys.html"))).toBe(false);
+    expect(existsSync(join(vault, ".eva", "pages", "big.html"))).toBe(false);
+  });
+
   test("removes only a saved page, never a scratch page or a note", () => {
     write(".eva/scratch/chart.html", page);
     write("Notes/plan.html", page);
-    expect(codeOf(() => removeSavedPage(vault, ".eva/scratch/chart.html"))).toBe("file_not_writable");
+    write(".eva/pages/folder/inside.html", page);
+    expect(codeOf(() => removeSavedPage(vault, ".eva/scratch/chart.html"))).toBe("file_not_found");
+    expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
     expect(codeOf(() => removeSavedPage(vault, "Notes/plan.html"))).toBe("file_not_writable");
     expect(existsSync(join(vault, "Notes", "plan.html"))).toBe(true);
+    expect(codeOf(() => removeSavedPage(vault, ".eva/pages/folder"))).toBe("file_not_writable");
     expect(codeOf(() => removeSavedPage(vault, ".eva/pages/none.html"))).toBe("file_not_found");
+  });
+
+  test.skipIf(process.platform === "win32")("removes a link in .eva/pages, never the file that it names", () => {
+    write("Notes/plan.html", page);
+    mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+    symlinkSync(join(vault, "Notes", "plan.html"), join(vault, ".eva", "pages", "plan.html"));
+    expect(removeSavedPage(vault, ".eva/pages/plan.html")).toBe(".eva/pages/plan.html");
+    expect(existsSync(join(vault, "Notes", "plan.html"))).toBe(true);
   });
 });

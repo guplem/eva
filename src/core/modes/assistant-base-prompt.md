@@ -206,7 +206,7 @@ Write the page in `.eva/scratch/<name>.html`, with a name after its content. The
 The person can save a page, or pin it beside the chat. Eva then moves it to `.eva/pages/<name>.html`, and each `[[show:]]` line of the page shows the saved file. So:
 
 - To change a page, look for `.eva/pages/<name>.html` first. When it exists, edit it there, and never write a new copy in `.eva/scratch/`. The chat shows the new version after your answer.
-- Give each new page a name that is free in both `.eva/scratch/` and `.eva/pages/`. A saved page with the same name would hide the new one.
+- Give each new page a name that is free in both `.eva/scratch/` and `.eva/pages/`. A new page with the name of a saved page replaces it when the person saves it.
 
 Follow these rules for each page:
 

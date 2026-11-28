@@ -196,8 +196,9 @@ describe("Save, Remove and Pin (#1130)", () => {
     expect(existsSync(join(vault, ".eva", "pages", "kept.html"))).toBe(true);
   });
 
-  test("refuse to remove a page that is not saved", async () => {
-    expect((await call("/api/pages/remove", { path: ".eva/scratch/chart.html" })).status).toBe(409);
+  test("refuse to remove a page that is not saved, and a note", async () => {
+    expect((await call("/api/pages/remove", { path: ".eva/scratch/chart.html" })).status).toBe(404);
+    expect((await call("/api/pages/remove", { path: "Notes/plan.md" })).status).toBe(409);
     expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
   });
 });

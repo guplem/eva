@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, openSync, readSync } from "node:fs";
 import { extname, join } from "node:path";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { isScratchPath } from "../files/scratch-folders.ts";
+import { isScratchPath, scratchFolder } from "../files/scratch-folders.ts";
 import { resolveSendableFile } from "../files/vault-files.ts";
 import type { WidgetAnswer } from "../widgets/widget-data.ts";
 import { themeCss, type WidgetTheme } from "../widgets/widget-policy.ts";
@@ -34,7 +34,17 @@ export type PageKept = "temporary" | "saved" | "note";
 
 export type ShownPage =
   | { readonly state: "ready"; readonly path: string; readonly relativePath: string; readonly kept: PageKept }
-  | { readonly state: PageNote; readonly reason: string };
+  | RefusedPage;
+
+/**
+ * A page that Eva does not show. `saved` names a saved page that she refuses, such as one that grew
+ * past 2 MB or took a secret, so the person can still remove it from the chat (#1130).
+ */
+export interface RefusedPage {
+  readonly state: PageNote;
+  readonly reason: string;
+  readonly saved?: string;
+}
 
 export type PageFrame =
   | {
@@ -44,8 +54,10 @@ export type PageFrame =
       readonly kept: PageKept;
       /** The vault path of the file that the frame shows, which can be the saved copy of the marker's path. */
       readonly path: string;
+      /** The saved path of the page's name, which a pin stores, or null for a page in a notes folder. */
+      readonly saved: string | null;
     }
-  | { readonly state: PageNote; readonly reason: string };
+  | RefusedPage;
 
 /** Where Save puts a page, from the vault root. The vault sync commits it, and the weekly clean never enters it. */
 export const savedPagesFolder = ".eva/pages";
@@ -55,31 +67,47 @@ const pageExtensions: ReadonlySet<string> = new Set([".html", ".htm"]);
 const pageName = "page.html";
 
 /**
- * The saved path of a page in a scratch folder, or null for a page elsewhere. Save keeps the name,
- * so a stored `[[show: .eva/scratch/<name>.html]]` line finds the saved file with no rewrite.
+ * The name of a page (#1130): its path under a scratch folder or under `.eva/pages/`, with `/`. A
+ * name is one page: `.eva/scratch/a/chart.html` saves to `.eva/pages/a/chart.html`. Null for a
+ * page elsewhere, such as in a notes folder, and for a path with a `..` part.
+ */
+function pageNameOf(requested: string): { readonly name: string; readonly inScratch: boolean } | null {
+  const parts = requested.split(/[/\\]/).filter((part) => part !== "" && part !== ".");
+  if (parts.includes("..")) return null;
+  const lower = parts.map((part) => part.toLowerCase());
+  const [first, second] = lower;
+  const start = first === "scratch" ? 1 : first === ".eva" && (second === "scratch" || second === "pages") ? 2 : 0;
+  if (start === 0 || parts.length <= start) return null;
+  return { name: parts.slice(start).join("/"), inScratch: second !== "pages" };
+}
+
+/**
+ * The saved path of a page in a scratch folder or in `.eva/pages/`, or null for a page elsewhere.
+ * Save keeps the name, so a stored `[[show: .eva/scratch/<name>.html]]` line finds the saved file
+ * with no rewrite.
  */
 export function savedPathOf(requested: string): string | null {
-  if (!isScratchPath(requested)) return null;
-  const name = requested
-    .split(/[/\\]/)
-    .filter((part) => part !== "" && part !== ".")
-    .at(-1);
-  return name === undefined || name === ".." ? null : `${savedPagesFolder}/${name}`;
+  const page = pageNameOf(requested);
+  return page === null ? null : `${savedPagesFolder}/${page.name}`;
 }
 
 /**
  * Turns the path of a `[[show:]]` marker into the file to serve. The rules of `[[attach:]]` apply:
  * inside the vault after links resolve, no clone, no git data, no encrypted file, no secret.
- * For a scratch path, a saved page of the same name wins (#1130). The rule needs no state: Save
- * moves the file, and a later edit of the saved file shows in every old answer.
+ * A page has two places (#1130). A scratch file at the marker's path is the newest version, because
+ * Save removes the scratch copy. Once it is gone, the saved file of the same name answers. The rule
+ * needs no state, and a later edit of the saved file shows in every old answer and in a pin.
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
-  const saved = savedPathOf(requested);
-  const shown = saved !== null && existsSync(join(vaultPath, saved)) ? saved : requested;
+  const page = pageNameOf(requested);
+  const scratch = page === null ? requested : page.inScratch ? requested : `${scratchFolder}/${page.name}`;
+  const saved = page === null ? requested : `${savedPagesFolder}/${page.name}`;
+  const shown = [scratch, saved].find((candidate) => existsSync(join(vaultPath, candidate))) ?? requested;
   const file = resolveSendableFile(vaultPath, shown, { verb: "show", maxBytes: maxPageBytes });
   if (!file.ok) {
     if (file.missing === true) return { state: "gone", reason: `${requested} does not exist.` };
-    return { state: file.tooLarge === true ? "too-large" : "refused", reason: file.reason };
+    const state = file.tooLarge === true ? "too-large" : "refused";
+    return page !== null && shown === saved ? { state, reason: file.reason, saved } : { state, reason: file.reason };
   }
   // The extension of the real file, so a link named `.html` cannot show a note as a page.
   if (!pageExtensions.has(extname(file.path).toLowerCase()))
@@ -128,7 +156,14 @@ export class ChatPages {
     }
     const token = randomBytes(32).toString("base64url");
     this.sessions.set(token, { requested, theme, expiresAt: now + pageTokenLifeMs, served: false });
-    return { state: "ready", src: `/widgets/${token}/${pageName}`, token, kept: shown.kept, path: shown.relativePath };
+    return {
+      state: "ready",
+      src: `/widgets/${token}/${pageName}`,
+      token,
+      kept: shown.kept,
+      path: shown.relativePath,
+      saved: savedPathOf(requested),
+    };
   }
 
   /** Ends the tokens of frames that loaded or closed. */

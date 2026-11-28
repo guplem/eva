@@ -2177,6 +2177,15 @@ describe("web routes", () => {
     expect((await chatsClaim(["chat-a"])).status).toBe(204);
     expect((await chatsClaim([42])).status).toBe(400);
     expect((await chatsClaim(null)).status).toBe(400);
+    // A page of a device with no notifications claims too, and a claim says whether the person is active (#1136).
+    const otherClaim = (body: object): Promise<Response> =>
+      call("/api/push/in-view", {
+        method: "POST",
+        body: { pageId: "tab-9", inView: true, chats: ["chat-a"], ...body },
+      });
+    expect((await otherClaim({ active: true })).status).toBe(204);
+    expect((await otherClaim({ endpoint: null, active: false })).status).toBe(204);
+    expect((await otherClaim({ active: "yes" })).status).toBe(400);
     expect((await call("/api/notifications/recent", { method: "POST", body: {} })).status).toBe(400);
   });
 

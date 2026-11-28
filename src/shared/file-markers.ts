@@ -1,5 +1,6 @@
 /**
- * The marker lines that send a file with an answer (lessons 72 to 74, 124), or suggest a reply (#1127).
+ * The marker lines that send a file with an answer (lessons 72 to 74, 124), show a page (#1129), or
+ * suggest a reply (#1127).
  * A marker is plain text, so every engine can write it, and every front end reads it with the same rules.
  */
 
@@ -8,6 +9,8 @@ export interface FileMarkers {
   readonly text: string;
   readonly attach: readonly string[];
   readonly offer: readonly string[];
+  /** The pages that the web app shows inside the answer (#1129). */
+  readonly show: readonly string[];
   /** A `[[quiet]]` line came: a scheduled run with nothing to say (#687). */
   readonly quiet: boolean;
   /** A `[[done]]` line came: a scheduled run that ends its schedule (#687). */
@@ -21,7 +24,7 @@ export const maxReplies = 4;
 /** Telegram cuts a button label at 60 characters, so a longer reply would not fit a button (#1127). */
 export const maxReplyLength = 60;
 
-const markerPattern = /^\s*\[\[\s*(attach|offer)\s*:\s*(.+?)\s*\]\]\s*$/i;
+const markerPattern = /^\s*\[\[\s*(attach|offer|show)\s*:\s*(.+?)\s*\]\]\s*$/i;
 const replyPattern = /^\s*\[\[\s*reply\s*:(.*?)\]\]\s*$/i;
 /** Eva acts on these only in a scheduled run, but every front end hides them. */
 const runMarkerPattern = /^\s*\[\[\s*(quiet|done)\s*\]\]\s*$/i;
@@ -37,6 +40,7 @@ function readMarkers(answer: string): Omit<FileMarkers, "text"> & { readonly kep
   const kept: string[] = [];
   const attach: string[] = [];
   const offer: string[] = [];
+  const show: string[] = [];
   let inFence = false;
   let quiet = false;
   let done = false;
@@ -61,7 +65,8 @@ function readMarkers(answer: string): Omit<FileMarkers, "text"> & { readonly kep
       continue;
     }
     const path = match[2] ?? "";
-    const list = match[1]?.toLowerCase() === "attach" ? attach : offer;
+    const kind = match[1]?.toLowerCase();
+    const list = kind === "attach" ? attach : kind === "show" ? show : offer;
     if (!list.includes(path)) list.push(path);
   }
   // A file named twice goes once, and attach wins over offer.
@@ -69,6 +74,7 @@ function readMarkers(answer: string): Omit<FileMarkers, "text"> & { readonly kep
     kept,
     attach,
     offer: offer.filter((path) => !attach.includes(path)),
+    show,
     quiet,
     done,
     replies: replies.slice(0, maxReplies),
@@ -113,7 +119,7 @@ function startsMarker(line: string): boolean {
   const compact = line.replace(/\s+/g, "").replace(/…$/, "").toLowerCase();
   if (compact === "") return false;
   // A cut can also fall just after a whole marker, so its line then ends with "]]…".
-  return ["[[attach:", "[[offer:", "[[reply:", "[[quiet]]", "[[done]]"].some(
+  return ["[[attach:", "[[offer:", "[[show:", "[[reply:", "[[quiet]]", "[[done]]"].some(
     (start) => start.startsWith(compact) || compact.startsWith(start),
   );
 }

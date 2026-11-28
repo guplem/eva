@@ -1814,6 +1814,85 @@ button.ghost .icon {
 }
 
 /* The files that an answer sends. Each button names its file, also on a phone. */
+/*
+ * A page of an answer (#1129): the full width of the bubble and a fixed height. An answer with a
+ * page takes the widest bubble, so a short text above it never makes the page narrow.
+ */
+.message.answer:has(.page-frame) {
+  width: 86%;
+}
+
+/* A phone gives an answer the whole width, so a page keeps the 300 px that the prompt promises. */
+@media (max-width: 760px) {
+  .message.answer:has(.page-frame) {
+    width: 100%;
+  }
+
+  /* Half of the bubble's side padding goes to the page too: a 360 px phone then still gives it 300 px. */
+  .page-frame {
+    margin-inline: calc(var(--space-2) * -1);
+  }
+}
+
+.page-frame {
+  position: relative;
+  height: 320px;
+  margin-top: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.page-frame.is-note {
+  height: auto;
+  background: var(--chip);
+}
+
+.page-wait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.page-wait .progress {
+  width: min(240px, 100%);
+}
+
+.page-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* The note of a page that went away after the bubble showed it, in the middle of full screen. */
+.page-full-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+}
+
+.page-full-note .page-note {
+  max-width: 420px;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
+.page-note .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
 .answer-files {
   display: flex;
   flex-wrap: wrap;

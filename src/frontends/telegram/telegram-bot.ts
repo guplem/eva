@@ -59,6 +59,7 @@ import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { goneReplyText, TelegramReplies } from "./telegram-replies.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
+import { pageLine } from "./telegram-pages.ts";
 import type { OutwardActionCategory } from "../../shared/outward-actions.ts";
 import {
   alwaysConfirmText,
@@ -97,6 +98,8 @@ interface AnswerState {
   readonly attached: Set<string>;
   /** Offered at the turn end, because a later block can still attach the same file. */
   readonly offered: Set<string>;
+  /** A block showed a page (#1129): its one line goes at the turn end, so two pages give one line. */
+  shown: boolean;
 }
 /** A usage limit line. The key is null for a line that always shows. */
 interface UsageLine {
@@ -1123,6 +1126,7 @@ export class TelegramBot {
           await this.inOrder(event.sessionId, async () => {
             const markers = extractFileMarkers(answer);
             if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
+            if (markers.show.length > 0) await this.sendPageLine(target.chatId, target.topicId, event.sessionId);
             for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
             if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
             await this.sendUsageLines(usage, target.chatId, target.topicId);
@@ -1140,6 +1144,8 @@ export class TelegramBot {
           // A file named twice goes once, and attach wins over offer, also across blocks.
           const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
           if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
+          // Quiet: the last block of the answer already rang the phone.
+          if (answer?.shown === true) await this.sendPageLine(target.chatId, target.topicId, event.sessionId, true);
           await this.sendUsageLines(usage, target.chatId, target.topicId);
           await sendReplies();
           if (event.kind === "turn_failed")
@@ -1216,16 +1222,23 @@ export class TelegramBot {
     const markers = extractFileMarkers(event.text);
     let answer = this.answers.get(event.sessionId);
     if (answer === undefined) {
-      answer = { attached: new Set(), offered: new Set() };
+      answer = { attached: new Set(), offered: new Set(), shown: false };
       this.answers.set(event.sessionId, answer);
     }
     if (markers.text.length > 0) await this.sender.sendAnswer(chatId, topicId, markers.text, quiet);
+    if (markers.show.length > 0) answer.shown = true;
     for (const path of markers.attach) {
       if (answer.attached.has(path)) continue;
       answer.attached.add(path);
       await this.files.sendVaultFile(chatId, topicId, path);
     }
     for (const path of markers.offer) answer.offered.add(path);
+  }
+
+  /** Telegram has no safe frame for a page (#1129), so it gets a line, never the HTML file. */
+  private async sendPageLine(chatId: number, topicId: number | null, sessionId: string, quiet = false): Promise<void> {
+    const url = this.options.eva.status().remoteAccess?.url ?? null;
+    await this.sender.sendPlain(chatId, topicId, pageLine(url, sessionId), quiet);
   }
 
   /**

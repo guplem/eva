@@ -5,11 +5,14 @@ type Listener = () => void;
 
 interface FakePage {
   readonly page: PresencePage;
-  readonly sent: [string, string, boolean, readonly string[]][];
+  readonly sent: [string | null, string, boolean, readonly string[]][];
+  /** Whether each claim said that the person is active. */
+  readonly actives: boolean[];
+  active: boolean;
   inView: boolean;
   chats: readonly string[];
   endpoint: string | null;
-  readonly fire: (name: "view" | "chats" | "leave" | "device" | "timer") => void;
+  readonly fire: (name: "view" | "chats" | "leave" | "device" | "input" | "timer") => void;
   readonly listening: () => number;
 }
 
@@ -23,6 +26,8 @@ function fakePage(): FakePage {
     };
   const fake: FakePage = {
     sent: [],
+    actives: [],
+    active: true,
     inView: true,
     chats: [],
     endpoint: "https://fcm.googleapis.com/fcm/send/phone",
@@ -32,14 +37,17 @@ function fakePage(): FakePage {
       isInView: () => fake.inView,
       readEndpoint: () => Promise.resolve(fake.endpoint),
       shownChats: () => fake.chats,
-      send: (endpoint, pageId, inView, chats) => {
+      send: (endpoint, pageId, inView, chats, active) => {
         fake.sent.push([endpoint, pageId, inView, chats]);
+        fake.actives.push(active);
         return Promise.resolve();
       },
       onViewChange: on("view"),
       onChatsChange: on("chats"),
       onLeave: on("leave"),
       onDeviceChange: on("device"),
+      onInput: on("input"),
+      isActive: () => fake.active,
       setInterval: (callback) => on("timer")(callback),
       pageId: "tab-1",
     },
@@ -122,24 +130,75 @@ describe("the page's claim that it is in view", () => {
     expect(fake.sent).toHaveLength(1);
   });
 
-  test("starts when the device turns notifications on, while the page is in view", async () => {
+  test("goes out with no push address on a device with no notifications, and moves when they turn on (#1136)", async () => {
     const fake = fakePage();
     fake.endpoint = null;
     startPushPresence(fake.page);
-    await settle();
-    fake.fire("timer");
+    // Before the read of the address ends, a claim could go out under the wrong address.
+    fake.fire("view");
     expect(fake.sent).toEqual([]);
+    await settle();
     fake.endpoint = "https://fcm.googleapis.com/fcm/send/new";
     fake.fire("device");
     await settle();
-    expect(fake.sent).toEqual([[fake.endpoint, "tab-1", true, []]]);
+    expect(fake.sent).toEqual([
+      [null, "tab-1", true, []],
+      [null, "tab-1", false, []],
+      [fake.endpoint, "tab-1", true, []],
+    ]);
   });
 
-  test("a failed claim or a failed read stays quiet", async () => {
+  test("says whether the person is active, and says at once that they came back (#1136)", async () => {
     const fake = fakePage();
-    startPushPresence({ ...fake.page, send: () => Promise.reject(new Error("offline")) });
-    startPushPresence({ ...fake.page, readEndpoint: () => Promise.reject(new Error("no worker")) });
+    startPushPresence(fake.page);
+    await settle();
+    fake.fire("timer");
+    fake.active = false;
+    // The renewal finds that the person went away.
+    fake.fire("timer");
+    // The first input after the quiet time goes out at once, and the next ones send nothing.
+    fake.active = true;
+    fake.fire("input");
+    fake.fire("input");
+    fake.inView = false;
+    fake.fire("view");
+    expect(fake.actives).toEqual([true, true, false, true, false]);
+    // Out of view, an input changes nothing.
+    fake.fire("input");
+    expect(fake.sent).toHaveLength(5);
+  });
+
+  test("claims nothing after it stops, also when the read of the push address ends later", async () => {
+    const fake = fakePage();
+    const stop = startPushPresence(fake.page);
+    stop();
     await settle();
     expect(fake.sent).toEqual([]);
+  });
+
+  test("keeps the newest push address when an older read ends last", async () => {
+    const fake = fakePage();
+    const reads: ((endpoint: string | null) => void)[] = [];
+    startPushPresence({ ...fake.page, readEndpoint: () => new Promise((resolve) => reads.push(resolve)) });
+    fake.fire("device");
+    reads[1]?.("https://fcm.googleapis.com/fcm/send/new");
+    await settle();
+    reads[0]?.(null);
+    await settle();
+    fake.fire("timer");
+    expect(fake.sent.map(([endpoint]) => endpoint)).toEqual([
+      "https://fcm.googleapis.com/fcm/send/new",
+      "https://fcm.googleapis.com/fcm/send/new",
+    ]);
+  });
+
+  test("a failed claim stays quiet, and a failed read claims with no push address", async () => {
+    const fake = fakePage();
+    startPushPresence({ ...fake.page, send: () => Promise.reject(new Error("offline")) });
+    await settle();
+    expect(fake.sent).toEqual([]);
+    startPushPresence({ ...fake.page, readEndpoint: () => Promise.reject(new Error("no worker")) });
+    await settle();
+    expect(fake.sent).toEqual([[null, "tab-1", true, []]]);
   });
 });

@@ -18,7 +18,7 @@ import {
   type TurnHistory,
 } from "../../shared/engine-port.ts";
 import { contextGroups, type ContextPart, type EngineContextInput } from "../../shared/chat-context.ts";
-import { EvaError } from "../../shared/errors.ts";
+import { EvaError, isEvaError } from "../../shared/errors.ts";
 import {
   isTurnEnd,
   type ApprovalQuestion,
@@ -349,6 +349,8 @@ export class SessionManager {
   private readonly sequence = new SequenceCounter();
   /** The last failure reason of each session, for the history. */
   private readonly lastFailure = new Map<string, string>();
+  /** The snapshot refusal that each chat showed in its turn (#1131), so it shows once, not at both snapshots. */
+  private readonly lastRefusal = new Map<string, string>();
   /** The last message or turn start of each chat, in ms. The record keeps only the turn ends. */
   private readonly lastActivity = new Map<string, number>();
   /**
@@ -867,6 +869,7 @@ export class SessionManager {
     this.options.stepDetails?.delete(id);
     this.runtimes.delete(id);
     this.lastFailure.delete(id);
+    this.lastRefusal.delete(id);
     this.lastActivity.delete(id);
     this.clientSends.delete(id);
   }
@@ -1399,6 +1402,8 @@ export class SessionManager {
             : "The turn stopped before the engine started.",
         );
       }
+      // A refusal shows again in each turn, so a later undo still says why.
+      this.lastRefusal.delete(session.id);
       await this.restorePending(session, preparer);
       startSnapshot = await this.takeSnapshot(session, preparer);
       const engineText = preparer.engineMessage?.(session, prompt) ?? prompt;
@@ -1714,8 +1719,16 @@ ${engineText}`,
     if (preparer.snapshot === undefined) return null;
     const id = this.options.newId();
     try {
-      if (await preparer.snapshot(session, id)) return id;
+      const kept = await preparer.snapshot(session, id);
+      this.lastRefusal.delete(session.id);
+      if (kept) return id;
     } catch (error) {
+      // Eva runs no git in a repository whose git data could start a program, and the person must see why.
+      if (isEvaError(error, "repository_refused") && this.lastRefusal.get(session.id) !== error.message) {
+        this.lastRefusal.set(session.id, error.message);
+        this.emit(session.id, { kind: "notice", text: this.options.redactor.redact(error.message) });
+      }
+      if (!isEvaError(error, "repository_refused")) this.lastRefusal.delete(session.id);
       this.options.logger?.log("warn", "Eva could not keep a snapshot of the files of a chat.", {
         sessionId: session.id,
         reason: error instanceof Error ? error.message : String(error),

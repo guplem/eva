@@ -10,10 +10,21 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { noHooks } from "./clone-sync.ts";
 import { listRepositories, type CloneRepository } from "./clones.ts";
+import { guardedArguments, guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
 
 export interface SnapshotRun {
   readonly runner: ProcessRunner;
   readonly environment: Readonly<Record<string, string>>;
+}
+
+/** A run in one repository that passed the guard (#1131). */
+interface GuardedRun {
+  readonly runner: ProcessRunner;
+  readonly environment: GuardedEnvironment;
+}
+
+async function guarded(repository: CloneRepository, run: SnapshotRun): Promise<GuardedRun> {
+  return { runner: run.runner, environment: await guardRepository(repository, run.runner, run.environment) };
 }
 
 const refPrefix = "refs/eva/snapshots/";
@@ -25,17 +36,24 @@ const idPattern = /^[\w-]+$/;
 
 /**
  * Takes a snapshot of each repository of the clone. False when the clone has no repository or one
- * snapshot failed: the turn goes on without one.
+ * snapshot failed: the turn goes on without one. Throws EvaError `repository_refused` when Eva
+ * runs no git in one of its repositories, so the chat can say why.
  */
 export async function takeSnapshot(clonePath: string, id: string, run: SnapshotRun): Promise<boolean> {
   checkId(id);
   const repositories = listRepositories(clonePath);
   if (repositories.length === 0) return false;
-  const results = await Promise.all(repositories.map((repository) => snapshotRepository(repository, id, run)));
+  // Every repository passes the guard first, so a refusal leaves no snapshot in the others.
+  const checked = await Promise.all(
+    repositories.map(async (repository) => ({ repository, checkedRun: await guarded(repository, run) })),
+  );
+  const results = await Promise.all(
+    checked.map(({ repository, checkedRun }) => snapshotRepository(repository, id, checkedRun)),
+  );
   return results.every(Boolean);
 }
 
-async function snapshotRepository(repository: CloneRepository, id: string, run: SnapshotRun): Promise<boolean> {
+async function snapshotRepository(repository: CloneRepository, id: string, run: GuardedRun): Promise<boolean> {
   const gitFolder = await git(repository, run, ["rev-parse", "--absolute-git-dir"]);
   if (gitFolder.exitCode !== 0) return false;
   const index = join(gitFolder.stdout.trim(), `eva-snapshot-index-${id}`);
@@ -90,7 +108,8 @@ export async function restoreSnapshot(clonePath: string, id: string, run: Snapsh
   for (const repository of found) await restoreRepository(repository, id, run);
 }
 
-async function restoreRepository(repository: CloneRepository, id: string, run: SnapshotRun): Promise<void> {
+async function restoreRepository(repository: CloneRepository, id: string, given: SnapshotRun): Promise<void> {
+  const run = await guarded(repository, given);
   const ref = `${refPrefix}${id}`;
   const message = await mustRun(repository, run, ["log", "-1", "--format=%B", ref], "read the snapshot of");
   const branch = branchLine.exec(message)?.[1]?.trim() ?? null;
@@ -133,9 +152,11 @@ export async function copySnapshot(fromClone: string, toClone: string, id: strin
     const target = targets.get(source.name);
     if (target === undefined) continue;
     const ref = `${refPrefix}${id}`;
+    // The fetch starts a git in the source repository too, so both pass the guard.
+    await guarded(source, run);
     await mustRun(
       target,
-      run,
+      await guarded(target, run),
       [...noHooks(), "fetch", "-q", "--", source.path, `+${ref}:${ref}`],
       "copy the snapshot to",
     );
@@ -146,11 +167,14 @@ export async function copySnapshot(fromClone: string, toClone: string, id: strin
 export async function deleteSnapshots(
   clonePath: string,
   ids: readonly string[] | "all",
-  run: SnapshotRun,
+  given: SnapshotRun,
 ): Promise<void> {
   if (ids !== "all") for (const id of ids) checkId(id);
   await Promise.all(
     listRepositories(clonePath).map(async (repository) => {
+      // A refused repository keeps its refs: a ref left behind costs little.
+      const run = await guarded(repository, given).catch(() => null);
+      if (run === null) return;
       let refs: string[];
       if (ids === "all") {
         const listed = await git(repository, run, ["for-each-ref", "--format=%(refname)", refPrefix]);
@@ -170,7 +194,14 @@ async function withSnapshot(clonePath: string, id: string, run: SnapshotRun): Pr
   const present = await Promise.all(
     repositories.map(
       async (repository) =>
-        (await git(repository, run, ["rev-parse", "--verify", "-q", `${refPrefix}${id}^{commit}`])).exitCode === 0,
+        (
+          await git(repository, await guarded(repository, run), [
+            "rev-parse",
+            "--verify",
+            "-q",
+            `${refPrefix}${id}^{commit}`,
+          ])
+        ).exitCode === 0,
     ),
   );
   return repositories.filter((_, index) => present[index]);
@@ -182,7 +213,7 @@ function checkId(id: string): void {
 
 async function mustRun(
   repository: CloneRepository,
-  run: SnapshotRun,
+  run: GuardedRun,
   arguments_: readonly string[],
   what: string,
 ): Promise<string> {
@@ -194,11 +225,11 @@ async function mustRun(
 
 function git(
   repository: CloneRepository,
-  run: SnapshotRun,
+  run: GuardedRun,
   arguments_: readonly string[],
   stdin?: string,
 ): ReturnType<ProcessRunner["run"]> {
-  return run.runner.run(["git", ...arguments_], {
+  return run.runner.run(["git", ...guardedArguments(), ...arguments_], {
     cwd: repository.path,
     environment: { ...run.environment, GIT_TERMINAL_PROMPT: "0" },
     timeoutMs,

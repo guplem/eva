@@ -81,6 +81,60 @@ describe("createEventPrinter", () => {
     expect(printed([{ kind: "text_delta", text: "Half " }, finished])).toBe("Half \n");
   });
 
+  test("never shows a marker line, also while the answer streams (#1128)", () => {
+    expect(
+      printed([
+        { kind: "text_delta", text: "Here it is.\n[[att" },
+        { kind: "text_delta", text: "ach: Methods/Plan.md]]\nAnd mo" },
+        { kind: "text_delta", text: "re.\n[[offer: a.md]]" },
+        { kind: "text", text: "Here it is.\n[[attach: Methods/Plan.md]]\nAnd more.\n[[offer: a.md]]", messageId: "m1" },
+        finished,
+      ]),
+    ).toBe("Here it is.\nAnd more.\n");
+  });
+
+  test("a marker line whose leading spaces come in an earlier piece never prints the block twice", () => {
+    const print = createEventPrinter(null, true);
+    const shown = [
+      { kind: "text_delta", text: "A\n  ", startsBlock: true },
+      { kind: "text_delta", text: "[[reply: Y]]\nB" },
+      { kind: "text", text: "A\n  [[reply: Y]]\nB", messageId: "m1" },
+      finished,
+    ] satisfies EngineEventPayload[];
+    expect(shown.map((payload) => print(stamped(payload)) ?? "").join("")).toBe("A\nB\nSuggested replies: Y\n");
+  });
+
+  test("names each page that a block shows, since the terminal cannot show it (#1129)", () => {
+    expect(
+      printed([
+        { kind: "text_delta", text: "Here is the chart.\n[[show: .eva/scr" },
+        { kind: "text", text: "Here is the chart.\n[[show: .eva/scratch/chart.html]]", messageId: "m1" },
+        { kind: "text", text: "[[show: .eva/scratch/table.html]]", messageId: "m2" },
+        finished,
+      ]),
+    ).toBe("Here is the chart.\nPage: .eva/scratch/chart.html\nPage: .eva/scratch/table.html\n");
+  });
+
+  test("a block of markers alone prints nothing", () => {
+    expect(printed([{ kind: "text", text: "[[reply: Yes]]", messageId: "m1" }, finished])).toBe("");
+  });
+
+  test("lists the suggested replies of the whole answer after a finished turn of a chat with Eva (#1128)", () => {
+    const answer: EngineEventPayload[] = [
+      { kind: "text_delta", text: "Shall I go on?\n[[reply: Ye" },
+      { kind: "text_delta", text: "s]]\n[[reply: No]]" },
+      { kind: "text", text: "Shall I go on?\n[[reply: Yes]]\n[[reply: No]]", messageId: "m1" },
+      { kind: "text", text: "Or wait?\n[[reply: Yes]]\n[[reply: Wait]]", messageId: "m2" },
+    ];
+    const print = createEventPrinter(null, true);
+    const shown = [...answer, finished].map((payload) => print(stamped(payload)) ?? "").join("");
+    expect(shown).toBe("Shall I go on?\nOr wait?\nSuggested replies: Yes · No · Wait\n");
+    // A failed turn offers none, and a Project chat never does.
+    const failed = [...answer, { kind: "turn_failed", reason: "stopped" } as const];
+    expect(failed.map((payload) => print(stamped(payload)) ?? "").join("")).not.toContain("Suggested");
+    expect(printed([...answer, finished])).not.toContain("Suggested");
+  });
+
   test("a deleted branch with a fork in its place says that the chat goes on (issue 647)", () => {
     const print = createEventPrinter();
     const at = "2026-10-20T10:00:00.000Z";

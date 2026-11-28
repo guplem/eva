@@ -2,6 +2,7 @@
 import type { EngineName, ModelAlias } from "../../shared/engine-port.ts";
 import type { ApprovalQuestion, QuestionAnswer, SessionEvent } from "../../shared/events.ts";
 import { EvaError } from "../../shared/errors.ts";
+import { extractFileMarkers, untrimmedAnswerText } from "../../shared/file-markers.ts";
 import { describeUsageLimit } from "../../shared/usage-limit.ts";
 import { isClock, type Clock } from "../../shared/time-format.ts";
 import { refusalOf } from "./client.ts";
@@ -94,7 +95,8 @@ export async function runChat(options: ChatOptions): Promise<void> {
   const waiting: Extract<SessionEvent, { kind: "approval_needed" }>[] = [];
   /** The requests that another front end answered, so the terminal stops asking about them. */
   const resolved = new Map<string, Extract<SessionEvent, { kind: "approval_resolved" }>>();
-  const print = createEventPrinter(clock);
+  // A Project chat stays a plain harness (AGENTS.md), so only a chat with Eva lists replies.
+  const print = createEventPrinter(clock, options.mode === "assistant");
   socket.addEventListener("message", (message) => {
     const event = JSON.parse(String(message.data)) as SessionEvent;
     if (event.sessionId !== session.id) return;
@@ -265,39 +267,90 @@ async function renameChat(
 /**
  * Prints each event of one chat. It writes the pieces of a block as they come, so at the block's
  * final text it writes only the rest. A final text that differs, such as a redacted one, comes again in full.
+ * It never writes a marker line (#1128). With `offersReplies`, a finished turn ends with the replies that Eva suggests.
  */
-export function createEventPrinter(clock: Clock | null = null): (event: SessionEvent) => string | null {
+export function createEventPrinter(
+  clock: Clock | null = null,
+  offersReplies = false,
+): (event: SessionEvent) => string | null {
+  /** The pieces of the block so far. */
+  let pieces = "";
+  /** The part of the block that is on the screen: the pieces with no marker lines. */
   let written = "";
   let lineOpen = false;
+  let answerParts: string[] = [];
+  /** The text to add to what is on the screen. A text that does not go on from it starts again on its own line. */
+  const rest = (shown: string): string => {
+    if (shown.startsWith(written)) return shown.slice(written.length);
+    // A line that may start a marker waits, so the screen can be ahead of the shown text for a moment.
+    if (written.startsWith(shown)) return "";
+    const endLine = lineOpen ? "\n" : "";
+    written = "";
+    return `${endLine}${shown}`;
+  };
   return (event) => {
     if (event.kind === "text_delta") {
       // A block that starts again leaves the old pieces on their own line.
       const endLine = event.startsBlock === true && lineOpen ? "\n" : "";
-      written = (event.startsBlock === true ? "" : written) + event.text;
-      lineOpen = true;
-      return `${endLine}${event.text}`;
+      if (event.startsBlock === true) {
+        pieces = "";
+        written = "";
+        lineOpen = false;
+      }
+      pieces += event.text;
+      const shown = untrimmedAnswerText(pieces, true);
+      const added = rest(shown);
+      if (shown.startsWith(written)) written = shown;
+      if (added !== "") lineOpen = !added.endsWith("\n");
+      return `${endLine}${added}`;
     }
+    if (event.kind === "text") answerParts.push(event.text);
     const described = describeEvent(event, clock);
-    if (event.kind === "text" && written !== "") {
-      const block = written;
-      const endLine = lineOpen ? "\n" : "";
+    if (event.kind === "text" && pieces !== "") {
+      const added = rest(untrimmedAnswerText(event.text, false).trimEnd());
+      const screen = written + added;
+      pieces = "";
       written = "";
+      const endLine = (lineOpen || added !== "") && !screen.endsWith("\n") ? "\n" : "";
       lineOpen = false;
-      return event.text.startsWith(block) ? `${event.text.slice(block.length)}\n` : `${endLine}${event.text}\n`;
+      return `${added}${endLine}${pageLines(event.text)}`;
     }
-    if (event.kind === "turn_finished" || event.kind === "turn_failed") written = "";
-    if (!lineOpen || (described === null && event.kind !== "turn_finished")) return described;
+    const isEnd = event.kind === "turn_finished" || event.kind === "turn_failed";
+    const replies = event.kind === "turn_finished" && offersReplies ? repliesLine(answerParts) : "";
+    if (isEnd) {
+      pieces = "";
+      written = "";
+      answerParts = [];
+    }
+    if (!lineOpen || (described === null && event.kind !== "turn_finished"))
+      return described === null && replies === "" ? null : `${described ?? ""}${replies}`;
     // The pieces left a line open: end it before anything else.
     lineOpen = false;
-    return `\n${described ?? ""}`;
+    return `\n${described ?? ""}${replies}`;
   };
+}
+
+/** The terminal cannot show a page (#1129), so it names the file of each one. */
+function pageLines(blockText: string): string {
+  return extractFileMarkers(blockText)
+    .show.map((path) => `Page: ${path}\n`)
+    .join("");
+}
+
+/** The line of the replies that the whole answer suggests, or nothing. The core joins the blocks of an answer this way. */
+function repliesLine(answerParts: readonly string[]): string {
+  const replies = extractFileMarkers(answerParts.join("\n\n")).replies;
+  return replies.length === 0 ? "" : `Suggested replies: ${replies.join(" · ")}\n`;
 }
 
 /** `clock` shapes the reset time of a usage limit. */
 export function describeEvent(event: SessionEvent, clock: Clock | null = null): string | null {
   switch (event.kind) {
-    case "text":
-      return `${event.text}\n`;
+    case "text": {
+      const text = extractFileMarkers(event.text).text;
+      const shown = `${text === "" ? "" : `${text}\n`}${pageLines(event.text)}`;
+      return shown === "" ? null : shown;
+    }
     case "tool_started":
       return `  · ${event.summary}\n`;
     case "task_changed":

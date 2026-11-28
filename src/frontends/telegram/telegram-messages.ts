@@ -17,6 +17,7 @@ interface TelegramPhotoSize extends TelegramFile {
 }
 
 export interface TelegramMessage {
+  readonly message_id?: number;
   readonly chat: TelegramChat;
   readonly from?: { readonly id: number };
   readonly text?: string;

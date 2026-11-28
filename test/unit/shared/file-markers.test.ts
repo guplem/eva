@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { extractFileMarkers, maxReplies, maxReplyLength, shownAnswerText } from "../../../src/shared/file-markers.ts";
+import {
+  extractFileMarkers,
+  maxReplies,
+  maxReplyLength,
+  shownAnswerText,
+  untrimmedAnswerText,
+} from "../../../src/shared/file-markers.ts";
 
 describe("extractFileMarkers (lesson 124)", () => {
   test("removes marker lines and lists their paths; any case, spaces allowed", () => {
@@ -66,6 +72,20 @@ describe("shownAnswerText", () => {
   test("keeps an open bracket that is not the start of a marker, and a marker in a code fence", () => {
     expect(shownAnswerText("See [[Plan]] and\n[[not a marker", true)).toBe("See [[Plan]] and\n[[not a marker");
     expect(shownAnswerText("```\n[[attach: a.md]]\n```")).toBe("```\n[[attach: a.md]]\n```");
+  });
+});
+
+describe("untrimmedAnswerText (#1128)", () => {
+  test("drops the marker lines and keeps the spaces and line ends of the rest", () => {
+    expect(untrimmedAnswerText("  Sure \n[[reply: Yes]]\nThen ", false)).toBe("  Sure \nThen ");
+  });
+
+  test("holds back an open last line that can start a marker, and keeps its line end", () => {
+    expect(untrimmedAnswerText("Sure.\n[[re", true)).toBe("Sure.\n");
+    expect(untrimmedAnswerText("[[re", true)).toBe("");
+    expect(untrimmedAnswerText("Sure.\n", true)).toBe("Sure.\n");
+    expect(untrimmedAnswerText("Sure.\n  ", true)).toBe("Sure.\n");
+    expect(untrimmedAnswerText("Sure.\n[[re", false)).toBe("Sure.\n[[re");
   });
 });
 

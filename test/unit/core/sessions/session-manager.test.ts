@@ -14,7 +14,7 @@ import { SessionStore, type SessionRecord } from "../../../../src/core/sessions/
 import { StepDetailsStore } from "../../../../src/core/sessions/step-details-store.ts";
 import type { EngineEventPayload, SessionEvent } from "../../../../src/shared/events.ts";
 import { maxDetailLength, maxTurnDetailLength } from "../../../../src/shared/tool-details.ts";
-import { isEvaError } from "../../../../src/shared/errors.ts";
+import { EvaError, isEvaError } from "../../../../src/shared/errors.ts";
 import { Redactor } from "../../../../src/shared/redaction.ts";
 import { historyLostNote } from "../../../../src/shared/turn-steps.ts";
 import type { ContextPart, EngineContextInput } from "../../../../src/shared/chat-context.ts";
@@ -1710,6 +1710,23 @@ describe("file snapshots of Project chats (issue 523)", () => {
     await manager.send(sessionId, "one");
     expect(manager.get(sessionId).turns[0]).toMatchObject({ failure: null, startSnapshot: null, endSnapshot: null });
     expect(logged.some((line) => line.includes("could not keep a snapshot"))).toBe(true);
+  });
+
+  test("a repository that Eva refuses shows its reason once in each turn, and the turn goes on (#1131)", async () => {
+    const log: string[] = [];
+    const reason = "Eva runs no git in app: its git data points to git data in another place.";
+    const refusing: TurnPreparer = {
+      ...preparer,
+      snapshot: () => Promise.reject(new EvaError("repository_refused", reason)),
+    };
+    const manager = createManager(loggingEngine(log), { projectPreparer: refusing });
+    const sessionId = newProjectSession(manager);
+    await manager.send(sessionId, "one");
+    await manager.send(sessionId, "two");
+    expect(log).toEqual(["engine", "engine"]);
+    // Once for each turn, not at both snapshots of a turn.
+    const notices = events.filter((event) => event.kind === "notice" && event.text === reason);
+    expect(notices).toHaveLength(2);
   });
 
   test("a specialist chat runs with the specialist preparer, and keeps no clone snapshot (#703)", async () => {

@@ -124,7 +124,7 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 
 **Telegram** runs only on the hub. The bot talks only to the one Telegram chat that you paired. Each Telegram topic is one Eva chat.
 
-**Marker lines** carry the extras of an answer, such as `[[attach: <path>]]` for a file and `[[reply: <text>]]` for a suggested reply. A marker is plain text, so every engine can write it, and the core stores it with the answer. Each front end reads the lines with one shared parser, `src/shared/file-markers.ts`. The parser removes them from the text that a chat shows. It also applies the limits of the suggested replies: 4 replies, 60 characters each. The terminal chat still prints the raw lines.
+**Marker lines** carry the extras of an answer, such as `[[attach: <path>]]` for a file and `[[reply: <text>]]` for a suggested reply. A marker is plain text, so every engine can write it, and the core stores it with the answer. Each front end reads the lines with one shared parser, `src/shared/file-markers.ts`. The parser removes them from the text that a chat shows. It also applies the limits of the suggested replies: 4 replies, 60 characters each. A streamed line that can start a marker waits until it is complete, so `eva chat` never shows a marker either. Telegram keeps the buttons of the suggested replies in memory only: after a restart, an old button says that its reply is gone.
 
 ## The vault
 
@@ -155,6 +155,7 @@ Two or more computers can run Eva with the same vault. The vault names the hub i
 - **Secrets never reach a front end.** The `Redactor` removes each known secret, and each common token shape, from the text of each event and log line.
 - **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, with either engine, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
 - **Trust of a clone.** A clone of an unknown repository runs with its hooks, project settings and MCP servers off, until you trust it.
+- **Eva's own git.** Eva runs her own git outside the sandbox, with the GitHub login. Before each of her git calls in a clone, she checks the repository. She refuses one whose git data or own config could make git start a program. Her git never enters a submodule, so a nested repository that a chat makes in the vault runs nothing either.
 - **Signed updates.** See below.
 
 ## Updates

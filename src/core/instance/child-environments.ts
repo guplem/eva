@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { baseEnvironmentAllowlist, buildChildEnvironment, type EnvironmentMap } from "../../shared/environment.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
+import { ownGitConfig, ownGitVariables, withGitConfig } from "../../shared/git-config.ts";
 import {
   engineFolders,
   engineFolderVariables,
@@ -37,12 +38,14 @@ export interface InstanceFacts {
  */
 export function gitEnvironment(facts: InstanceFacts, secrets: EvaSecrets): Record<string, string> {
   const token = secrets.githubToken;
-  return buildChildEnvironment(facts.processEnvironment, baseEnvironmentAllowlist, {
-    // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
-    GH_CONFIG_DIR: engineFolders(facts.paths).gh,
-    ...(token === undefined ? {} : { [githubTokenVariable]: token }),
-    ...commitIdentityVariables(facts.commitIdentity),
-  });
+  return hardened(
+    buildChildEnvironment(facts.processEnvironment, baseEnvironmentAllowlist, {
+      // Eva's own `gh` calls (the GitHub check, pull requests) use this instance's login too.
+      GH_CONFIG_DIR: engineFolders(facts.paths).gh,
+      ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+      ...commitIdentityVariables(facts.commitIdentity),
+    }),
+  );
 }
 
 /**
@@ -55,10 +58,20 @@ export function gitEnvironmentWithToken(
   identity?: CommitIdentity,
 ): Record<string, string> {
   const token = secrets.githubToken;
-  return buildChildEnvironment(processEnvironment, baseEnvironmentAllowlist, {
-    ...(token === undefined ? {} : { [githubTokenVariable]: token }),
-    ...commitIdentityVariables(identity),
-  });
+  return hardened(
+    buildChildEnvironment(processEnvironment, baseEnvironmentAllowlist, {
+      ...(token === undefined ? {} : { [githubTokenVariable]: token }),
+      ...commitIdentityVariables(identity),
+    }),
+  );
+}
+
+/**
+ * Eva's own git runs outside the sandbox, with the GitHub token. A folder that a chat can write,
+ * such as a nested repository in a project folder, must not make it start a program (#1131).
+ */
+function hardened(environment: Record<string, string>): Record<string, string> {
+  return withGitConfig({ ...environment, ...ownGitVariables }, ownGitConfig);
 }
 
 /** Eva's own git reads no instance config file, so the variables carry the identity. A null part adds none. */

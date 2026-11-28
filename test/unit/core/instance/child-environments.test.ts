@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
@@ -10,6 +10,16 @@ import {
 } from "../../../../src/core/instance/child-environments.ts";
 import { homePaths, type HomePaths } from "../../../../src/core/settings/home.ts";
 import { userspaceFolders } from "../../../../src/core/remote-access/tailscale.ts";
+import { githubCredentialArguments } from "../../../../src/core/vault/vault-clone.ts";
+import { VaultSync } from "../../../../src/core/vault/vault-sync.ts";
+import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
+import {
+  createGitSandbox,
+  gitEnvironment as testGitEnvironment,
+  type GitSandbox,
+  gitHookTimeoutMs,
+} from "../../../support/git-sandbox.ts";
+import { markerProgram } from "../../../support/marker-program.ts";
 
 let home: string;
 let paths: HomePaths;
@@ -61,6 +71,44 @@ describe("the commit identity of an instance's git", () => {
   });
 });
 
+describe("the settings that Eva's own git forces (#1131)", () => {
+  const configOf = (environment: Record<string, string>): Map<string, string> => {
+    const entries = new Map<string, string>();
+    const count = Number(environment["GIT_CONFIG_COUNT"] ?? "0");
+    for (let index = 0; index < count; index += 1)
+      entries.set(
+        environment[`GIT_CONFIG_KEY_${String(index)}`] ?? "",
+        environment[`GIT_CONFIG_VALUE_${String(index)}`] ?? "",
+      );
+    return entries;
+  };
+
+  test("both git environments turn off the file-system monitor and the submodule recursion", () => {
+    for (const environment of [
+      gitEnvironment({ paths, processEnvironment: {} }, {}),
+      gitEnvironmentWithToken({}, {}),
+    ]) {
+      const config = configOf(environment);
+      expect(config.get("core.fsmonitor")).toBe("");
+      expect(config.get("diff.ignoreSubmodules")).toBe("dirty");
+      expect(config.get("submodule.recurse")).toBe("false");
+      expect(environment["GIT_PAGER"]).toBe("cat");
+    }
+  });
+
+  test("the person's own login, proxy, signing and address settings stay as they are", () => {
+    const keys = [...configOf(gitEnvironment({ paths, processEnvironment: {} }, {})).keys()].map((key) =>
+      key.toLowerCase(),
+    );
+    for (const key of keys) expect(key).not.toMatch(/^(credential|http|url|gpg|user)\.|sshcommand|hookspath/);
+  });
+
+  test("the shell's own GIT_CONFIG_COUNT never reaches Eva's git", () => {
+    const environment = gitEnvironmentWithToken({ GIT_CONFIG_COUNT: "5", GIT_CONFIG_KEY_4: "x.y" }, {});
+    expect(environment["GIT_CONFIG_KEY_4"]).not.toBe("x.y");
+  });
+});
+
 describe("projectWallRoots (#711)", () => {
   test("closes Eva's folder, but keeps readable each file that the agent's git, gh and PATH name", () => {
     const environment = engineEnvironment({ paths, processEnvironment: { PATH: "/usr/bin" }, evaCommand: ["eva"] }, {});
@@ -76,5 +124,76 @@ describe("projectWallRoots (#711)", () => {
     // Claude Code's login and every chat's history stay closed.
     expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", ".credentials.json"))).toBe(false);
     expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "projects"))).toBe(false);
+  });
+});
+
+describe("Eva's own git in a vault with a nested repository (#1131)", () => {
+  let sandbox: GitSandbox;
+  beforeEach(() => {
+    sandbox = createGitSandbox();
+  }, gitHookTimeoutMs);
+  afterEach(() => {
+    sandbox.dispose();
+  }, gitHookTimeoutMs);
+
+  /** The test shell's variables, without its own git settings, as Eva's process would have them. */
+  const processEnvironment = (): Record<string, string | undefined> => ({
+    ...Object.fromEntries(Object.entries(testGitEnvironment).filter(([name]) => !name.startsWith("GIT_CONFIG"))),
+    GIT_CONFIG_NOSYSTEM: "1",
+  });
+
+  test("a program that the nested repository's own config names never runs, and the sync still works", async () => {
+    const vault = sandbox.clone("vault");
+    const program = markerProgram(sandbox.root);
+    const nested = join(vault, "Projects", "2026-01-01-0000-example-app", "notes");
+    mkdirSync(nested, { recursive: true });
+    sandbox.git(nested, "init", "-q");
+    sandbox.write(nested, "a.md", "one\n");
+    sandbox.git(nested, "add", "-A");
+    sandbox.git(nested, "commit", "-q", "-m", "one");
+    const environment = {
+      ...gitEnvironmentWithToken(processEnvironment(), {}),
+      ...Object.fromEntries(
+        Object.entries(testGitEnvironment).filter(([name]) => /^GIT_(AUTHOR|COMMITTER)_/.test(name)),
+      ),
+    };
+    const sync = new VaultSync({ vaultPath: vault, runner: systemProcessRunner, environment, now: () => new Date() });
+    // The first save stages the nested repository as a link to its commit.
+    expect((await sync.save()).status).toBe("ok");
+    sandbox.git(nested, "config", "core.fsmonitor", program.path);
+    sandbox.git(nested, "config", "filter.marker.clean", program.path);
+    sandbox.write(nested, ".gitattributes", "* filter=marker\n");
+    sandbox.write(nested, "a.md", "two\n");
+    sandbox.write(vault, "Methods/New.md", "Steps.\n");
+
+    expect((await sync.save()).status).toBe("ok");
+    expect(sandbox.git(sandbox.remote, "ls-tree", "-r", "--name-only", "main")).toContain("Methods/New.md");
+    expect(program.ran()).toBe(false);
+  });
+});
+
+describe("Eva's GitHub login with the forced settings (#1131)", () => {
+  test("Eva's own credential helper still gives git the token", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "eva-credential-"));
+    try {
+      const environment = {
+        ...gitEnvironmentWithToken(
+          { ...Object.fromEntries(Object.entries(testGitEnvironment).filter(([name]) => !name.startsWith("GIT_"))) },
+          { githubToken: "example-token" },
+        ),
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_GLOBAL: join(folder, "empty.gitconfig"),
+        GIT_TERMINAL_PROMPT: "0",
+      };
+      const result = await systemProcessRunner.run(["git", ...githubCredentialArguments, "credential", "fill"], {
+        cwd: folder,
+        environment,
+        timeoutMs: 20_000,
+        stdin: "protocol=https\nhost=github.com\n\n",
+      });
+      expect(result.stdout).toContain("password=example-token");
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });

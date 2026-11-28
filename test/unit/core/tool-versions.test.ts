@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readToolVersions, shortVersion, tools } from "../../../src/core/tool-versions.ts";
+import { gitTooOld, readToolVersions, shortVersion, tools } from "../../../src/core/tool-versions.ts";
 import type { ProcessRunner } from "../../../src/shared/process-runner.ts";
 
 describe("shortVersion", () => {
@@ -57,9 +57,11 @@ describe("readToolVersions", () => {
   });
 
   test("says which tools Eva installs, and when gh is too old for her login", async () => {
+    // A git older than 2.31 would count as too old too (#1131).
+    const versionLine = (program: string): string =>
+      program === "gh" ? "gh version 2.4.0\n" : program === "git" ? "git version 2.43.0\n" : "1.0.0\n";
     const runner: ProcessRunner = {
-      run: (command) =>
-        Promise.resolve({ exitCode: 0, stdout: command[0] === "gh" ? "gh version 2.4.0\n" : "1.0.0\n", stderr: "" }),
+      run: (command) => Promise.resolve({ exitCode: 0, stdout: versionLine(command[0] ?? ""), stderr: "" }),
     };
     const versions = await readToolVersions({ ...places, runner });
     const installable = versions.filter((tool) => tool.installable).map((tool) => tool.program);
@@ -85,5 +87,15 @@ describe("readToolVersions", () => {
     expect(asked).toContain("/opt/claude");
     expect(asked).not.toContain("claude");
     expect(versions.some((tool) => tool.program === "bun")).toBe(false);
+  });
+});
+
+describe("gitTooOld (#1131)", () => {
+  test("git older than 2.31 is too old for the forced settings, and a newer one is not", () => {
+    expect(gitTooOld("2.30.2")).toBe(true);
+    expect(gitTooOld("1.9.5")).toBe(true);
+    expect(gitTooOld("2.31.0")).toBe(false);
+    expect(gitTooOld("2.45.1.windows.1")).toBe(false);
+    expect(gitTooOld("installed")).toBe(false);
   });
 });

@@ -30,13 +30,18 @@ export const browserNotificationShelf: NotificationShelf = {
     if (!("serviceWorker" in navigator)) return [];
     const registration = await navigator.serviceWorker.getRegistration();
     const shown = (await registration?.getNotifications()) ?? [];
-    return shown.map((notification) => ({ tag: notification.tag, close: () => notification.close() }));
+    return shown.map((notification) => ({
+      tag: notification.tag,
+      // Some browsers give no time.
+      shownAt: (notification as { timestamp?: number }).timestamp ?? null,
+      close: () => notification.close(),
+    }));
   },
 };
 
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
 export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {
-  // Capture: a scroll of a box inside the page does not bubble up to the document.
+  // Capture: a part of the page that stops an event must not hide the person from Eva.
   const options = { capture: true, passive: true };
   const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
     for (const name of names) target.addEventListener(name, listener, options);
@@ -65,7 +70,23 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
     onChatsChange: (listener) => listen(window, [shownChatsEvent], listener),
     onLeave: (listener) => listen(window, ["pagehide"], listener),
     onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
-    onInput: (listener) => listen(document, ["keydown", "pointerdown", "pointermove", "wheel", "scroll"], listener),
+    onInput: (listener) => {
+      // No "scroll": the chat scrolls by itself while an answer grows, and the person may be away.
+      const stopInputs = listen(document, ["keydown", "pointerdown", "wheel", "touchmove"], listener);
+      // A browser also sends a move when the page changes under a pointer that rests.
+      let place = "";
+      const onMove = (event: Event): void => {
+        const { screenX, screenY } = event as PointerEvent;
+        const moved = `${String(screenX)},${String(screenY)}`;
+        if (moved !== place) listener();
+        place = moved;
+      };
+      document.addEventListener("pointermove", onMove, options);
+      return () => {
+        stopInputs();
+        document.removeEventListener("pointermove", onMove, options);
+      };
+    },
     now: () => Date.now(),
     setInterval: (callback, ms) => {
       const timer = window.setInterval(callback, ms);

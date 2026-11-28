@@ -8,7 +8,14 @@ import { hasUnseenTurns, type UnseenFacts } from "./branch-path.ts";
 
 /** The notifications that this device shows. A test passes its own. */
 export interface NotificationShelf {
-  readonly shown: () => Promise<readonly { readonly tag: string; readonly close: () => void }[]>;
+  readonly shown: () => Promise<
+    readonly {
+      readonly tag: string;
+      /** When the device showed it, on the device's clock. Null when the browser does not say. */
+      readonly shownAt: number | null;
+      readonly close: () => void;
+    }[]
+  >;
 }
 
 /** What the list of chats says about one chat. */
@@ -19,14 +26,22 @@ const chatTag = "chat:";
 
 /**
  * `chats` must come from a fresh read: an old list would close the notification of a new answer.
+ * `readAt`: when that read started, on the device's clock. A notification that is newer stays: the
+ * list may be from before its answer.
+ *
  * A chat that works keeps its notification. Its approval may wait, and it shares the tag. A read
  * from before the end of the turn also says that the chat works, and it does not know the answer.
  */
-export async function closeSeenNotifications(chats: readonly SeenChat[], shelf: NotificationShelf): Promise<void> {
+export async function closeSeenNotifications(
+  chats: readonly SeenChat[],
+  shelf: NotificationShelf,
+  readAt: number,
+): Promise<void> {
   try {
     const byId = new Map(chats.map((chat) => [chat.id, chat]));
     for (const notification of await shelf.shown()) {
       if (!notification.tag.startsWith(chatTag)) continue;
+      if (notification.shownAt !== null && notification.shownAt >= readAt) continue;
       const chat = byId.get(notification.tag.slice(chatTag.length));
       if (chat === undefined || (!chat.running && !hasUnseenTurns(chat))) notification.close();
     }

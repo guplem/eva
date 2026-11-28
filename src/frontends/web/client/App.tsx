@@ -274,11 +274,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     latestRead.current += 1;
     const read = latestRead.current;
     try {
+      const readAt = Date.now();
       const listed = await api.sessions();
       if (read !== latestRead.current) return;
       setSessions(listed);
       // The list is fresh here: a chat that the person saw on another device no longer needs its notification.
-      void closeSeenNotifications(listed, browserNotificationShelf);
+      void closeSeenNotifications(listed, browserNotificationShelf, readAt);
       setAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) setAuthenticated(false);

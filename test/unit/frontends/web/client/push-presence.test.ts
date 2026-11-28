@@ -172,6 +172,30 @@ describe("the page's claim that it is in view", () => {
     expect(fake.sent).toHaveLength(5);
   });
 
+  test("claims nothing after it stops, also when the read of the push address ends later", async () => {
+    const fake = fakePage();
+    const stop = startPushPresence(fake.page);
+    stop();
+    await settle();
+    expect(fake.sent).toEqual([]);
+  });
+
+  test("keeps the newest push address when an older read ends last", async () => {
+    const fake = fakePage();
+    const reads: ((endpoint: string | null) => void)[] = [];
+    startPushPresence({ ...fake.page, readEndpoint: () => new Promise((resolve) => reads.push(resolve)) });
+    fake.fire("device");
+    reads[1]?.("https://fcm.googleapis.com/fcm/send/new");
+    await settle();
+    reads[0]?.(null);
+    await settle();
+    fake.fire("timer");
+    expect(fake.sent.map(([endpoint]) => endpoint)).toEqual([
+      "https://fcm.googleapis.com/fcm/send/new",
+      "https://fcm.googleapis.com/fcm/send/new",
+    ]);
+  });
+
   test("a failed claim stays quiet, and a failed read claims with no push address", async () => {
     const fake = fakePage();
     startPushPresence({ ...fake.page, send: () => Promise.reject(new Error("offline")) });

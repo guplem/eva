@@ -38,7 +38,7 @@ export interface PresencePage {
   readonly onLeave: (listener: () => void) => () => void;
   /** The person turned the notifications of this device on or off. */
   readonly onDeviceChange: (listener: () => void) => () => void;
-  /** The person pressed a key, or moved, touched or scrolled the page. */
+  /** The person pressed a key, or moved or touched the page. A scroll that the page makes does not count. */
   readonly onInput: (listener: () => void) => () => void;
   readonly setInterval: (callback: () => void, ms: number) => () => void;
   readonly now: () => number;
@@ -66,6 +66,10 @@ export function startPushPresence(page: PresencePage): () => void {
     page.shownChats(),
     inView && page.now() - lastInput < activeMs,
   ];
+  /** The claims stopped: a read of the push address that ends later must not start one more. */
+  let stopped = false;
+  /** Counts the reads of the push address, so an older read that ends last changes nothing. */
+  let reads = 0;
   const report = (inView: boolean): void => {
     if (!ready) return;
     const [, chats, active] = claim(inView);
@@ -89,11 +93,15 @@ export function startPushPresence(page: PresencePage): () => void {
     reportView();
   };
   const refresh = (): void => {
+    reads += 1;
+    const read = reads;
     page
       .readEndpoint()
       // A browser with no service worker still shows the chat to the person.
       .catch(() => null)
-      .then(use)
+      .then((found) => {
+        if (!stopped && read === reads) use(found);
+      })
       .catch(() => undefined);
   };
   refresh();
@@ -115,6 +123,7 @@ export function startPushPresence(page: PresencePage): () => void {
   ];
   return () => {
     for (const stop of stops) stop();
+    stopped = true;
     // After a logout, an old claim would hold back the pushes for up to 90 seconds.
     reportChange(false);
   };

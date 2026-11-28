@@ -369,7 +369,8 @@ export function Composer({
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
   const replies = shownReplies(suggestions, {
-    empty: isEmpty,
+    text,
+    files: files.attachments.length,
     locked: block !== null,
     busy: sending || uploading || rewriting !== null,
   });
@@ -406,6 +407,16 @@ export function Composer({
   const keepFocus = (event: ReactPointerEvent): void => {
     // A tap on these buttons keeps the focus in the text, so a phone keyboard stays open.
     event.preventDefault();
+  };
+  /**
+   * Sends a reply from the arrow or the list. The send removes the control that the keyboard used, and the focus
+   * would fall to the page, so it goes to the text. A tap kept the focus where it was, so the keyboard stays as it is.
+   */
+  const sendReply = (reply: string): void => {
+    const focused = document.activeElement;
+    const fromControl = focused !== box.current && shell.current?.contains(focused) === true;
+    void send(reply);
+    if (fromControl) requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
   };
   const textActions =
     block === null
@@ -587,7 +598,7 @@ export function Composer({
                   // The send itself plays its cue.
                   data-cue="none"
                   onPointerDown={keepFocus}
-                  onClick={() => void send(suggestion)}
+                  onClick={() => sendReply(suggestion)}
                 >
                   <Icon name="send" />
                   <kbd aria-hidden="true">Tab</kbd>
@@ -600,7 +611,7 @@ export function Composer({
                     fromStart
                     above
                     keepFocus
-                    items={replies.map((reply) => ({ label: reply, onChoose: () => void send(reply) }))}
+                    items={replies.map((reply) => ({ label: reply, onChoose: () => sendReply(reply) }))}
                   >
                     +{replies.length - 1}
                   </MenuButton>

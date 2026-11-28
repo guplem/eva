@@ -36,14 +36,18 @@ describe("chatReplies (#1127)", () => {
 });
 
 describe("shownReplies", () => {
-  const box = { empty: true, locked: false, busy: false };
+  const box = { text: "", files: 0, locked: false, busy: false };
 
   test("shows the replies in an empty free box", () => {
     expect(shownReplies(["Yes", "No"], box)).toEqual(["Yes", "No"]);
   });
 
-  test("hides them once the person types or attaches a file, while the box is locked or busy", () => {
-    expect(shownReplies(["Yes"], { ...box, empty: false })).toEqual([]);
+  test("hides them once the person types any character, also a space or a new line, so Tab never drops it", () => {
+    for (const text of ["x", " ", "\n"]) expect(shownReplies(["Yes"], { ...box, text })).toEqual([]);
+  });
+
+  test("hides them with an attached file, while the box is locked or busy", () => {
+    expect(shownReplies(["Yes"], { ...box, files: 1 })).toEqual([]);
     expect(shownReplies(["Yes"], { ...box, locked: true })).toEqual([]);
     expect(shownReplies(["Yes"], { ...box, busy: true })).toEqual([]);
   });

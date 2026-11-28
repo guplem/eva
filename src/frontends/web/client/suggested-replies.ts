@@ -22,17 +22,22 @@ export function chatReplies(chat: {
   return extractFileMarkers(newest.answerText).replies;
 }
 
-/** The replies that the box shows now. A typed character or a file hides them, and a cleared box brings them back. */
+/**
+ * The replies that the box shows now. Any typed character hides them, also a space: Tab would otherwise send the reply
+ * and drop it. A file hides them too, and a cleared box brings them back.
+ */
 export function shownReplies(
   replies: readonly string[],
   box: {
-    readonly empty: boolean;
+    readonly text: string;
+    /** The count of attached files. */
+    readonly files: number;
     readonly locked: boolean;
     /** The box sends, uploads a file or runs a text action. */
     readonly busy: boolean;
   },
 ): readonly string[] {
-  return box.empty && !box.locked && !box.busy ? replies : [];
+  return box.text === "" && box.files === 0 && !box.locked && !box.busy ? replies : [];
 }
 
 /** The parts of a key press in the message box that decide whether Tab sends the suggestion. */

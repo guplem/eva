@@ -1396,7 +1396,8 @@ describe("project work from a Telegram chat (#9)", () => {
     writeProject();
     const group = -1001234;
     createEva(
-      (request) => FakeEngine.answer(request, request.mode === "project" ? "Fixed it." : "Noted."),
+      // Only a chat with Eva offers suggested replies (#1128): the Project chat stays a plain harness.
+      (request) => FakeEngine.answer(request, request.mode === "project" ? "Fixed it.\n[[reply: Ship it]]" : "Noted."),
       fakeGh(systemProcessRunner),
       { remoteAccess: fixedRemoteAccess({ url: "https://eva.example.ts.net", problem: null }) },
     );
@@ -1435,6 +1436,7 @@ describe("project work from a Telegram chat (#9)", () => {
     expect(inTopic[2]).toBe("Fixed it.");
     await settle(bot, () => telegram.sentTexts().filter((text) => text === "Noted.").length === 2);
     await eva.idle();
+    expect(telegram.sentTexts()).not.toContain("Suggested replies:");
   });
 
   test("without topics or Tailscale, the asking chat learns where to find the work", async () => {
@@ -2811,6 +2813,166 @@ describe("files (lessons 72, 74, 124)", () => {
   });
 });
 
+describe("suggested replies (#1128)", () => {
+  const question = "Shall I go on?\n[[reply: Yes, go on]]\n[[reply: No]]";
+  const gone = "This reply is no longer available.";
+
+  function offers(): ReturnType<FakeTelegram["callsTo"]> {
+    return telegram.callsTo("sendMessage").filter((call) => call.params["text"] === "Suggested replies:");
+  }
+
+  function buttonsOf(call: ReturnType<FakeTelegram["callsTo"]>[number] | undefined): string[] {
+    const markup = call?.params["reply_markup"] as { inline_keyboard: { callback_data: string }[][] } | undefined;
+    return (markup?.inline_keyboard ?? []).flat().map((button) => button.callback_data);
+  }
+
+  function notes(): unknown[] {
+    return telegram.callsTo("answerCallbackQuery").map((call) => call.params["text"]);
+  }
+
+  /** The first turn asks the question, and each later turn answers with its own text. */
+  function askFirst(later: string): void {
+    createEva((request) => FakeEngine.answer(request, engine.requests.length === 1 ? question : later));
+  }
+
+  test("an answer that suggests replies gets a button for each, and a press sends the reply as a message", async () => {
+    askFirst("Going on.");
+    const bot = createBot();
+    telegram.sendText(owner, "plan the trip");
+    await settle(bot, () => offers().length === 1);
+    const texts = telegram.sentTexts();
+    expect(texts.indexOf("Shall I go on?")).toBeLessThan(texts.indexOf("Suggested replies:"));
+    expect(texts.join("\n")).not.toContain("[[reply");
+    const offer = offers()[0];
+    // The answer already rang the phone.
+    expect(offer?.params["disable_notification"]).toBe(true);
+    const markup = offer?.params["reply_markup"] as { inline_keyboard: { text: string }[][] };
+    expect(markup.inline_keyboard.map((row) => row.map((button) => button.text))).toEqual([["Yes, go on"], ["No"]]);
+    const [yes] = buttonsOf(offer);
+    expect(yes).toMatch(/^p:[0-9a-f]{32}$/);
+
+    telegram.pressButton(owner, yes ?? "");
+    await settle(bot, () => telegram.sentTexts().includes("Going on."));
+    expect(engine.requests[1]?.prompt).toContain("Yes, go on");
+    // The bot never echoes a message that came from Telegram, so the edit shows the reply in the topic.
+    expect(telegram.callsTo("editMessageText").map((call) => call.params)).toEqual([
+      {
+        chat_id: owner,
+        message_id: (offer?.result as { message_id: number }).message_id,
+        text: "You replied: Yes, go on",
+      },
+    ]);
+    expect(notes()).toEqual([undefined]);
+    expect(offers()).toHaveLength(1);
+    expect(telegram.callsTo("deleteMessage")).toEqual([]);
+  });
+
+  test("a typed message instead takes the buttons away, and an old button then starts no turn", async () => {
+    askFirst("Fine.");
+    const bot = createBot();
+    telegram.sendText(owner, "plan the trip");
+    await settle(bot, () => offers().length === 1);
+    const offerId = (offers()[0]?.result as { message_id: number }).message_id;
+    telegram.sendText(owner, "something else");
+    await settle(bot, () => telegram.sentTexts().includes("Fine.") && telegram.callsTo("deleteMessage").length === 1);
+    expect(telegram.callsTo("deleteMessage")[0]?.params).toEqual({ chat_id: owner, message_id: offerId });
+
+    telegram.pressButton(owner, buttonsOf(offers()[0])[0] ?? "");
+    await settle(bot, () => notes().includes(gone));
+    await eva.idle();
+    expect(engine.requests).toHaveLength(2);
+    expect(telegram.callsTo("editMessageText")).toEqual([]);
+  });
+
+  test("two fast presses send one reply, and the second press says so", async () => {
+    askFirst("Going on.");
+    const bot = createBot();
+    telegram.sendText(owner, "plan the trip");
+    await settle(bot, () => offers().length === 1);
+    const [yes, no] = buttonsOf(offers()[0]);
+    telegram.pressButton(owner, yes ?? "");
+    telegram.pressButton(owner, no ?? "");
+    await settle(bot, () => telegram.sentTexts().includes("Going on.") && notes().includes(gone));
+    await eva.idle();
+    expect(engine.requests).toHaveLength(2);
+    expect(telegram.callsTo("editMessageText")).toHaveLength(1);
+  });
+
+  test("a press after a restart, or in another topic, starts no turn", async () => {
+    askFirst("Going on.");
+    const first = createBot();
+    telegram.sendText(owner, "plan the trip");
+    await settle(first, () => offers().length === 1);
+    const [yes] = buttonsOf(offers()[0]);
+    // A forged press from another topic finds no offer there.
+    telegram.pressButton(owner, yes ?? "", 700);
+    await settle(first, () => notes().includes(gone));
+    await first.stop();
+
+    const second = createBot();
+    telegram.pressButton(owner, yes ?? "");
+    await settle(second, () => notes().filter((note) => note === gone).length === 2);
+    await eva.idle();
+    expect(engine.requests).toHaveLength(1);
+  });
+
+  test("a stranger's press does nothing, and the offer stays", async () => {
+    askFirst("Going on.");
+    const bot = createBot(owner, { allowedUserId: owner });
+    telegram.sendText(owner, "plan the trip");
+    await settle(bot, () => offers().length === 1);
+    const [yes] = buttonsOf(offers()[0]);
+    telegram.pressButton(owner, yes ?? "", undefined, 777);
+    await settle(bot, () => notes().length === 1);
+    expect(notes()).toEqual([undefined]);
+    telegram.pressButton(owner, yes ?? "");
+    await settle(bot, () => telegram.sentTexts().includes("Going on."));
+  });
+
+  test("an answer with no suggestion, and a failed turn, show no buttons", async () => {
+    createEva((request) =>
+      engine.requests.length === 1
+        ? FakeEngine.answer(request, "Done.")
+        : [
+            { kind: "text", text: question, messageId: "m2" },
+            { kind: "turn_failed", reason: "end" },
+          ],
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "first");
+    await settle(bot, () => telegram.sentTexts().includes("Done."));
+    telegram.sendText(owner, "second");
+    await settle(bot, () => telegram.sentTexts().includes("The turn failed: end"));
+    await eva.idle();
+    expect(offers()).toEqual([]);
+  });
+
+  test("a chat whose topic opens during its turn gets its buttons at the turn end", async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let firstBlock: () => void = () => undefined;
+    const firstBlockSent = new Promise<void>((resolve) => (firstBlock = resolve));
+    createEva(async function* (request) {
+      const [, end] = FakeEngine.answer(request, "done");
+      yield { kind: "text" as const, text: "Part one.", messageId: "m1" };
+      firstBlock();
+      await held;
+      yield { kind: "text" as const, text: `Part two. ${question}`, messageId: "m2" };
+      if (end !== undefined) yield end;
+    });
+    const session = eva.createAssistantSession({ source: "web" });
+    void eva.sessions.send(session.id, "long work", "api");
+    const bot = createBot();
+    await firstBlockSent;
+    telegram.failNext("createForumTopic", 400, "Bad Request: the chat is not a forum");
+    telegram.pressButton(owner, `o:${session.id}`);
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("The main chat now continues")));
+    release();
+    await settle(bot, () => offers().length === 1);
+    expect(buttonsOf(offers()[0])).toHaveLength(2);
+  });
+});
+
 describe("voice notes (lesson 123)", () => {
   test("a voice note is echoed as Heard, then sent as the message", async () => {
     const heard: number[] = [];
@@ -2883,6 +3045,19 @@ describe("schedules (lessons 70, 126)", () => {
     eva.sessions.rename(eva.sessions.list()[0]!.id, "Tuesday plan");
     await bot.pollOnce();
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
+  });
+
+  test("a scheduled run shows no suggested replies (#1128)", async () => {
+    writeSchedules([morning]);
+    createEva((request) => FakeEngine.answer(request, "Your day: rest. Go out?\n[[reply: Yes]]"));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.includes("Your day")));
+    await eva.idle();
+    expect(telegram.sentTexts()).not.toContain("Suggested replies:");
+    expect(telegram.sentTexts().join("\n")).not.toContain("[[reply");
   });
 
   test("a quiet run sends nothing to its topic, and a [[done]] run sends its answer without the marker (#687)", async () => {

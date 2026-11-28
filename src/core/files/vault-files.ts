@@ -26,8 +26,8 @@ import { isEncryptedOnDisk, secretMatcherOf } from "./secret-paths.ts";
 
 export type SendableFile =
   | { readonly ok: true; readonly path: string; readonly relativePath: string; readonly name: string }
-  /** `missing`: the file does not exist, as opposed to a file that Eva refuses. */
-  | { readonly ok: false; readonly reason: string; readonly missing?: true };
+  /** `missing`: the file does not exist, as opposed to a file that Eva refuses. `tooLarge`: over the size limit. */
+  | { readonly ok: false; readonly reason: string; readonly missing?: true; readonly tooLarge?: true };
 
 /**
  * True for a path from the vault root inside a project's clones (`Projects/<id>/repos/...`): other
@@ -46,15 +46,20 @@ const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
 /** Only a text file this small is scanned for a secret: a larger one is a document or a media file. */
 const secretScanBytes = 2 * 1024 * 1024;
 
+/** How a file reaches a chat: sent, or shown as a page of an answer (#1129), with its own size limit. */
+export interface FileUse {
+  readonly verb: "send" | "show";
+  readonly maxBytes: number;
+}
+
+const sendUse: FileUse = { verb: "send", maxBytes: maxSendableBytes };
+
 /**
- * Resolves a path from the vault root and checks that it may be sent. `verb` names the action in
- * each refusal: a page of an answer (#1129) is shown, not sent.
+ * Resolves a path from the vault root and checks that it may be sent. `use` names the action in
+ * each refusal and sets the size limit.
  */
-export function resolveSendableFile(
-  vaultPath: string,
-  requested: string,
-  verb: "send" | "show" = "send",
-): SendableFile {
+export function resolveSendableFile(vaultPath: string, requested: string, use: FileUse = sendUse): SendableFile {
+  const verb = use.verb;
   if (isAbsolute(requested)) return { ok: false, reason: `${requested} is not a path from the vault root.` };
   // Windows reads a colon in a name as a file stream, which a name check cannot see through.
   if (process.platform === "win32" && requested.split(/[/\\]/).some((part) => part.includes(":")))
@@ -76,13 +81,25 @@ export function resolveSendableFile(
   if (parts.some((part) => part.toLowerCase() === ".git") || isClonePath(relativePath))
     return { ok: false, reason: `${requested} is in a repository folder, so Eva does not ${verb} it.` };
   // Telegram keeps each message on its servers, so an encrypted file opens only in Eva's web app (#707).
+  // A page shows inside the web app already, where the Files page shows HTML as text.
   if (isEncryptedOnDisk(resolved))
-    return { ok: false, reason: `${requested} is encrypted. Open it in Eva's web app, on the Files page.` };
+    return {
+      ok: false,
+      reason:
+        verb === "show"
+          ? `${requested} is encrypted, so Eva does not show it.`
+          : `${requested} is encrypted. Open it in Eva's web app, on the Files page.`,
+    };
   if (secretMatcherOf(root).matches(relativePath.split(sep).join("/")))
     return { ok: false, reason: `${requested} is a secret file, so Eva does not ${verb} it.` };
   const stats = statSync(resolved);
   if (!stats.isFile()) return { ok: false, reason: `${requested} is not a file.` };
-  if (stats.size > maxSendableBytes) return { ok: false, reason: `${requested} is larger than 50 MB.` };
+  if (stats.size > use.maxBytes)
+    return {
+      ok: false,
+      reason: `${requested} is larger than ${String(Math.round(use.maxBytes / 1024 / 1024))} MB.`,
+      tooLarge: true,
+    };
   // Only text files are scanned; a large file is a document or a media file.
   if (stats.size <= secretScanBytes && containsSecretPattern(readFileSync(resolved, "utf8")))
     return { ok: false, reason: `${requested} holds a secret, so Eva does not ${verb} it.` };

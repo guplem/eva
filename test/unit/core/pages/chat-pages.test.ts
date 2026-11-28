@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -72,6 +72,26 @@ describe("resolveShownPage", () => {
     write(".git/page.html", page);
     write(".eva/scratch/keys.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
     expect(resolveShownPage(vault, path).state).not.toBe("ready");
+  });
+
+  test("gives the 2 MB note for every file above the page limit, also one above 50 MB", () => {
+    write(".eva/scratch/huge.html", "");
+    truncateSync(join(vault, ".eva", "scratch", "huge.html"), 60 * 1024 * 1024);
+    expect(resolveShownPage(vault, ".eva/scratch/huge.html")).toEqual({
+      state: "too-large",
+      reason: ".eva/scratch/huge.html is larger than 2 MB.",
+    });
+  });
+
+  test("gives an encrypted page a reason of its own, with no Files page", () => {
+    write(
+      ".eva/scratch/sealed.html",
+      "Encrypted by Eva. Open this file in Eva's Files page to read it.\neva-encrypted-v1 0123456789abcdef\nAAAA\n",
+    );
+    expect(resolveShownPage(vault, ".eva/scratch/sealed.html")).toEqual({
+      state: "refused",
+      reason: ".eva/scratch/sealed.html is encrypted, so Eva does not show it.",
+    });
   });
 
   test("says why it does not show a page, with the word show", () => {

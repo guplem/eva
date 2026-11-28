@@ -5,7 +5,7 @@
  * bytes, so each request checks the file again.
  */
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { extname } from "node:path";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { resolveSendableFile } from "../files/vault-files.ts";
@@ -43,16 +43,14 @@ const pageName = "page.html";
  * A saved or pinned page (#1130) changes only this function.
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
-  const file = resolveSendableFile(vaultPath, requested, "show");
-  if (!file.ok)
-    return file.missing === true
-      ? { state: "gone", reason: `${requested} does not exist.` }
-      : { state: "refused", reason: file.reason };
+  const file = resolveSendableFile(vaultPath, requested, { verb: "show", maxBytes: maxPageBytes });
+  if (!file.ok) {
+    if (file.missing === true) return { state: "gone", reason: `${requested} does not exist.` };
+    return { state: file.tooLarge === true ? "too-large" : "refused", reason: file.reason };
+  }
   // The extension of the real file, so a link named `.html` cannot show a note as a page.
   if (!pageExtensions.has(extname(file.path).toLowerCase()))
     return { state: "refused", reason: `${requested} is not an HTML page.` };
-  if (statSync(file.path).size > maxPageBytes)
-    return { state: "too-large", reason: `${requested} is larger than 2 MB.` };
   return { state: "ready", path: file.path, relativePath: file.relativePath };
 }
 

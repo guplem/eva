@@ -472,6 +472,14 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "The goal is now 10,000 steps.");
     return;
   }
+  // A saved page that took a secret: Eva no longer shows it, and the person can still remove it (#1130).
+  const spoiled = /spoil the stroll ([a-z0-9-]+)/.exec(lastLine)?.[1];
+  if (spoiled !== undefined) {
+    mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+    writeFileSync(join(vault, ".eva", "pages", `${spoiled}.html`), "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    yield* FakeEngine.answer(request, "The stroll took a token.");
+    return;
+  }
   if (lastLine.includes("the lost drawing")) {
     yield* FakeEngine.answer(request, "Here it was.\n[[show: .eva/scratch/old-chart.html]]");
     return;

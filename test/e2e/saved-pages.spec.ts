@@ -144,3 +144,77 @@ test("a computer keeps the chat readable: the column has limits, and the details
   await expect(column).toHaveCount(0);
   await expect(page.getByRole("group", { name: "Pinned page" })).toBeVisible();
 });
+
+/** The pinned page as a device shows it: a column on a computer, a bar on a phone. */
+function pinnedOf(page: Page, name: string): ReturnType<Page["getByRole"]> {
+  return isPhone(page)
+    ? page.getByRole("group", { name: "Pinned page" })
+    : page.getByRole("complementary", { name: `Pinned page: ${name}` });
+}
+
+test("a pin on one device shows on another at once, and Unpin there takes it away here", async ({ page }) => {
+  await logIn(page);
+  await sketch(page, "shared-stroll");
+  const address = page.url();
+  const other = await page.context().newPage();
+  await other.setViewportSize(page.viewportSize() ?? { width: 1280, height: 720 });
+  await other.goto(address);
+  await expect(other.locator(".message.answer").first()).toBeVisible();
+  await page.getByRole("button", { name: "Pin shared-stroll beside the chat" }).click();
+  await expect(pinnedOf(other, "shared-stroll")).toBeVisible();
+  await pinnedOf(other, "shared-stroll").getByRole("button", { name: "Unpin shared-stroll" }).click();
+  await expect(pinnedOf(page, "shared-stroll")).toHaveCount(0);
+  await other.close();
+});
+
+test("Remove of a pinned page takes the pin away at once", async ({ page }) => {
+  await logIn(page);
+  await sketch(page, "removed-stroll");
+  await page.getByRole("button", { name: "Pin removed-stroll beside the chat" }).click();
+  const pinned = pinnedOf(page, "removed-stroll");
+  await expect(pinned).toBeVisible();
+  await page.locator(".message.answer").getByRole("button", { name: "removed-stroll is saved" }).click();
+  await page.getByRole("menuitem", { name: "Remove the saved page" }).click();
+  await page
+    .getByRole("dialog", { name: "Remove removed-stroll?" })
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
+  await expect(pinned).toHaveCount(0);
+  await expect(page.locator(".message.answer .page-note")).toHaveText(
+    "This page is gone. Eva deletes a page that nobody saved after 7 days.",
+  );
+});
+
+test("a saved page that Eva does not show any more can still be removed from the chat", async ({ page }) => {
+  await logIn(page);
+  await sketch(page, "spoiled-stroll");
+  const answer = page.locator(".message.answer").first();
+  await answer.getByRole("button", { name: "Save spoiled-stroll" }).click();
+  await expect(answer.getByRole("button", { name: "spoiled-stroll is saved" })).toBeVisible();
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("spoil the stroll spoiled-stroll");
+  await composer.press("Control+Enter");
+  await expect(page.locator(".message.answer").getByText("The stroll took a token.")).toBeVisible();
+  await expect(answer.locator(".page-note")).toContainText("holds a secret");
+  await answer.getByRole("button", { name: "Remove the saved page" }).click();
+  await page
+    .getByRole("dialog", { name: "Remove spoiled-stroll?" })
+    .getByRole("button", { name: "Remove", exact: true })
+    .click();
+  await expect(answer.locator(".page-note")).toHaveText(
+    "This page is gone. Eva deletes a page that nobody saved after 7 days.",
+  );
+});
+
+test("a new page with the name of a saved page shows as new, and Save keeps the new one", async ({ page }) => {
+  await logIn(page);
+  await sketch(page, "twice-stroll");
+  await page.locator(".message.answer").getByRole("button", { name: "Save twice-stroll" }).click();
+  await expect(page.locator(".message.answer").getByRole("button", { name: "twice-stroll is saved" })).toBeVisible();
+  // Eva writes a new page with the same name in another chat: it is the newest version, and not saved yet.
+  await sketch(page, "twice-stroll");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer.getByRole("button", { name: "Save twice-stroll" })).toBeVisible();
+  await answer.getByRole("button", { name: "Save twice-stroll" }).click();
+  await expect(answer.getByRole("button", { name: "twice-stroll is saved" })).toBeVisible();
+});

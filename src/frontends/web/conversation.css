@@ -1852,6 +1852,12 @@ button.ghost .icon {
   background: var(--chip);
 }
 
+/* Remove of a saved page that Eva does not show any more sits inside its note. */
+.page-frame.is-note .page-caption {
+  margin: 0;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
 /* A new version of the page loads behind the old one, which stays in view until then (#1130). */
 .page-box .widget-frame {
   position: absolute;

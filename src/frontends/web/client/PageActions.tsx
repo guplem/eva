@@ -101,7 +101,8 @@ export function PagePin({
   const showError = useShowError();
   const [busy, setBusy] = useState(false);
   if (onPin === null) return null;
-  const on = isPinned(pinned, page.path);
+  // A pin names the page, not one version of it: a newer scratch copy of the same name is still the pinned page.
+  const on = isPinned(pinned, page.saved ?? page.path);
   const name = pageName(marker);
   const press = async (): Promise<void> => {
     if (busy) return;
@@ -115,12 +116,12 @@ export function PagePin({
       setBusy(false);
     }
   };
-  const label = on ? `Unpin ${name}` : `Pin ${name} beside the chat`;
   return (
     <button
       type="button"
       className={`${words ? "ghost page-action" : "icon-button widget-full-button"}${on ? " is-on" : ""}`}
-      aria-label={label}
+      // A toggle keeps one name, and `aria-pressed` gives its state, so a screen reader never reads "Unpin, pressed".
+      aria-label={`Pin ${name} beside the chat`}
       aria-pressed={on}
       data-tooltip={on ? "Unpin this page. It stays saved." : "Pin this page beside the chat. Pin also saves it."}
       aria-busy={busy}
@@ -129,6 +130,35 @@ export function PagePin({
       {busy ? <ButtonSpinner /> : <Icon name="pin" />}
       {words && <span>{on ? "Pinned" : "Pin"}</span>}
     </button>
+  );
+}
+
+/**
+ * Remove for a saved page that Eva does not show any more, such as one that grew past 2 MB or took a
+ * secret. The person can always remove a saved page from the chat.
+ */
+export function RemoveSavedButton({ marker }: { readonly marker: string }): ReactElement {
+  const { onChanged } = useChatPages();
+  const [removing, setRemoving] = useState(false);
+  const name = pageName(marker);
+  return (
+    <>
+      <button type="button" className="ghost page-action" onClick={() => setRemoving(true)}>
+        <Icon name="trash" />
+        <span>Remove the saved page</span>
+      </button>
+      {removing && (
+        <RemoveQuestion
+          name={name}
+          marker={marker}
+          onKeep={() => setRemoving(false)}
+          onRemoved={() => {
+            setRemoving(false);
+            onChanged();
+          }}
+        />
+      )}
+    </>
   );
 }
 

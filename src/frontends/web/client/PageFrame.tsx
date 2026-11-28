@@ -12,7 +12,7 @@ import { api, type PageFrame as PageToken } from "./api.ts";
 import { FullScreenFrame } from "./FullScreenFrame.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-import { PageKeep, PagePin, type ReadyPage } from "./PageActions.tsx";
+import { PageKeep, PagePin, RemoveSavedButton, type ReadyPage } from "./PageActions.tsx";
 import { useChatPages } from "./page-context.ts";
 import { afterLoad, pageFailedNote, pageLabel, pageName, pageNote } from "./page-frames.ts";
 import { contractColours } from "./widget-frames.ts";
@@ -61,6 +61,11 @@ export function PageFrame({
         </div>
       ) : (
         <PageNote text={note} />
+      )}
+      {note !== null && shown.token !== null && shown.token.state !== "ready" && shown.token.saved !== undefined && (
+        <div className="page-caption">
+          <RemoveSavedButton marker={path} />
+        </div>
       )}
       {place === "answer" && ready !== null && note === null && (
         <div className="page-caption">

@@ -1822,6 +1822,18 @@ button.ghost .icon {
   width: 86%;
 }
 
+/* A phone gives an answer the whole width, so a page keeps the 300 px that the prompt promises. */
+@media (max-width: 760px) {
+  .message.answer:has(.page-frame) {
+    width: 100%;
+  }
+
+  /* Half of the bubble's side padding goes to the page too: a 360 px phone then still gives it 300 px. */
+  .page-frame {
+    margin-inline: calc(var(--space-2) * -1);
+  }
+}
+
 .page-frame {
   position: relative;
   height: 320px;

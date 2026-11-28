@@ -49,6 +49,15 @@ test("an answer shows its page in the bubble, with no marker, and the page's scr
   await expect(page.frameLocator(bubbleFrame).locator('body[data-ready="true"]')).toBeVisible();
 });
 
+test("on a 360 px phone the page gets the 300 px that the prompt promises", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 780 });
+  await logIn(page);
+  await ask(page, "draw my walking");
+  await expect(page.frameLocator(bubbleFrame).locator('body[data-ready="true"]')).toBeVisible();
+  const box = await page.locator(bubbleFrame).boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(300);
+});
+
 test("the full-screen button opens the page over the app, and Back closes it", async ({ page }) => {
   await logIn(page);
   await ask(page, "draw my walking");

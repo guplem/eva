@@ -78,10 +78,11 @@ import { SpecialDayProvider } from "./FestiveDay.tsx";
 import { useLocationSharing } from "./LocationCard.tsx";
 import { goTo, layersOfEntry, replaceAddress } from "./back-layers.ts";
 import { useBackLayer } from "./back-layer-hook.ts";
+import { closeSeenNotifications } from "./seen-notifications.ts";
 import { settingsHash } from "./settings-routes.ts";
 import { startPushPresence } from "./push-presence.ts";
 import { unreadChats } from "./chat-list.ts";
-import { announceShownChats, browserPresencePage } from "./PushCard.tsx";
+import { announceShownChats, browserNotificationShelf, browserPresencePage } from "./PushCard.tsx";
 import { dialogBackdropClass } from "./Dialog.tsx";
 import { onDisplayFormatChange, setDisplayFormat } from "./display-format.ts";
 
@@ -273,9 +274,12 @@ function EvaApp({ loginNotice }: { readonly loginNotice: string | null }): React
     latestRead.current += 1;
     const read = latestRead.current;
     try {
+      const readAt = Date.now();
       const listed = await api.sessions();
       if (read !== latestRead.current) return;
       setSessions(listed);
+      // The list is fresh here: a chat that the person saw on another device no longer needs its notification.
+      void closeSeenNotifications(listed, browserNotificationShelf, readAt);
       setAuthenticated(true);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) setAuthenticated(false);

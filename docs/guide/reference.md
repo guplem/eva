@@ -280,7 +280,13 @@ Eva can also tell a phone or a computer through the browser, with a system notif
 
 A tap on a notification opens its chat. Each device picks its own kinds. A notification shows the start of the answer as plain text, with no Markdown marks.
 
-Eva sends a device no notification while her page on that device is in view and in front. Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
+Eva sends a device no notification while her page on that device is in view and in front. A page that shows another chat still lets the notification of this chat through.
+
+Eva sends no device the notification of a chat while you read that chat on any device. You read a chat when its page is in view and in front, and you pressed a key, or moved or touched the page in about the last 5 minutes. So a computer that you left with the chat open does not silence your phone. This also works when the device that you read on has its notifications off.
+
+Eva closes the notification of a chat on a device when you saw the chat, on that device or on another one. A page that you left open does not count: an answer shows as seen only when you are there, by the same rule. A device with Eva's page closed cannot close a notification, so there it closes when you open Eva. The notification of a chat that still works, or that waits for your approval, stays.
+
+Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
 
 On an iPhone or an iPad, add Eva to the home screen first, then open her from there. Each computer of your vault sends the notifications of its own chats, so turn them on in the page of each computer that you use.
 

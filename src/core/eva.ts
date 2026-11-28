@@ -1105,6 +1105,7 @@ export class Eva {
           },
           notification.kind,
           holdingChat(notification),
+          notification.sessionId,
         );
       },
     });
@@ -1518,10 +1519,18 @@ export class Eva {
    * A page of a device is in view, with the chats that it shows, or went out of view. Eva sends
    * that device no alert while one of its pages is in view, and no chat's answer while one of its
    * pages shows that chat. `chats` null: a page from before #614, which holds back every chat's push.
-   * False when the device has no subscription.
+   * `endpoint` null: the device gets no notifications. `active`: the person used the page a short
+   * time ago, so Eva sends no device a notification of a chat that the page shows (#1136).
+   * False when Eva keeps no claim: the address has no subscription, or too many pages claim.
    */
-  markPushInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] | null = []): boolean {
-    return this.webPush.markInView(endpoint, pageId, inView, chats);
+  markPushInView(
+    endpoint: string | null,
+    pageId: string,
+    inView: boolean,
+    chats: readonly string[] | null = [],
+    active = false,
+  ): boolean {
+    return this.webPush.markInView(endpoint, pageId, inView, chats, active);
   }
 
   /** Sends a test notification to the devices only, not to Telegram. */
@@ -1549,14 +1558,16 @@ export class Eva {
 
   /**
    * `kind` null is a test: it goes to every device. `sessionId`: the chat whose page in view holds
-   * the alert back, or null for any page in view.
+   * the alert back, or null for any page in view. `readChat`: the chat of the alert, which goes to
+   * no device while the person reads that chat on any device.
    */
   private async pushAlert(
     alert: PushedAlertInput,
     kind: NotificationKind | null,
     sessionId: string | null = null,
+    readChat: string | null = null,
   ): Promise<void> {
-    const endpoints = this.webPush.recipients(kind, sessionId);
+    const endpoints = this.webPush.recipients(kind, sessionId, readChat);
     // An entry for nobody would push the entries of the other devices out of the short list.
     if (kind !== null && endpoints.length === 0) return;
     this.pushedCount += 1;

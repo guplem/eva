@@ -8,8 +8,10 @@ import type { NotificationKind } from "../../../core/alerts/chat-notifications.t
 import { api } from "./api.ts";
 import { describeAgent } from "./device-words.ts";
 import { ProgressBar } from "./Loading.tsx";
+import { pageActivity } from "./person-activity.ts";
 import type { PresencePage } from "./push-presence.ts";
 import { keyBytes, pushSupport, type PushSupport } from "./push-support.ts";
+import type { NotificationShelf } from "./seen-notifications.ts";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 
 /** The card says so when the person turns the notifications of this device on or off. */
@@ -23,14 +25,36 @@ export function announceShownChats(): void {
   window.dispatchEvent(new Event(shownChatsEvent));
 }
 
+/** The notifications that this device shows now (`seen-notifications.ts`). */
+export const browserNotificationShelf: NotificationShelf = {
+  shown: async () => {
+    if (!("serviceWorker" in navigator)) return [];
+    const registration = await navigator.serviceWorker.getRegistration();
+    const shown = (await registration?.getNotifications()) ?? [];
+    return shown.map((notification) => ({
+      tag: notification.tag,
+      // Some browsers give no time.
+      shownAt: (notification as { timestamp?: number }).timestamp ?? null,
+      close: () => notification.close(),
+    }));
+  },
+};
+
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
 export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {
-  const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
-    for (const name of names) target.addEventListener(name, listener);
+  const listen = (
+    target: EventTarget,
+    names: readonly string[],
+    listener: (event: Event) => void,
+    options?: AddEventListenerOptions,
+  ): (() => void) => {
+    for (const name of names) target.addEventListener(name, listener, options);
     return () => {
-      for (const name of names) target.removeEventListener(name, listener);
+      for (const name of names) target.removeEventListener(name, listener, options);
     };
   };
+  // Capture: a part of the page that stops an event must not hide the person from Eva.
+  const inputOptions = { capture: true, passive: true };
   return {
     isInView: () => document.visibilityState === "visible" && document.hasFocus(),
     readEndpoint: async () => {
@@ -40,7 +64,7 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
       return subscription?.endpoint ?? null;
     },
     shownChats,
-    send: (endpoint, pageId, inView, chats) => api.setPushInView(endpoint, pageId, inView, chats),
+    send: (endpoint, pageId, inView, chats, active) => api.setPushInView(endpoint, pageId, inView, chats, active),
     onViewChange: (listener) => {
       const stopDocument = listen(document, ["visibilitychange"], listener);
       const stopWindow = listen(window, ["focus", "blur"], listener);
@@ -52,6 +76,28 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
     onChatsChange: (listener) => listen(window, [shownChatsEvent], listener),
     onLeave: (listener) => listen(window, ["pagehide"], listener),
     onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
+    onInput: (listener) => {
+      // No "scroll": the chat scrolls by itself while an answer grows, and the person may be away.
+      const onInput = (): void => {
+        pageActivity.input();
+        listener();
+      };
+      const stopInputs = listen(document, ["keydown", "pointerdown", "wheel", "touchmove"], onInput, inputOptions);
+      // A browser also sends a move when the page changes under a pointer that rests.
+      let place = "";
+      const onMove = (event: Event): void => {
+        const { screenX, screenY } = event as PointerEvent;
+        const moved = `${String(screenX)},${String(screenY)}`;
+        if (moved !== place) onInput();
+        place = moved;
+      };
+      const stopMoves = listen(document, ["pointermove"], onMove, inputOptions);
+      return () => {
+        stopInputs();
+        stopMoves();
+      };
+    },
+    isActive: () => pageActivity.isActive(),
     setInterval: (callback, ms) => {
       const timer = window.setInterval(callback, ms);
       return () => window.clearInterval(timer);

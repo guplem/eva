@@ -47,12 +47,16 @@ The page keeps its policy and its sandbox. Save and Pin add no permission, and t
 
 ### Layout on a computer
 
-To decide with captures. Two layouts to try:
+Two layouts tried with captures at 1280, 1600 and 1920 px, light and dark:
 
-- **A. Side by side.** The column sits between the chat and the inspector. The inspector stays beside it while the window has room. Otherwise it covers the column.
-- **B. One right side.** The column takes the place of the inspector. The details button swaps the column for the inspector.
+- **A. Side by side.** The column sits between the chat and the inspector. The inspector stays beside it while the chat keeps 480 px. Otherwise it covers the column. At 1600 px this gave three columns and a chat of 524 px: hard to read.
+- **B. One right side.** The column takes the place of the inspector, and the details button shows the inspector over the column. The chat keeps 824 px at 1600 px, but a 1920 px screen wastes its room.
 
-Limits: the chat keeps at least 480 px. The column is 320 px at least, so a page keeps the 300 px that the prompt promises. Its default is 400 px. Below the width that fits both, the bar of the phone shows.
+**Choice: A with a comfort width.** The inspector stays beside the column only while the chat keeps 640 px, as on a 1920 px screen. Below that, the details open over the column, with the dialog shadow, and only when the person presses the details button: the pin stays in view by default. So 1280 and 1600 px behave as B, and a wide screen shows everything. Reason: the pinned page is the work of the chat, and the details are a glance.
+
+Limits: the chat keeps at least 480 px. The column is 320 px at least, so a page keeps the 300 px that the prompt promises. Its default is 400 px. Below the width that fits both, the bar of the phone shows. The width is per browser, as a Files column.
+
+The row of Save and Pin sits under the frame, not in its corner: three corner buttons would cover the title of a chart, and the prompt keeps only 52 px of the corner free.
 
 ### Prompt and vault guide
 

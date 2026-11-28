@@ -169,6 +169,7 @@ A grid of four columns: nav rail (76 px), list (300 px), main area (flexible) an
 - **List:** a title with a "New" button, a search field, and items grouped by day ("Today", "This week").
 - **Main area:** a header (title, subtitle, status pill, actions), the content in a column that fills the free width, and the composer. In a chat, an answer takes at most 86 % of the column, and a message of the person at most 72 %.
 - **Inspector:** the details of the selected item, such as the chat details.
+- **Pinned page:** a chat with a pinned page (#1130) adds a column between the main area and the inspector: 400 px at first, 320 px at least, on `--side`, with a divider on its left edge. Its header has the pin icon in `--accent-ink`, the page name and an unpin button. The page fills the rest, as a card with the card shadow. The chat keeps at least 480 px. Below that, the page becomes the bar of the phone. The inspector stays beside the column only while the chat keeps 640 px. Otherwise it opens over the column, with the dialog shadow, and only when the person asks.
 
 ### Phone
 
@@ -302,6 +303,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - Retry, Fork and Copy show under each answer, with no menu.
 - The background tasks of an answer show at the right end of that row. They are information, not an action. A check shows when they all ended.
 - A page of an answer (#1129) shows under its text, at the full width of the bubble and 320 px high, with a `--line` border, the 14 px radius and `--bg` behind it. The corner button opens full screen, as for a widget. A page that Eva cannot show is a `--chip` note with an info icon.
+- A row under the page holds Save and Pin as small ghost pills, outside the frame, so they never cover the page (#1130). A saved page shows a check and "Saved" in `--ok`. A pinned page shows "Pinned" on `--soft`. On a phone, a pinned page is a `--soft` pill bar above the message box, with its name, a full-screen icon and an unpin button.
 - When the answer ends with a question, the empty composer shows Eva's first suggested reply in `--muted`, where the placeholder is. A small pearl with an arrow to the right follows it, with the Tab key on a computer. A `+N` chip lists the other replies above the box.
 
 ### Eva asks for permission

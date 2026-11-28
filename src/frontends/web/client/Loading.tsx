@@ -637,10 +637,9 @@ function FilesSkeleton(): ReactElement {
               <Ghost>Vault</Ghost>
             </h1>
           </div>
-          <div className="files-download">
-            <button className="ghost" disabled {...copies(".files-download button")}>
+          <div className="more-picker">
+            <button className="icon-button" disabled {...copies(".files-header > .more-picker > button")}>
               <Ghost className="icon" />
-              <Ghost className="files-download-label">Download as zip</Ghost>
             </button>
           </div>
         </div>

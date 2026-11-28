@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   draftOf,
+  dropDrafts,
   dropEncryptedDrafts,
+  hasDraftUnder,
   forgetAllDrafts,
   hasEncryptedDraft,
   keepDraft,
@@ -28,6 +30,16 @@ describe("drafts of the Files page", () => {
     moveDrafts("Notes", "Archive");
     expect(draftOf("Notes/a.md")).toBeUndefined();
     expect(draftOf("Archive/a.md")?.text).toBe("new");
+  });
+
+  test("a delete drops the drafts of the path and of each file inside it (#1117)", () => {
+    keepDraft("Notes/a.md", { text: "new", version: "1" }, "old");
+    keepDraft("Notes-old/b.md", { text: "new", version: "1" }, "old");
+    expect(hasDraftUnder("Notes")).toBe(true);
+    dropDrafts("Notes");
+    expect(hasDraftUnder("Notes")).toBe(false);
+    expect(draftOf("Notes/a.md")).toBeUndefined();
+    expect(draftOf("Notes-old/b.md")?.text).toBe("new");
   });
 });
 

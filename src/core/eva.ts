@@ -123,7 +123,7 @@ import {
   type RetryChoice,
 } from "./projects/project-work.ts";
 import { Scheduler } from "./schedules/scheduler.ts";
-import { moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
+import { dropFavorites, moveFavorites, readFavorites, setFavorite, type Favorite } from "./files/vault-favorites.ts";
 import {
   browseVault,
   decryptMoveOf,
@@ -131,6 +131,9 @@ import {
   existingVaultPaths,
   normalizedPath,
   renameVaultEntry,
+  createVaultEntry,
+  deleteVaultEntry,
+  duplicateVaultFile,
   saveVaultFile,
   type BrowsedPath,
 } from "./files/file-browser.ts";
@@ -2384,6 +2387,28 @@ export class Eva {
       // The rename is done. A favorite that could not follow it shows as missing, and the person can star it again.
     }
     return { path: renamed };
+  }
+
+  /** Makes an empty file or folder in a vault folder from the file explorer (#1117). Answers its path. */
+  createFile(folder: string, name: string, kind: "file" | "folder"): { path: string } {
+    return { path: createVaultEntry(this.browsedVault(), folder, name, kind) };
+  }
+
+  /** Deletes a vault file or folder from the file explorer (#1117). The idle sweep commits it. */
+  deleteFile(path: string): { path: string } {
+    const vaultPath = this.browsedVault();
+    deleteVaultEntry(vaultPath, path);
+    try {
+      dropFavorites(vaultPath, normalizedPath(path));
+    } catch {
+      // The delete is done. A favorite that stays shows as missing, and the person can remove it.
+    }
+    return { path: normalizedPath(path) };
+  }
+
+  /** Copies a vault file next to itself from the file explorer (#1117). Answers the path of the copy. */
+  duplicateFile(path: string): { path: string } {
+    return { path: duplicateVaultFile(this.browsedVault(), path) };
   }
 
   /**

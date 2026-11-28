@@ -45,6 +45,16 @@ export function moveDrafts(from: string, to: string): void {
   }
 }
 
+/** A deleted file or folder takes its drafts, and the drafts of the files inside it, with it. */
+export function dropDrafts(deleted: string): void {
+  for (const path of [...drafts.keys()]) if (isUnder(path, deleted)) drafts.delete(path);
+}
+
+/** True when the path, or a file inside it, has an unsaved edit. */
+export function hasDraftUnder(folder: string): boolean {
+  return [...drafts.keys()].some((path) => isUnder(path, folder));
+}
+
 /** True while an unsaved edit of an encrypted file waits, so a lock asks first. */
 export function hasEncryptedDraft(): boolean {
   return [...drafts.values()].some((draft) => draft.encrypted === true);

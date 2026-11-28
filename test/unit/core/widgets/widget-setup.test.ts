@@ -57,10 +57,9 @@ function item(report: SetupReport, label: string): SetupItem | undefined {
   return items(report).find((entry) => entry.label === label);
 }
 
-/** The template as Eva pushes it, with Eva's skills that the direct fix copies. */
+/** The template as Eva pushes it. It carries Eva's skills (#983). */
 function setUpWidget(): Record<string, string> {
-  const skills = Object.fromEntries(Object.entries(evaFiles()).filter(([path]) => path.startsWith(".agents/skills/")));
-  return { ...widgetTemplate({ owner: "you", repository: "habits-widget", title: "Habits" }), ...skills };
+  return widgetTemplate({ owner: "you", repository: "habits-widget", title: "Habits" });
 }
 
 describe("the widget report", () => {
@@ -88,7 +87,19 @@ describe("the widget report", () => {
     expect(report.sections.map((section) => section.title)).toContain("Widget");
   });
 
-  test("a new widget repository gets a direct fix for each setting, with the ruleset after the commit of the skills", async () => {
+  test("a new widget repository has each skill of Eva up to date (#983)", async () => {
+    const report = await widgetReport({ files: setUpWidget(), labels });
+    const skills = items(report).filter((entry) => entry.label.startsWith("Skill "));
+    expect(skills.map((entry) => entry.label).sort()).toEqual(
+      Object.keys(evaFiles())
+        .flatMap((path) => /^\.agents\/skills\/([^/]+)\/SKILL\.md$/.exec(path)?.[1] ?? [])
+        .map((name) => `Skill ${name}`)
+        .sort(),
+    );
+    expect(skills.filter((entry) => entry.light !== "green")).toEqual([]);
+  });
+
+  test("a new widget repository gets a direct fix for each setting, with the ruleset fix last", async () => {
     const report = await widgetReport({
       files: widgetTemplate({ owner: "you", repository: "habits-widget", title: "Habits" }),
       labels: ["bug"],

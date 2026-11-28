@@ -972,43 +972,48 @@ button.ghost .icon {
   min-width: 0;
 }
 
-/* The field of the text. A suggested reply (#1127) sits over its empty first line. */
+/*
+ * The field of the text. A suggested reply (#1127) shares its one grid cell with the text, so a long reply makes the
+ * box taller and never shows cut: Tab sends all of it.
+ */
 .composer-field {
-  position: relative;
   flex: 1;
-  display: flex;
+  display: grid;
+  min-width: 0;
+}
+
+.composer-field > * {
+  grid-area: 1 / 1;
   min-width: 0;
 }
 
 /* The grey reply takes the place of the placeholder. A tap on the reply itself goes to the text below it. */
 .composer-suggestion {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  position: relative;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 24px;
+  align-self: start;
   pointer-events: none;
 }
 
 .composer-box.folded .composer-suggestion {
-  top: var(--space-2);
+  margin-block: var(--space-2);
 }
 
 .composer-suggestion-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   color: var(--muted);
 }
 
+/* The buttons follow the last word of the reply, on its line when it has room. */
 .composer-suggestion > button,
 .composer-suggestion > .more-picker {
+  margin-inline-start: var(--space-2);
+  vertical-align: middle;
   pointer-events: auto;
+}
+
+.composer-suggestion > .more-picker {
+  display: inline-block;
 }
 
 /* A small pearl with the send arrow, and the key that sends it on a computer. */
@@ -1063,6 +1068,12 @@ button.ghost .icon {
 
 .composer-suggestion .more-menu {
   max-width: min(360px, calc(100vw - 32px));
+}
+
+/* Each item shows its whole reply, on more lines when it needs them. */
+.composer-suggestion .more-menu button {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* A finger has no Tab key, so the pearl holds only the arrow. */

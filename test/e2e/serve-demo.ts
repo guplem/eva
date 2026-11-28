@@ -456,6 +456,15 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     );
     return;
   }
+  // A reply of the longest size, 60 characters, which must show whole before a tap sends it.
+  if (lastLine.includes("garden question")) {
+    const longest = "Water the roses, the tomatoes and the basil before lunch, ok";
+    yield* FakeEngine.answer(
+      request,
+      `Which plants get water today?\n[[reply: ${longest}]]\n[[reply: Only the roses]]`,
+    );
+    return;
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

@@ -301,6 +301,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - The context is a ring.
 - Retry, Fork and Copy show under each answer, with no menu.
 - The background tasks of an answer show at the right end of that row. They are information, not an action. A check shows when they all ended.
+- A page of an answer (#1129) shows under its text, at the full width of the bubble and 320 px high, with a `--line` border, the 14 px radius and `--bg` behind it. The corner button opens full screen, as for a widget. A page that Eva cannot show is a `--chip` note with an info icon.
 
 ### Eva asks for permission
 

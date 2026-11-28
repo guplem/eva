@@ -4,13 +4,14 @@
  * `page-names.ts` gives, so `resolveShownPage` leads each old `[[show:]]` line to the saved file
  * with no rewrite. Neither action follows a link, and a refusal changes nothing on disk.
  */
-import { lstatSync, mkdirSync, realpathSync, rmSync, type Stats } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync, type Stats } from "node:fs";
 import { dirname, extname, join, relative } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { writeFileAtomic } from "../../shared/files.ts";
 import { containsSecretPattern } from "../../shared/redaction.ts";
 import { errorCode } from "../files/file-browser.ts";
 import { pageExtensions, readPage, resolveShownPage } from "./chat-pages.ts";
+import { deletePageEntry, plainPageFile } from "./page-entries.ts";
 import { entryOf, ownSavedEntryOf, pageNameOf } from "./page-names.ts";
 
 /**
@@ -27,18 +28,24 @@ export function savePage(vaultPath: string, requested: string): string {
   // Only a marker with the name of a page shows a temporary page, so a page with no name is kept already.
   const page = pageNameOf(vaultPath, requested);
   if (shown.kept !== "temporary" || page === null) return shown.relativePath;
-  const root = realpathSync(vaultPath);
+  const root = realpathSync.native(vaultPath);
   // Save removes the scratch file afterwards. Through a link it would remove another page, which the person never saved.
   if (isLink(entryOf(root, requested)))
     throw new EvaError(
       "file_not_writable",
       `${requested} is a link, so Eva does not save it. Ask Eva to show the page itself.`,
     );
+  // The scratch file that Save reads and then deletes: its literal path, reached through plain entries only.
+  const scratch = plainPageFile(root, page.scratch);
+  if (scratch === null)
+    throw new EvaError("file_not_writable", `${page.scratch} is not a plain file, so Eva does not save it.`);
   const target = plainFolders(root, page.saved, true);
-  const existing = entryAt(target);
-  if (existing !== null && !(existing.isFile() && pageExtensions.has(extname(target).toLowerCase())))
+  if (
+    entryAt(target) !== null &&
+    (plainPageFile(root, page.saved) === null || !pageExtensions.has(extname(target).toLowerCase()))
+  )
     throw new EvaError("file_not_writable", `${page.saved} is not a page, so Eva does not write over it.`);
-  const bytes = readPage(shown.path);
+  const bytes = readPage(scratch);
   // The file can change between the check and the read, so the bytes that go in pass the checks again.
   if (bytes === null || containsSecretPattern(bytes.toString("utf8")))
     throw new EvaError("file_not_writable", `${requested} changed while Eva saved it. Try again.`);
@@ -48,8 +55,8 @@ export function savePage(vaultPath: string, requested: string): string {
   } catch (error) {
     throw new EvaError("file_not_writable", `Eva could not write ${page.saved}: ${writeProblem(error)}.`);
   }
-  // The saved file answers the marker once the scratch file is gone. It is no link, as the check above showed.
-  rmSync(shown.path, { force: true });
+  // The saved file answers the marker once the scratch file is gone.
+  deletePageEntry(root, page.scratch);
   return page.saved;
 }
 
@@ -63,12 +70,12 @@ export function removeSavedPage(vaultPath: string, requested: string): string {
   const saved = ownSavedEntryOf(vaultPath, requested) ?? pageNameOf(vaultPath, requested)?.saved ?? null;
   if (saved === null)
     throw new EvaError("file_not_writable", `${requested} is not a saved page, so Eva does not remove it here.`);
-  const target = plainFolders(realpathSync(vaultPath), saved, false);
-  const existing = entryAt(target);
+  const root = realpathSync.native(vaultPath);
+  const existing = entryAt(plainFolders(root, saved, false));
   if (existing === null) throw new EvaError("file_not_found", `${saved} does not exist.`);
   if (existing.isDirectory()) throw new EvaError("file_not_writable", `${saved} is a folder, not a page.`);
-  // `rmSync` removes a link itself, never the file that it names.
-  rmSync(target);
+  // A link here goes itself, never the file that it names.
+  deletePageEntry(root, saved);
   return saved;
 }
 

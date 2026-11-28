@@ -122,6 +122,19 @@ describe("pageNameOf (#1130)", () => {
     expect(pageNameOf(vault, ".eva/scratch./chart.html")).toBeNull();
   });
 
+  test.skipIf(posix)("gives one name in the case on disk for two markers that differ in case", () => {
+    // `realpathSync` keeps the case of the text on Windows. The saved file must have the spelling of the disk,
+    // so a Linux computer of the vault finds it, and two pins of one page compare equal.
+    expect(pageNameOf(vault, ".eva/scratch/Chart.html")).toMatchObject({
+      name: "chart.html",
+      saved: ".eva/pages/chart.html",
+    });
+    expect(pageNameOf(vault, ".eva/scratch/chart.html")).toMatchObject({
+      name: "chart.html",
+      saved: ".eva/pages/chart.html",
+    });
+  });
+
   test.skipIf(posix)("reads a different case and a trailing dot as Windows does, with the case on disk", () => {
     expect(pageNameOf(vault, ".EVA/SCRATCH/SUB/X.html")).toMatchObject({ kind: "scratch", name: "sub/x.html" });
     expect(pageNameOf(vault, ".eva/scratch./chart.html")).toMatchObject({ kind: "scratch", name: "chart.html" });

@@ -113,6 +113,58 @@ function refusalOf(action: () => unknown): string | null {
   return code;
 }
 
+describe("savePage never reaches a note through a link (#1130)", () => {
+  test.skipIf(process.platform === "win32")(
+    "a scratch folder that is a link to a notes folder: the saved marker shows no page, and Save changes nothing",
+    () => {
+      write("Notes/important.html", page);
+      mkdirSync(join(vault, ".eva", "scratch"), { recursive: true });
+      symlinkSync(join(vault, "Notes"), join(vault, ".eva", "scratch", "sub"));
+      expect(resolveShownPage(vault, ".eva/pages/sub/important.html").state).toBe("gone");
+      expect(refusalOf(() => savePage(vault, ".eva/pages/sub/important.html"))).toBe("file_not_found");
+      expect(existsSync(join(vault, "Notes", "important.html"))).toBe(true);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "a scratch file that is a link to a note: the saved marker shows no page, and Save changes nothing",
+    () => {
+      write("Notes/b.html", page);
+      mkdirSync(join(vault, ".eva", "scratch"), { recursive: true });
+      symlinkSync(join(vault, "Notes", "b.html"), join(vault, ".eva", "scratch", "x.html"));
+      expect(resolveShownPage(vault, ".eva/pages/x.html").state).toBe("gone");
+      expect(refusalOf(() => savePage(vault, ".eva/pages/x.html"))).toBe("file_not_found");
+      expect(existsSync(join(vault, "Notes", "b.html"))).toBe(true);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "a saved file that is a link is no saved page, and Remove takes the link only",
+    () => {
+      write("Notes/b.html", page);
+      mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+      symlinkSync(join(vault, "Notes", "b.html"), join(vault, ".eva", "pages", "x.html"));
+      expect(resolveShownPage(vault, ".eva/scratch/x.html")).toMatchObject({
+        state: "refused",
+        saved: ".eva/pages/x.html",
+      });
+      expect(removeSavedPage(vault, ".eva/scratch/x.html")).toBe(".eva/pages/x.html");
+      expect(existsSync(join(vault, "Notes", "b.html"))).toBe(true);
+    },
+  );
+});
+
+describe("the old Scratch folder and .eva/scratch share one name space", () => {
+  test("a page of one replaces the saved page of the same name from the other: a name is one page", () => {
+    write("Scratch/chart.html", "<p>old folder</p>");
+    expect(savePage(vault, "Scratch/chart.html")).toBe(".eva/pages/chart.html");
+    write(".eva/scratch/chart.html", "<p>new folder</p>");
+    expect(savePage(vault, ".eva/scratch/chart.html")).toBe(".eva/pages/chart.html");
+    expect(readFileSync(join(vault, ".eva", "pages", "chart.html"), "utf8")).toBe("<p>new folder</p>");
+    expect(resolveShownPage(vault, "Scratch/chart.html")).toMatchObject({ relativePath: ".eva/pages/chart.html" });
+  });
+});
+
 describe("savePage and names", () => {
   test("names the saved file by the real path of the page, also through `..` parts, and the marker finds it", () => {
     write(".eva/scratch/sub/x.html", page);

@@ -3,7 +3,18 @@
  * the page itself, which a sandboxed frame loads with no cookie.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Eva } from "../../../../src/core/eva.ts";
@@ -201,4 +212,35 @@ describe("Save, Remove and Pin (#1130)", () => {
     expect((await call("/api/pages/remove", { path: "Notes/plan.md" })).status).toBe(409);
     expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
   });
+
+  /** Every entry of the vault, with link targets and file bytes, so a test sees that a refused pin changed nothing. */
+  function vaultEntries(): string[] {
+    const entries: string[] = [];
+    const walk = (path: string): void => {
+      const stats = lstatSync(path);
+      if (stats.isSymbolicLink()) entries.push(`${path} -> ${readlinkSync(path)}`);
+      else if (stats.isDirectory()) for (const name of readdirSync(path).sort()) walk(join(path, name));
+      else entries.push(`${path} = ${readFileSync(path, "utf8")}`);
+    };
+    walk(vault);
+    return entries;
+  }
+
+  test.skipIf(process.platform === "win32")(
+    "Pin never saves, or deletes, a note that a link in the scratch folder names",
+    async () => {
+      const chat = eva.createAssistantSession({ source: "web" });
+      writeFileSync(join(vault, "Notes", "important.html"), chart);
+      writeFileSync(join(vault, "Notes", "b.html"), chart);
+      symlinkSync(join(vault, "Notes"), join(vault, ".eva", "scratch", "sub"));
+      symlinkSync(join(vault, "Notes", "b.html"), join(vault, ".eva", "scratch", "x.html"));
+      const before = vaultEntries();
+      for (const path of [".eva/pages/sub/important.html", ".eva/pages/x.html"]) {
+        const pinned = await call(`/api/sessions/${chat.id}/pin`, { path });
+        expect(pinned.status).toBe(404);
+      }
+      expect(vaultEntries()).toEqual(before);
+      expect(eva.sessions.get(chat.id).pinnedPage).toBeNull();
+    },
+  );
 });

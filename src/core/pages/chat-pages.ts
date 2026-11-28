@@ -5,10 +5,11 @@
  * bytes, so each request checks the file again.
  */
 import { randomBytes } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { extname, join } from "node:path";
 import { containsSecretPattern } from "../../shared/redaction.ts";
-import { pageNameOf } from "./page-names.ts";
+import { plainPageFile } from "./page-entries.ts";
+import { pageNameOf, realRoot } from "./page-names.ts";
 import { resolveSendableFile } from "../files/vault-files.ts";
 import type { WidgetAnswer } from "../widgets/widget-data.ts";
 import { themeCss, type WidgetTheme } from "../widgets/widget-policy.ts";
@@ -83,11 +84,18 @@ export function savedPathOf(vaultPath: string, requested: string): string | null
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
   const page = pageNameOf(vaultPath, requested);
-  if (page === null) return shownFile(vaultPath, requested, requested, "note");
-  const scratch = isFileAt(vaultPath, page.scratch) ? shownFile(vaultPath, page.scratch, requested, "temporary") : null;
-  if (scratch?.state === "ready" || !hasEntry(vaultPath, page.saved))
+  const root = realRoot(vaultPath);
+  if (page === null || root === null) return shownFile(vaultPath, requested, requested, "note");
+  // Each place counts only through plain entries: a link at any level is no version of a page.
+  const scratch =
+    plainPageFile(root, page.scratch) === null ? null : shownFile(vaultPath, page.scratch, requested, "temporary");
+  if (scratch?.state === "ready" || !hasEntry(join(root, page.saved)))
     return scratch ?? { state: "gone", reason: `${requested} does not exist.` };
-  const saved = shownFile(vaultPath, page.saved, requested, "saved");
+  // A saved place that is no plain file, such as a link, keeps its path, so Remove can take the link away.
+  const saved =
+    plainPageFile(root, page.saved) === null
+      ? { state: "refused" as const, reason: `${page.saved} is not a plain file, so Eva does not show it.` }
+      : shownFile(vaultPath, page.saved, requested, "saved");
   // A saved page that Eva refuses keeps its path, so the person can still remove it from the chat.
   return saved.state === "ready" ? saved : { ...saved, saved: page.saved };
 }
@@ -105,19 +113,10 @@ function shownFile(vaultPath: string, path: string, requested: string, kept: Pag
   return { state: "ready", path: file.path, relativePath: file.relativePath, kept };
 }
 
-/** A folder, or a page that does not exist, is no version of a page. */
-function isFileAt(vaultPath: string, path: string): boolean {
-  try {
-    return statSync(join(vaultPath, path)).isFile();
-  } catch {
-    return false;
-  }
-}
-
 /** Any entry, also a link that leads nowhere or a folder: the saved place answers then, with its reason. */
-function hasEntry(vaultPath: string, path: string): boolean {
+function hasEntry(path: string): boolean {
   try {
-    lstatSync(join(vaultPath, path));
+    lstatSync(path);
     return true;
   } catch {
     return false;

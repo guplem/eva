@@ -349,10 +349,21 @@ const pushDeviceSchema = z.object({
 });
 const pushEndpointSchema = z.object({ endpoint: z.string().min(1).max(2_000) });
 const pushKindsSchema = pushEndpointSchema.extend({ kinds: z.array(z.enum(notificationKinds)).max(10) });
-/** `chats`: the sessions that the page shows. A page from before #614 sends none, and reads as null. */
-const pushInViewSchema = pushEndpointSchema.extend({
+/**
+ * `chats`: the sessions that the page shows. A page from before #614 sends none, and reads as null.
+ * A page of a device with no notifications sends no `endpoint` (#1136). `active`: the person used
+ * the page a short time ago. A page from before #1136 sends none, and reads as away.
+ */
+const pushInViewSchema = z.object({
+  endpoint: z
+    .string()
+    .min(1)
+    .max(2_000)
+    .nullish()
+    .transform((endpoint) => endpoint ?? null),
   pageId: z.string().min(1).max(100),
   inView: z.boolean(),
+  active: z.boolean().optional(),
   chats: z
     .array(z.string().min(1).max(100))
     .max(20)
@@ -1482,8 +1493,8 @@ async function pushRoute(
     return json({ devices: eva.pushDevices() });
   }
   if (method === "POST" && path === "/api/push/in-view") {
-    const { endpoint, pageId, inView, chats } = pushInViewSchema.parse(await request.json());
-    if (!eva.markPushInView(endpoint, pageId, inView, chats)) {
+    const { endpoint, pageId, inView, chats, active } = pushInViewSchema.parse(await request.json());
+    if (!eva.markPushInView(endpoint, pageId, inView, chats, active ?? false)) {
       return json({ error: "This device gets no notifications." }, 404);
     }
     return new Response(null, { status: 204 });

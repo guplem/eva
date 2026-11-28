@@ -285,3 +285,57 @@ describe("device logins", () => {
     expect(pusher.devices().map((device) => device.label)).toEqual(["Laptop", "Computer"]);
   });
 });
+
+describe("a chat that the person reads on another device (#1136)", () => {
+  const phone = { ...subscription, endpoint: "https://fcm.googleapis.com/fcm/send/phone" };
+  const laptop = { ...subscription, endpoint: "https://fcm.googleapis.com/fcm/send/laptop" };
+
+  test("sends no device its notification while the person is active on a page that shows it", () => {
+    const pusher = push();
+    pusher.subscribe(phone, "Phone");
+    pusher.subscribe(laptop, "Laptop");
+    pusher.markInView(laptop.endpoint, "tab-1", true, ["chat-a"], true);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([]);
+    // An approval's own rule is any page of the device, and the chat in view holds it back everywhere too.
+    expect(pusher.recipients("approvals", null, "chat-a")).toEqual([]);
+    expect(pusher.recipients("replies", "chat-b", "chat-b")).toEqual([phone.endpoint, laptop.endpoint]);
+    // A problem alert names no chat: only the device's own page holds it back.
+    expect(pusher.recipients("alerts")).toEqual([phone.endpoint]);
+    nowMs += 91_000;
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([phone.endpoint, laptop.endpoint]);
+  });
+
+  test("still reaches the other devices when the person is away from the page", () => {
+    const pusher = push();
+    pusher.subscribe(phone, "Phone");
+    pusher.subscribe(laptop, "Laptop");
+    pusher.markInView(laptop.endpoint, "tab-1", true, ["chat-a"], false);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([phone.endpoint]);
+    // A page from before the chats were named cannot say which chat the person reads.
+    pusher.markInView(laptop.endpoint, "tab-1", true, null, true);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([phone.endpoint]);
+  });
+
+  test("counts a page of a device with no notifications, until that page goes out of view", () => {
+    const pusher = push();
+    pusher.subscribe(phone, "Phone");
+    expect(pusher.markInView(null, "desk-tab", true, ["chat-a"], true)).toBe(true);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([]);
+    expect(pusher.recipients("replies", "chat-b", "chat-b")).toEqual([phone.endpoint]);
+    pusher.markInView(null, "desk-tab", false);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([phone.endpoint]);
+  });
+
+  test("keeps a bounded number of pages with no notifications, and drops the ended ones first", () => {
+    const pusher = push();
+    pusher.subscribe(phone, "Phone");
+    for (let page = 0; page < 50; page += 1) {
+      expect(pusher.markInView(null, `tab-${String(page)}`, true, ["chat-b"], true)).toBe(true);
+    }
+    expect(pusher.markInView(null, "one-too-many", true, ["chat-a"], true)).toBe(false);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([phone.endpoint]);
+    nowMs += 91_000;
+    expect(pusher.markInView(null, "later", true, ["chat-a"], true)).toBe(true);
+    expect(pusher.recipients("replies", "chat-a", "chat-a")).toEqual([]);
+  });
+});

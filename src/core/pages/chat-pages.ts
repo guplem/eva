@@ -58,6 +58,8 @@ interface PageSession {
   readonly requested: string;
   readonly theme: WidgetTheme;
   readonly expiresAt: number;
+  /** The token served the page itself, so its frame shows the page and not a 404. */
+  served: boolean;
 }
 
 export interface ChatPagesOptions {
@@ -87,7 +89,7 @@ export class ChatPages {
       this.sessions.delete(oldest);
     }
     const token = randomBytes(32).toString("base64url");
-    this.sessions.set(token, { requested, theme, expiresAt: now + pageTokenLifeMs });
+    this.sessions.set(token, { requested, theme, expiresAt: now + pageTokenLifeMs, served: false });
     return { state: "ready", src: `/widgets/${token}/${pageName}`, token };
   }
 
@@ -114,7 +116,19 @@ export class ChatPages {
     const body = readPage(shown.path);
     // The file can change between the check and the read, so the bytes that go out pass the checks again.
     if (body === null || containsSecretPattern(body.toString("utf8"))) return { status: 404 };
+    if (method === "GET") session.served = true;
     return { status: 200, contentType: "text/html; charset=utf-8", body };
+  }
+
+  /**
+   * The frame of the token loaded: true when the token served the page, and the token ends. A frame
+   * also loads after a 404, such as for a token that expired or that a newer one ended, and the
+   * web app cannot see into the frame. So it asks here, and asks for a new token after a false.
+   */
+  loaded(token: string): boolean {
+    const served = this.liveSession(token)?.served === true;
+    this.sessions.delete(token);
+    return served;
   }
 
   private liveSession(token: string): PageSession | null {

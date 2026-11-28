@@ -21,7 +21,7 @@ async function ask(page: Page, text: string): Promise<void> {
   await composer.press("Control+Enter");
 }
 
-const bubbleFrame = '.message.answer .page-frame iframe[aria-label="steps-this-week"]';
+const bubbleFrame = '.message.answer .page-frame iframe[aria-label="Page: steps-this-week"]';
 
 test("an answer shows its page in the bubble, with no marker, and the page's script runs", async ({ page }) => {
   await logIn(page);
@@ -70,6 +70,62 @@ test("the full-screen button opens the page over the app, and Back closes it", a
   await expect(page.locator(bubbleFrame)).toBeVisible();
 });
 
+test("full screen takes the focus, Escape closes it, and the focus goes back", async ({ page }) => {
+  await logIn(page);
+  await ask(page, "draw my walking");
+  await expect(page.frameLocator(bubbleFrame).locator('body[data-ready="true"]')).toBeVisible();
+  const open = page.getByRole("button", { name: "Open steps-this-week in full screen" });
+  await open.click();
+  const full = page.getByRole("dialog", { name: "steps-this-week" });
+  await expect(page.getByRole("button", { name: "Close full screen" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(full).toHaveCount(0);
+  await expect(open).toBeFocused();
+});
+
+test("full screen of a page that went away shows the note of the bubble", async ({ page }) => {
+  await logIn(page);
+  await ask(page, "draw my walking");
+  await expect(page.frameLocator(bubbleFrame).locator('body[data-ready="true"]')).toBeVisible();
+  await page.route("**/api/pages/frame", (route) =>
+    route.fulfill({ json: { state: "gone", reason: ".eva/scratch/steps-this-week.html does not exist." } }),
+  );
+  await page.getByRole("button", { name: "Open steps-this-week in full screen" }).click();
+  await expect(page.getByRole("dialog").locator(".page-note")).toHaveText(
+    "This page is gone. Eva deletes a page after 7 days.",
+  );
+  await expect(page.getByRole("dialog").getByRole("progressbar")).toHaveCount(0);
+});
+
+test("a token that served no page gets a new one, and a frame never stays blank", async ({ page }) => {
+  let asked = 0;
+  await page.route("**/api/pages/frame", async (route) => {
+    asked += 1;
+    await route.continue();
+  });
+  let loads = 0;
+  // The first load plays a token that expired before the frame loaded.
+  await page.route("**/api/pages/loaded", async (route) => {
+    loads += 1;
+    if (loads === 1) await route.fulfill({ json: { served: false } });
+    else await route.continue();
+  });
+  await logIn(page);
+  await ask(page, "draw my walking");
+  await expect(page.frameLocator(bubbleFrame).locator('body[data-ready="true"]')).toBeVisible();
+  await expect(page.locator(".message.answer .page-wait")).toHaveCount(0);
+  expect(loads).toBe(2);
+  expect(asked).toBeGreaterThanOrEqual(2);
+
+  // A frame that no token serves gives up with a note.
+  await page.unroute("**/api/pages/loaded");
+  await page.route("**/api/pages/loaded", (route) => route.fulfill({ json: { served: false } }));
+  await page.reload();
+  await expect(page.locator(".message.answer .page-note")).toHaveText(
+    "Eva could not load this page. Reload the chat to try again.",
+  );
+});
+
 test("a page that is gone shows a short note instead of the frame", async ({ page }) => {
   await logIn(page);
   await ask(page, "the lost drawing");
@@ -88,7 +144,7 @@ test("a page reaches no network: fetch, images, scripts, frames, workers, forms 
   });
   await logIn(page);
   await ask(page, "probe the wire");
-  const probe = page.frameLocator('.message.answer iframe[aria-label="network-probe"]');
+  const probe = page.frameLocator('.message.answer iframe[aria-label="Page: network-probe"]');
   await expect(probe.locator('body[data-done="true"]')).toBeAttached();
   const out = probe.locator("#out");
   for (const line of [

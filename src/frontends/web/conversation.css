@@ -1743,6 +1743,21 @@ button.ghost .icon {
   font-size: var(--text-sm);
 }
 
+/* The note of a page that went away after the bubble showed it, in the middle of full screen. */
+.page-full-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+}
+
+.page-full-note .page-note {
+  max-width: 420px;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
 .page-note .icon {
   flex: none;
   width: 18px;

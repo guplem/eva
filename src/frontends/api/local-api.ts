@@ -382,6 +382,8 @@ const pageFrameSchema = z.object({
   scheme: z.enum(["light", "dark"]),
   colors: z.record(z.string().max(40), z.string().max(200)).default({}),
 });
+/** The token of a page frame that loaded. */
+const pageLoadedSchema = z.object({ token: z.string().max(100) });
 /** The default places of a form (#984), by their path from the vault root. */
 const widgetPlacesSchema = z.object({ paths: z.array(z.string().max(1_000)).max(100) });
 const widgetFolderSchema = z.object({ path: z.string().min(1).max(1_000) });
@@ -858,6 +860,8 @@ async function pagesApi(request: Request, url: URL, eva: Eva): Promise<Response 
     const { path, scheme, colors } = pageFrameSchema.parse(await request.json());
     return json(pages.frame(path, widgetTheme(scheme, colors)));
   }
+  if (url.pathname === "/api/pages/loaded")
+    return json({ served: pages.loaded(pageLoadedSchema.parse(await request.json()).token) });
   if (url.pathname === "/api/pages/release") {
     pages.release(widgetReleaseSchema.parse(await request.json()).tokens);
     return new Response(null, { status: 204 });

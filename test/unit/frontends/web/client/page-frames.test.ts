@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { answerPages, pageName, pageNote } from "../../../../../src/frontends/web/client/page-frames.ts";
+import {
+  afterLoad,
+  answerPages,
+  maxPageTries,
+  pageFailedNote,
+  pageLabel,
+  pageName,
+  pageNote,
+} from "../../../../../src/frontends/web/client/page-frames.ts";
 
 describe("answerPages (#1129)", () => {
   test("lists each page of the whole answer once, and no file to send", () => {
@@ -18,6 +26,22 @@ describe("pageName", () => {
     expect(pageName(".eva/scratch/steps-this-week.html")).toBe("steps-this-week");
     expect(pageName(".eva\\scratch\\Chart.HTM")).toBe("Chart");
     expect(pageName("page")).toBe("page");
+  });
+});
+
+describe("afterLoad", () => {
+  test("shows a served page, asks again for a page that its token did not serve, then gives up", () => {
+    expect(afterLoad(true, 1)).toBe("ready");
+    expect(afterLoad(false, 1)).toBe("retry");
+    expect(afterLoad(false, maxPageTries - 1)).toBe("retry");
+    expect(afterLoad(false, maxPageTries)).toBe("failed");
+    expect(pageFailedNote).toBe("Eva could not load this page. Reload the chat to try again.");
+  });
+});
+
+describe("pageLabel", () => {
+  test("says that the frame is a page", () => {
+    expect(pageLabel(".eva/scratch/sales-2026-11.html")).toBe("Page: sales-2026-11");
   });
 });
 

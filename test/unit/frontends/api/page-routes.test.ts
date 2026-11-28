@@ -139,6 +139,16 @@ describe("the page files", () => {
     expect((await frameCall(`/widgets/${frame.token ?? ""}/%E0`)).status).toBe(400);
   });
 
+  test("say at the frame's load whether the token served the page", async () => {
+    const frame = await frameOf(".eva/scratch/chart.html");
+    const loaded = async (): Promise<unknown> =>
+      (await call("/api/pages/loaded", { token: frame.token })).json() as Promise<unknown>;
+    await frameCall(frame.src ?? "");
+    expect(await loaded()).toEqual({ served: true });
+    expect(await loaded()).toEqual({ served: false });
+    expect((await frameCall(frame.src ?? "")).status).toBe(404);
+  });
+
   test("stop when the page releases the token, and keep the policy of a widget for every other token", async () => {
     const frame = await frameOf(".eva/scratch/chart.html");
     const released = await call("/api/pages/release", { tokens: [frame.token] });

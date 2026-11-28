@@ -678,7 +678,10 @@ export const api = {
   /** The token of one page frame in a chat answer (#1129), or the note of a page that Eva cannot show. */
   pageFrame: (path: string, scheme: "light" | "dark", colors: Readonly<Record<string, string>>): Promise<PageFrame> =>
     request("POST", "/api/pages/frame", { path, scheme, colors }, { limit: quickRead }),
-  /** Ends the tokens of page frames that loaded or closed; keepalive, so it goes out as the page goes. */
+  /** Ends the token of a page frame that loaded, and says whether it served the page. */
+  pageLoaded: (token: string): Promise<{ readonly served: boolean }> =>
+    request("POST", "/api/pages/loaded", { token }, { limit: quickRead }),
+  /** Ends the tokens of page frames that closed; keepalive, so it goes out as the page goes. */
   releasePageFrames: (tokens: readonly string[]): Promise<void> =>
     request("POST", "/api/pages/release", { tokens }, { keepalive: true }),
 };

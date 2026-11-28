@@ -20,6 +20,25 @@ export function pageName(path: string): string {
   return file.replace(/\.html?$/i, "");
 }
 
+/** The accessible name of a page frame, which says that it is a page. */
+export function pageLabel(path: string): string {
+  return `Page: ${pageName(path)}`;
+}
+
+/** A frame asks for a token at most this many times before it gives up. */
+export const maxPageTries = 3;
+
+export const pageFailedNote = "Eva could not load this page. Reload the chat to try again.";
+
+/**
+ * What a frame does after its load. `served` comes from Eva: a frame loads after a 404 too, and
+ * stays blank then. `tries` counts the tokens that the frame asked for.
+ */
+export function afterLoad(served: boolean, tries: number): "ready" | "retry" | "failed" {
+  if (served) return "ready";
+  return tries < maxPageTries ? "retry" : "failed";
+}
+
 /** The short note that takes the place of a page that Eva cannot show. */
 export function pageNote(frame: Exclude<PageFrame, { readonly state: "ready" }>): string {
   if (frame.state === "gone") return "This page is gone. Eva deletes a page after 7 days.";

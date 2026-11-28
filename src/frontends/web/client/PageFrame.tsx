@@ -1,8 +1,8 @@
 /**
  * A page of a chat answer (#1129): one HTML file that Eva wrote, in a sandboxed frame inside the
  * bubble, with a full-screen button. The frame has no origin and the page has no network, so the
- * page cannot read Eva's API, the login cookie or the internet. Each frame asks for its token when
- * it comes into view, and releases the token as soon as it loads: a loaded page needs no request.
+ * page cannot read Eva's API, the login cookie or the internet. A frame asks for its token only
+ * while it is in view, and the token ends at the frame's load: a loaded page needs no request.
  * The corner takes more buttons, such as Save and Pin (#1130).
  */
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
@@ -11,7 +11,7 @@ import { api, type PageFrame as PageToken } from "./api.ts";
 import { FullScreenFrame } from "./FullScreenFrame.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
-import { pageName, pageNote } from "./page-frames.ts";
+import { afterLoad, pageFailedNote, pageLabel, pageName, pageNote } from "./page-frames.ts";
 import { contractColours } from "./widget-frames.ts";
 import { currentScheme } from "./WidgetGrid.tsx";
 
@@ -20,17 +20,17 @@ const viewMargin = "200px";
 
 export function PageFrame({ path, actions }: { readonly path: string; readonly actions?: ReactNode }): ReactElement {
   const holder = useRef<HTMLDivElement>(null);
-  const seen = useSeen(holder);
+  const inView = useInView(holder);
   const [full, setFull] = useState(false);
   const closeFull = useCallback(() => setFull(false), []);
-  const shown = usePageToken(path, seen);
+  const shown = usePageToken(path, inView);
   const name = pageName(path);
-  const note = shown.token !== null && shown.token.state !== "ready" ? pageNote(shown.token) : shown.failed;
+  const note = noteOf(shown);
   return (
     <div ref={holder} className={note === null ? "page-frame" : "page-frame is-note"}>
       {note === null ? (
         <>
-          <PageView shown={shown} name={name} />
+          <PageView shown={shown} path={path} />
           <div className="frame-corner">
             {actions}
             <button
@@ -44,28 +44,41 @@ export function PageFrame({ path, actions }: { readonly path: string; readonly a
           </div>
         </>
       ) : (
-        <p className="page-note">
-          <Icon name="info" />
-          <span>{note}</span>
-        </p>
+        <PageNote text={note} />
       )}
       {full && (
         <FullScreenFrame label={name} onClose={closeFull} actions={actions}>
-          <FullPage path={path} name={name} />
+          <FullPage path={path} />
         </FullScreenFrame>
       )}
     </div>
   );
 }
 
-/** Full screen loads the page again in a frame of its own, with a token of its own. */
-function FullPage({ path, name }: { readonly path: string; readonly name: string }): ReactElement {
+/** Full screen loads the page again in a frame of its own, with a token of its own, or shows the same note as the bubble. */
+function FullPage({ path }: { readonly path: string }): ReactElement {
   const shown = usePageToken(path, true);
-  return <PageView shown={shown} name={name} />;
+  const note = noteOf(shown);
+  return note === null ? (
+    <PageView shown={shown} path={path} />
+  ) : (
+    <div className="page-full-note">
+      <PageNote text={note} />
+    </div>
+  );
+}
+
+function PageNote({ text }: { readonly text: string }): ReactElement {
+  return (
+    <p className="page-note">
+      <Icon name="info" />
+      <span>{text}</span>
+    </p>
+  );
 }
 
 /** The frame, with a progress bar over it until the page loads. */
-function PageView({ shown, name }: { readonly shown: ShownToken; readonly name: string }): ReactElement {
+function PageView({ shown, path }: { readonly shown: ShownToken; readonly path: string }): ReactElement {
   const src = shown.token?.state === "ready" ? shown.token.src : null;
   return (
     <>
@@ -73,7 +86,7 @@ function PageView({ shown, name }: { readonly shown: ShownToken; readonly name: 
         <iframe
           key={src}
           className="widget-frame"
-          aria-label={name}
+          aria-label={pageLabel(path)}
           src={src}
           sandbox={pageSandbox}
           referrerPolicy="no-referrer"
@@ -90,29 +103,42 @@ function PageView({ shown, name }: { readonly shown: ShownToken; readonly name: 
   );
 }
 
+/** The note of a page that Eva cannot show, or null. */
+function noteOf(shown: ShownToken): string | null {
+  if (shown.failed) return pageFailedNote;
+  return shown.token !== null && shown.token.state !== "ready" ? pageNote(shown.token) : null;
+}
+
 interface ShownToken {
   /** The answer of Eva, or null while the frame waits for it. */
   readonly token: PageToken | null;
-  /** The note of a request that failed, or null. */
-  readonly failed: string | null;
+  /** True when the frame gave up: a request failed, or no token served the page. */
+  readonly failed: boolean;
   readonly scheme: "light" | "dark";
-  /** True after the frame loaded. */
+  /** True after the frame loaded the page. */
   readonly ready: boolean;
   readonly loaded: () => void;
 }
 
 /**
- * Asks for the token of one page while `active` is true, and again after a change of the theme, so
- * the page loads with the new colours. The token ends at the frame's load, at unmount and when the
+ * The token of one page. The frame asks for one while it is in view and has no page of the
+ * current theme: at first, after a change of the theme, and after a token that served no page,
+ * such as one that expired before the load. A token ends at the load, at unmount and when the
  * browser leaves the page.
  */
-function usePageToken(path: string, active: boolean): ShownToken {
+function usePageToken(path: string, inView: boolean): ShownToken {
   const [token, setToken] = useState<PageToken | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
   const [scheme, setScheme] = useState(currentScheme);
   const [ready, setReady] = useState(false);
+  // Each change of the theme, and each token that served no page, asks for a new token.
+  const [wanted, setWanted] = useState(0);
+  const [have, setHave] = useState(-1);
   // The token that still works, so the frame releases it once.
   const live = useRef<string | null>(null);
+  const tries = useRef(0);
+  // The theme of the last ask, so a change of the root's style that keeps the colours asks nothing.
+  const askedTheme = useRef("");
   const release = useCallback((): void => {
     const held = live.current;
     live.current = null;
@@ -120,69 +146,99 @@ function usePageToken(path: string, active: boolean): ShownToken {
   }, []);
 
   useEffect(() => {
-    if (!active) return undefined;
-    let current = true;
-    const ask = (): void => {
-      const style = getComputedStyle(document.documentElement);
-      const shownScheme = currentScheme();
-      api
-        .pageFrame(
-          path,
-          shownScheme,
-          contractColours((name) => style.getPropertyValue(name)),
-        )
-        .then((next) => {
-          if (!current) {
-            if (next.state === "ready") void api.releasePageFrames([next.token]).catch(() => undefined);
-            return;
-          }
-          release();
-          if (next.state === "ready") live.current = next.token;
-          setScheme(shownScheme);
-          setReady(false);
-          setFailed(null);
-          setToken(next);
-        })
-        .catch(() => {
-          if (current) setFailed("Eva could not load this page. Reload the chat to try again.");
-        });
+    const again = (): void => {
+      // The style of the root changes for other reasons too: only new colours load the page again.
+      if (themeKey() === askedTheme.current) return;
+      tries.current = 0;
+      setWanted((count) => count + 1);
     };
-    ask();
-    const themeWatch = new MutationObserver(ask);
+    const themeWatch = new MutationObserver(again);
     themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "style"] });
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    media.addEventListener("change", ask);
+    media.addEventListener("change", again);
     window.addEventListener("pagehide", release);
     return () => {
-      current = false;
       themeWatch.disconnect();
-      media.removeEventListener("change", ask);
+      media.removeEventListener("change", again);
       window.removeEventListener("pagehide", release);
       release();
     };
-  }, [path, active, release]);
+  }, [release]);
+
+  useEffect(() => {
+    if (!inView || have === wanted || failed) return undefined;
+    let current = true;
+    const { scheme: shownScheme, colours } = shownTheme();
+    askedTheme.current = themeKey();
+    api
+      .pageFrame(path, shownScheme, colours)
+      .then((next) => {
+        if (!current) {
+          if (next.state === "ready") void api.releasePageFrames([next.token]).catch(() => undefined);
+          return;
+        }
+        release();
+        if (next.state === "ready") live.current = next.token;
+        setScheme(shownScheme);
+        setReady(false);
+        setToken(next);
+        setHave(wanted);
+      })
+      .catch(() => {
+        if (current) setFailed(true);
+      });
+    return () => {
+      current = false;
+    };
+  }, [path, inView, have, wanted, failed, release]);
 
   const loaded = useCallback((): void => {
-    release();
-    setReady(true);
-  }, [release]);
+    const held = live.current;
+    live.current = null;
+    if (held === null) return;
+    api
+      .pageLoaded(held)
+      .then(({ served }) => {
+        const next = afterLoad(served, tries.current + 1);
+        if (next === "ready") {
+          tries.current = 0;
+          setReady(true);
+        } else if (next === "retry") {
+          tries.current += 1;
+          setHave(-1);
+        } else setFailed(true);
+      })
+      .catch(() => setFailed(true));
+  }, []);
   return { token, failed, scheme, ready, loaded };
 }
 
-/** True once the element came near the view. It stays true, so a page that loaded stays as it is. */
-function useSeen(element: { readonly current: HTMLElement | null }): boolean {
-  const [seen, setSeen] = useState(false);
+/** The mode and the contract colours that the page shows now. */
+function shownTheme(): { readonly scheme: "light" | "dark"; readonly colours: Record<string, string> } {
+  const style = getComputedStyle(document.documentElement);
+  return { scheme: currentScheme(), colours: contractColours((name) => style.getPropertyValue(name)) };
+}
+
+function themeKey(): string {
+  const { scheme, colours } = shownTheme();
+  return `${scheme} ${JSON.stringify(colours)}`;
+}
+
+/** True while the element is near the view. */
+function useInView(element: { readonly current: HTMLElement | null }): boolean {
+  const [inView, setInView] = useState(false);
   useEffect(() => {
     const target = element.current;
-    if (seen || target === null) return undefined;
+    if (target === null) return undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) setSeen(true);
+        const entry = entries.at(-1);
+        if (entry !== undefined) setInView(entry.isIntersecting);
       },
       { rootMargin: viewMargin },
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [element, seen]);
-  return seen;
+  }, [element]);
+  return inView;
 }

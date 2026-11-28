@@ -188,6 +188,29 @@ describe("ChatPages", () => {
     expect(store.has(second.token)).toBe(false);
   });
 
+  test("says at the frame's load whether its token served the page, and ends the token", () => {
+    write(".eva/scratch/chart.html", page);
+    const store = pages();
+    const served = store.frame(".eva/scratch/chart.html", theme);
+    const unused = store.frame(".eva/scratch/chart.html", theme);
+    const late = store.frame(".eva/scratch/chart.html", theme);
+    if (served.state !== "ready" || unused.state !== "ready" || late.state !== "ready")
+      throw new Error("The page is not ready.");
+    store.serve(served.token, "eva/theme.css", "GET");
+    expect(store.loaded(served.token)).toBe(false);
+    expect(store.has(served.token)).toBe(false);
+    const again = store.frame(".eva/scratch/chart.html", theme);
+    if (again.state !== "ready") throw new Error("The page is not ready.");
+    store.serve(again.token, "page.html", "GET");
+    expect(store.loaded(again.token)).toBe(true);
+    expect(store.loaded(again.token)).toBe(false);
+    store.serve(unused.token, "page.html", "HEAD");
+    expect(store.loaded(unused.token)).toBe(false);
+    now += pageTokenLifeMs;
+    store.serve(late.token, "page.html", "GET");
+    expect(store.loaded(late.token)).toBe(false);
+  });
+
   test("keeps at most the newest tokens", () => {
     write(".eva/scratch/chart.html", page);
     const store = pages();

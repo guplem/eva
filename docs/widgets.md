@@ -488,6 +488,7 @@ The machine check is a meta-schema: [`widgets/meta-schema-v5.json`](widgets/meta
 - Eva serves the widget from a path with a random token. Each answer carries a Content Security Policy: the widget loads its scripts, styles and fonts only from its own files, and calls only the approved hosts.
 - A host must be a public `https` address. Eva refuses her own names, this computer, the local network and the tailnet.
 - A sandbox and a policy do not block every channel, such as WebRTC. A check by name also cannot see a public name that points to a private address. So a widget is code from its author: turn on only a widget whose author you trust.
+- A page of a chat answer is not a widget. It also loads under `/widgets/`, but with a token of its own kind, a frame with scripts only, and a policy with no network ([How Eva works](guide/how-eva-works.md#the-front-ends)).
 
 ### Updates
 

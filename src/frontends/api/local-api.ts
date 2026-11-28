@@ -34,6 +34,7 @@ import { widgetSizes } from "../../core/widgets/widget-kinds.ts";
 import { maxCardRows } from "../../core/widgets/widget-layout.ts";
 import { widgetInputValueSchema } from "../../core/widgets/widget-list.ts";
 import { widgetPolicy, widgetTheme } from "../../core/widgets/widget-policy.ts";
+import { pagePolicy } from "../../core/pages/page-policy.ts";
 import webPage from "../web/index.html";
 import icon192 from "../web/icons/icon-192.png" with { type: "file" };
 import icon512 from "../web/icons/icon-512.png" with { type: "file" };
@@ -386,6 +387,14 @@ const widgetFramesSchema = z.object({
   keep: z.array(z.string().max(100)).max(100).default([]),
 });
 const widgetReleaseSchema = z.object({ tokens: z.array(z.string().max(100)).max(100) });
+/** The frame of one page in a chat answer (#1129): its path from the vault root, and the theme as for a widget. */
+const pageFrameSchema = z.object({
+  path: z.string().min(1).max(1_000),
+  scheme: z.enum(["light", "dark"]),
+  colors: z.record(z.string().max(40), z.string().max(200)).default({}),
+});
+/** The token of a page frame that loaded. */
+const pageLoadedSchema = z.object({ token: z.string().max(100) });
 /** The default places of a form (#984), by their path from the vault root. */
 const widgetPlacesSchema = z.object({ paths: z.array(z.string().max(1_000)).max(100) });
 const widgetFolderSchema = z.object({ path: z.string().min(1).max(1_000) });
@@ -550,6 +559,7 @@ export function startLocalApi(options: LocalApiOptions): LocalApi {
           request,
           (await devices(request, url, options.eva, pageApprover)) ??
             (await widgetsApi(request, url, options)) ??
+            (await pagesApi(request, url, options.eva)) ??
             (await route(request, url, options.eva, deviceToken)),
         );
       } catch (error) {
@@ -757,22 +767,45 @@ async function widgetRoute(request: Request, url: URL, options: LocalApiOptions)
   const [token = "", ...encoded] = url.pathname.slice("/widgets/".length).split("/");
   const host = request.headers.get("host") ?? "";
   const origin = `${request.headers.get("x-forwarded-proto") === "https" ? "https" : "http"}://${host}`;
+  // A page of a chat answer (#1129) has a token of its own kind and a policy with no network.
+  const pages = options.eva.pages;
+  const isPage = pages !== null && widgetTokenPattern.test(token) && pages.has(token);
   const answer = (status: number, body: BodyInit | null = null, contentType?: string): Response => {
+    const base = `${origin}/widgets/${token}/`;
     const headers = new Headers({
-      "content-security-policy": widgetPolicy(`${origin}/widgets/${token}/`, origin, widgets?.hostsOf(token) ?? []),
+      "content-security-policy": isPage
+        ? pagePolicy(base, origin)
+        : widgetPolicy(base, origin, widgets?.hostsOf(token) ?? []),
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "cache-control": "no-store",
-      // The frame's origin is `null`: its own scripts and reads are requests from another origin.
-      "access-control-allow-origin": "null",
       vary: "Origin",
     });
+    // The frame's origin is `null`: a widget's own scripts and reads are requests from another
+    // origin. A page loads its document and its style sheet with no such request.
+    if (!isPage) headers.set("access-control-allow-origin", "null");
     if (contentType !== undefined) headers.set("content-type", contentType);
     return new Response(request.method === "HEAD" ? null : body, { status, headers });
   };
-  if (widgets === null || !widgetTokenPattern.test(token)) return answer(404);
-  // A widget opened as a page of its own would show the person's data outside Eva.
+  if (!isPage && (widgets === null || !widgetTokenPattern.test(token))) return answer(404);
+  // A widget or a page opened as a page of its own would show the person's data outside Eva.
   if (request.headers.get("sec-fetch-dest") === "document") return answer(403);
+  if (isPage) {
+    try {
+      const path = encoded.map((part) => decodeURIComponent(part)).join("/");
+      const served = pages.serve(token, path, request.method);
+      if (served === null) return answer(404);
+      const content = served.body === undefined ? null : (served.body as string | Uint8Array<ArrayBuffer>);
+      return answer(served.status, content, served.contentType);
+    } catch (error) {
+      if (error instanceof URIError) return answer(400);
+      options.logger?.log("error", "A page request failed.", {
+        reason: options.eva.redact(error instanceof Error ? error.message : String(error)),
+      });
+      return answer(500);
+    }
+  }
+  if (widgets === null) return answer(404);
   if (request.method === "OPTIONS") {
     if (!widgets.isLive(token)) return answer(404);
     const preflight = answer(204);
@@ -826,6 +859,27 @@ async function cappedBody(request: Request, limit: number): Promise<Uint8Array |
   }
   return Buffer.concat(chunks);
 }
+/**
+ * The tokens of the page frames in chat answers (#1129). A logged-in page already reads each vault
+ * file on the Files page, so a token gives it no new access. Returns null for any other path.
+ */
+async function pagesApi(request: Request, url: URL, eva: Eva): Promise<Response | null> {
+  if (request.method !== "POST" || !url.pathname.startsWith("/api/pages/")) return null;
+  const pages = eva.pages;
+  if (pages === null) return json({ error: "No vault is configured." }, 409);
+  if (url.pathname === "/api/pages/frame") {
+    const { path, scheme, colors } = pageFrameSchema.parse(await request.json());
+    return json(pages.frame(path, widgetTheme(scheme, colors)));
+  }
+  if (url.pathname === "/api/pages/loaded")
+    return json({ served: pages.loaded(pageLoadedSchema.parse(await request.json()).token) });
+  if (url.pathname === "/api/pages/release") {
+    pages.release(widgetReleaseSchema.parse(await request.json()).tokens);
+    return new Response(null, { status: 204 });
+  }
+  return null;
+}
+
 /**
  * The widget list of the settings and the cards of the grid (#691). An id is `<owner>/<name>`.
  * Returns null for any other path.

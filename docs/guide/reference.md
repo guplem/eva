@@ -346,6 +346,11 @@ A request from Eva's own computer can come from any program there, so only the t
 
   Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `.eva/scratch/`. The question names them. With the vault sync off, Eva does not ask.
 
+- **A page in an answer:** Eva can answer with a small page, such as a chart of your numbers or a small calculator. The web page shows it inside her answer, in your colours. Tap the corner button to open it in full screen. Tap the close button or Back to close it.
+  - Eva writes the page as one HTML file in `.eva/scratch/`, so it lasts 7 days. Then the answer shows "This page is gone" in its place.
+  - A page never connects to the internet. It holds its own data, and it cannot read your vault, Eva's API or your login. A page of more than 2 MB, or one that holds a secret, shows a short note instead.
+  - Telegram shows a link to the chat on the web page instead, when Tailscale gives Eva an address. Without one, it says to open the web page. The terminal chat shows the path of the page.
+  - Only a chat with Eva knows how to make a page. A Project chat shows a page too when its answer names one.
 - **pi chats:** a pi chat with Eva asks you questions with the same form as Claude Code. A pi project chat stays as pi is. pi keeps the history of each chat in a file in Eva's folder. When that file is gone, the chat goes on as a new conversation, and Eva tells you and the model.
 
 ## Projects

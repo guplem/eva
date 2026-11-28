@@ -239,6 +239,7 @@ import { WidgetApprovals } from "./widgets/widget-approvals.ts";
 import { WidgetCopies } from "./widgets/widget-copies.ts";
 import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format-writer.ts";
 import { Widgets } from "./widgets/widgets.ts";
+import { ChatPages } from "./pages/chat-pages.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
 import { shellSandboxPossible, type ShellWallGap } from "./shell-wall.ts";
@@ -549,6 +550,8 @@ export class Eva {
   private readonly vaultSecrets: VaultSecrets | null;
   /** The widgets of the home page (#691). Null when no vault is configured. */
   readonly widgets: Widgets | null;
+  /** The pages that answers show (#1129). Null when no vault is configured. */
+  readonly pages: ChatPages | null;
   private readonly googleLogin: GoogleLogin;
   private readonly claudeLogin: ClaudeLogin;
   private readonly githubLogin: GitHubBrowserLogin;
@@ -1000,6 +1003,7 @@ export class Eva {
       }),
       now: options.now,
     };
+    this.pages = vaultPath === null ? null : new ChatPages({ vaultPath, now: options.now });
     this.widgets =
       vaultPath === null
         ? null

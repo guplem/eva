@@ -10,6 +10,7 @@ import { keyOf } from "./telegram-messages.ts";
 import type { TelegramSender } from "./telegram-sender.ts";
 import type { BotState } from "./telegram-state.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
+import { pageLine } from "./telegram-pages.ts";
 
 export interface TelegramSchedulesOptions {
   readonly api: TelegramApi;
@@ -100,6 +101,12 @@ export class TelegramSchedules {
     }
     const markers = extractFileMarkers(event.text);
     if (markers.text.length > 0) await sender.sendAnswer(chatId, topicId, markers.text);
+    if (markers.show.length > 0)
+      await sender.sendPlain(
+        chatId,
+        topicId,
+        pageLine(this.options.eva.status().remoteAccess?.url ?? null, event.sessionId),
+      );
     for (const path of markers.attach) await files.sendVaultFile(chatId, topicId, path);
     if (markers.offer.length > 0) await files.offerFiles(chatId, topicId, markers.offer);
     if (event.failure !== null) await sender.send(chatId, topicId, `The turn failed: ${event.failure}`);

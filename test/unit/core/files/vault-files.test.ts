@@ -137,7 +137,11 @@ describe("resolveSendableFile (lesson 72)", () => {
   test("a file over 50 MB is refused", () => {
     write("Big.bin", "");
     writeFileSync(join(vault, "Big.bin"), new Uint8Array(50 * 1024 * 1024 + 1));
-    expect(resolveSendableFile(vault, "Big.bin")).toEqual({ ok: false, reason: "Big.bin is larger than 50 MB." });
+    expect(resolveSendableFile(vault, "Big.bin")).toEqual({
+      ok: false,
+      reason: "Big.bin is larger than 50 MB.",
+      tooLarge: true,
+    });
   });
 });
 

@@ -163,3 +163,12 @@ describe("assistantBasePrompt and the outward actions (#914)", () => {
     expect(assistantBasePrompt).toContain("ask the person in the chat");
   });
 });
+
+describe("assistantBasePrompt and the pages of an answer (#1129)", () => {
+  test("teaches the show marker, the scratch folder and the page rules", () => {
+    expect(assistantBasePrompt).toContain("[[show: .eva/scratch/<name>.html]]");
+    expect(assistantBasePrompt).toContain("The page has no network.");
+    expect(assistantBasePrompt).toContain('<link rel="stylesheet" href="eva/theme.css">');
+    expect(assistantBasePrompt).toContain("about 300 px wide and 320 px high");
+  });
+});

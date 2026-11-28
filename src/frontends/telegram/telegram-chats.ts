@@ -5,6 +5,7 @@
  */
 import type { Eva } from "../../core/eva.ts";
 import { extractFileMarkers } from "../../shared/file-markers.ts";
+import { pageLine } from "./telegram-pages.ts";
 import type { Project } from "../../core/projects/project-catalog.ts";
 import type { SessionRecord } from "../../core/sessions/session-store.ts";
 import { isEvaError } from "../../shared/errors.ts";
@@ -324,8 +325,14 @@ export class TelegramChats {
       for (const report of turn.projectReports) await sender.sendPlain(chatId, topicId, reportText(report));
       const words = personWords(turn);
       if (words !== null) await sender.sendPlain(chatId, topicId, `Message: ${words}`);
-      if (turn.answerText.length > 0)
-        await sender.sendAnswer(chatId, topicId, extractFileMarkers(turn.answerText).text);
+      const markers = extractFileMarkers(turn.answerText);
+      if (markers.text.length > 0) await sender.sendAnswer(chatId, topicId, markers.text);
+      if (markers.show.length > 0)
+        await sender.sendPlain(
+          chatId,
+          topicId,
+          pageLine(this.options.eva.status().remoteAccess?.url ?? null, sessionId),
+        );
       if (turn.failure !== null) await sender.send(chatId, topicId, `The turn failed: ${turn.failure}`);
     }
     if (!history.working) return;

@@ -26,6 +26,12 @@ describe("the grid's tokens", () => {
     });
   });
 
+  test("send a colour made of variables without the empty comments that the browser puts between them", () => {
+    // Chromium computes `oklch(var(--l) var(--c) var(--h))` as this text, which the core refuses.
+    const page: Record<string, string> = { "--accent": "oklch(0.707/**/0.164/**/245.1)" };
+    expect(contractColours((name) => page[name] ?? "")).toEqual({ "--accent": "oklch(0.707 0.164 245.1)" });
+  });
+
   test("give the size in the address, and ask again each minute, so an installed update shows soon", () => {
     expect(frameRefreshMs).toBe(60_000);
     expect(frameAddress("/widgets/abc/index.html", "full")).toBe("/widgets/abc/index.html?size=full");

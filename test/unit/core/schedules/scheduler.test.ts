@@ -935,6 +935,16 @@ describe("quiet runs, [[done]] and until (#687)", () => {
     ]);
   });
 
+  test("a quiet run that shows a page still delivers, as with a file (#1129)", async () => {
+    writeSchedules([watch]);
+    answers.set("session-1", { text: "[[show: .eva/scratch/week.html]]\n[[quiet]]", personWrote: false });
+    const scheduler = createScheduler();
+    await scheduler.tick();
+    await runAt(scheduler, "2026-07-01T08:00");
+    expect(endedRuns).toEqual([{ sessionId: "session-1", deliver: true }]);
+    expect(answered()).toHaveLength(1);
+  });
+
   test("a quiet answer is not quiet when the person wrote in the chat during the run", async () => {
     writeSchedules([watch]);
     answers.set("session-1", { text: "[[quiet]]", personWrote: true });

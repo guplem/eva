@@ -8,6 +8,7 @@ describe("extractFileMarkers (lesson 124)", () => {
       text: "Here it is.\nBye.",
       attach: ["Methods/Plan.md"],
       offer: ["Methods/Other.md"],
+      show: [],
       quiet: false,
       done: false,
       replies: [],
@@ -20,6 +21,7 @@ describe("extractFileMarkers (lesson 124)", () => {
       text: answer,
       attach: [],
       offer: [],
+      show: [],
       quiet: false,
       done: false,
       replies: [],
@@ -28,7 +30,15 @@ describe("extractFileMarkers (lesson 124)", () => {
 
   test("a file named twice goes once, and attach wins over offer", () => {
     const markers = extractFileMarkers("[[offer: a.md]]\n[[attach: a.md]]\n[[attach: a.md]]\n[[offer: b.md]]");
-    expect(markers).toEqual({ text: "", attach: ["a.md"], offer: ["b.md"], quiet: false, done: false, replies: [] });
+    expect(markers).toEqual({
+      text: "",
+      attach: ["a.md"],
+      offer: ["b.md"],
+      show: [],
+      quiet: false,
+      done: false,
+      replies: [],
+    });
   });
 });
 
@@ -78,6 +88,25 @@ describe("the markers of a scheduled run (#687)", () => {
   test("hides the start of a run marker at the end of an open text", () => {
     expect(shownAnswerText("She replied.\n[[do", true)).toBe("She replied.");
     expect(shownAnswerText("[[qui", true)).toBe("");
+  });
+});
+
+describe("the show marker of a page (#1129)", () => {
+  test("drops a [[show:]] line and lists its path once, in any case", () => {
+    const markers = extractFileMarkers(
+      "A chart.\n[[show: .eva/scratch/chart.html]]\n[[ SHOW:.eva/scratch/chart.html ]]",
+    );
+    expect(markers).toMatchObject({ text: "A chart.", show: [".eva/scratch/chart.html"], attach: [], offer: [] });
+  });
+
+  test("keeps a show marker inside a code fence or inside a line", () => {
+    const answer = "Write [[show: a.html]] like this:\n```\n[[show: b.html]]\n```";
+    expect(extractFileMarkers(answer)).toMatchObject({ text: answer, show: [] });
+  });
+
+  test("hides the start of a show marker at the end of an open text", () => {
+    expect(shownAnswerText("A chart.\n[[sh", true)).toBe("A chart.");
+    expect(shownAnswerText("A chart.\n[[show: .eva/scr", true)).toBe("A chart.");
   });
 });
 

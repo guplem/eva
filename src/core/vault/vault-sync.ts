@@ -9,6 +9,7 @@ import type { Logger } from "../../shared/logger.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { bytesContainSecretPattern } from "../../shared/redaction.ts";
+import { sandboxPlaceholderFiles } from "../../shared/shell-wall-settings.ts";
 import { plainSecretsIn } from "./plain-secrets.ts";
 import { encryptedState } from "./vault-crypto.ts";
 import { scratchFolderOf } from "../files/scratch-folders.ts";
@@ -380,7 +381,8 @@ export class VaultSync {
       ]);
       const oldScratch = keepsOldScratch(this.options.vaultPath);
       for (const path of paths)
-        if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch) && !isProjectCopyFile(path)) prepare(path);
+        if (!path.endsWith("/") && !this.isScratchFile(path, oldScratch) && !this.isProjectFileOfEva(path))
+          prepare(path);
     });
   }
 
@@ -399,7 +401,7 @@ export class VaultSync {
       for (const { path } of await this.statusEntries()) {
         // A folder entry is a repository inside the vault, which a commit does not take either.
         if (path.endsWith("/")) continue;
-        if (isProjectCopyFile(path)) continue;
+        if (this.isProjectFileOfEva(path)) continue;
         if (!this.isScratchFile(path, oldScratch) && this.withheldReason(path, prepare) === null) paths.push(path);
         else this.addLeftOut(leftOut, path);
       }
@@ -944,7 +946,7 @@ export class VaultSync {
     const oldScratch = keepsOldScratch(this.options.vaultPath);
     for (const { code, path } of entries) {
       if (unmerged.includes(path)) continue;
-      if (this.isScratchFile(path, oldScratch) || isProjectCopyFile(path)) {
+      if (this.isScratchFile(path, oldScratch) || this.isProjectFileOfEva(path)) {
         // An untracked file stays out of a plain commit anyway; a staged one needs --only.
         if (!code.startsWith(" ") && !code.startsWith("?")) stagedScratch = true;
         continue;
@@ -1290,6 +1292,14 @@ export class VaultSync {
   }
 
   /**
+   * A file that Eva or a chat's sandbox puts in a project: a copy for a chat, or an empty placeholder
+   * of the shell sandbox in a project folder (#759). It reaches no commit and no snapshot.
+   */
+  private isProjectFileOfEva(relativePath: string): boolean {
+    return isProjectCopyFile(relativePath) || isSandboxPlaceholder(this.options.vaultPath, relativePath);
+  }
+
+  /**
    * A scratch folder holds files received from a chat, such as a bank statement, so it never reaches
    * a commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
    * scratch file out of the tree. lstat, so a broken link in a scratch folder is not read as a removal.
@@ -1473,4 +1483,21 @@ export function isFolderMentionCopy(relativePath: string): boolean {
 /** True for a file that Eva puts in a project for its chats, which never reaches a commit or a snapshot. */
 function isProjectCopyFile(relativePath: string): boolean {
   return isCloneFolderFile(relativePath) || isFolderMentionCopy(relativePath);
+}
+
+/**
+ * True for an empty file with a name that the shell sandbox protects, right in a project folder,
+ * `Projects/<id>/<name>` (#759). The sandbox puts it there while a command of a chat in that folder
+ * runs, and a command that pi stops hard leaves it. A file with content is the person's own.
+ */
+function isSandboxPlaceholder(vaultPath: string, relativePath: string): boolean {
+  const parts = relativePath.split("/");
+  if (parts.length !== 3 || parts[0]?.toLowerCase() !== "projects") return false;
+  if (!sandboxPlaceholderFiles.includes(parts[2] ?? "")) return false;
+  try {
+    const info = lstatSync(join(vaultPath, relativePath));
+    return info.isFile() && info.size === 0;
+  } catch {
+    return false;
+  }
 }

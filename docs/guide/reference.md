@@ -498,7 +498,7 @@ The wall has two parts.
 
 **The file tools.** Before each read, write or search, Eva checks the path. A path in a closed folder gets the answer "This path is outside this chat's folder." So does a write to the project folder of a clone chat, and any tool there that Eva does not know as a read, such as an MCP tool. This works in every permission mode, and with both engines. A clone chat can list its whole project folder, such as with pi's `ls`. A file search of the whole folder is refused, a Glob too, since the folder holds the other clones. The answer then says to search a sub-folder, or to list the notes with the shell. A search of the shell skips the other clones. A file tool also cannot write some files of the chat's own folder: its `.claude` or `.pi` settings, its `.mcp.json`, and a `.git` folder. Such a file could run code at the next turn.
 
-**The shell, in a sandbox.** A sandbox is a box that the system builds around a program. Claude Code has one, and Eva turns it on for each project chat. Inside the sandbox, the closed folders look empty or missing. So every program fails to read them, not only `cat`. On Linux the message is "No such file or directory". On macOS it is "Operation not permitted".
+**The shell, in a sandbox.** A sandbox is a box that the system builds around a program. Claude Code has one, and Eva turns it on for each project chat. pi has none, so Eva puts each shell command of a pi project chat in the same sandbox, through `eva shell-sandbox`. The chat still shows each command as the model wrote it. Inside the sandbox, the closed folders look empty or missing. So every program fails to read them, not only `cat`. On Linux the message is "No such file or directory". On macOS it is "Operation not permitted".
 
 In the sandbox, a command:
 
@@ -508,17 +508,17 @@ In the sandbox, a command:
 - cannot install a program on the computer or change your settings, and cannot use `sudo`;
 - reads the git config and the GitHub login, so `git commit` and `git push` work;
 - cannot use git over SSH: the sandbox lets a command out to the internet only through its own proxy, for web addresses. So use an `https` address, not an `ssh` one, for a git repository;
-- reaches the git hosts and package sites: GitHub, GitLab, Bitbucket, npm, Yarn, PyPI, crates.io, Go and Maven. For any other site, Claude Code's safety check decides in Auto mode. In Bypass mode, every site is open;
+- reaches the git hosts and package sites: GitHub, GitLab, Bitbucket, npm, Yarn, PyPI, crates.io, Go and Maven. For any other site, Claude Code's safety check decides in Auto mode. In Bypass mode, every site is open. In a pi chat, every other site is refused;
 - cannot reach Eva herself by the names `localhost` and `*.ts.net`, on this computer or on your tailnet (your private Tailscale network). A number address, such as `100.64.0.1`, is not blocked;
 - can serve on a port of this computer, such as for a dev server.
 
-pi has no sandbox. Its file tools stay walled, but its shell can read the closed folders.
+In a pi chat, each command gets its own sandbox. When the sandbox cannot start for a command, that command does not run, and the model reads that the sandbox could not start. Where Eva's start check finds no sandbox on the computer, the shell has no wall: see [Set up the sandbox](#set-up-the-sandbox).
 
 ### The socket filter
 
 A socket is a private door between two programs on the same computer. Docker, systemd and `ssh-agent` each have one. Through some of them, a command could ask a program outside the sandbox to read the closed folders.
 
-On Linux, Claude Code adds a filter to the sandbox that closes every socket. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that. Their AppArmor profile for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
+On Linux, the sandbox has a filter that closes every socket. Claude Code brings the filter's program. For pi chats, Eva brings the same program in her own download. To work, the filter builds a second sandbox inside the first one. Ubuntu 25.04 and later do not allow that. Their AppArmor profile for bubblewrap lets it build one sandbox, but not a second one inside it. There, the filter would break every command, even `echo`. On Ubuntu 24.04, with the profile that Eva's install command adds, the second sandbox works.
 
 So at start, Eva tries a sandbox inside a sandbox:
 
@@ -530,12 +530,12 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 
 ### Set up the sandbox
 
-- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The one-command install adds them. For an Eva from before, run the install command again, or run `sudo apt-get update && sudo apt-get install bubblewrap socat`. Then restart Eva. When apt says that another process holds its lock, a stuck apt process can be the cause, such as a daily update that hangs for months. Wait for it to end, or end it with `sudo kill <its process number>`. Then run the command again.
+- **Linux:** the sandbox needs `bubblewrap` and `socat`, two small programs that build the sandbox. The sandbox of pi chats also needs `ripgrep`, a search program. Claude Code brings its own. The one-command install adds all three. For an Eva from before, run the install command again, or run `sudo apt-get update && sudo apt-get install bubblewrap socat ripgrep`. Then restart Eva. When apt says that another process holds its lock, a stuck apt process can be the cause, such as a daily update that hangs for months. Wait for it to end, or end it with `sudo kill <its process number>`. Then run the command again.
 - **Ubuntu 24.04:** the sandbox also needs an AppArmor profile for bubblewrap. See [AppArmor and bubblewrap](#apparmor-and-bubblewrap).
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
-At start, Eva tries the sandbox. When it cannot start, a notice says why. The chats still run, and their file tools stay walled.
+At start, Eva tries the sandbox. When it cannot start, a notice says why, and which chats it concerns. Usually that is the chats of both engines. When only ripgrep is missing, it is only pi chats. The chats still run, and their file tools stay walled. While Eva tries the sandbox on Linux or macOS, each shell command of a pi chat goes in the sandbox. On a computer where it cannot start, such a command fails in the first moments after a start. On Windows, Eva never wraps a command.
 
 ### AppArmor and bubblewrap
 
@@ -578,8 +578,8 @@ The wall stops an agent that makes a mistake or looks around. It does not stop a
 
 - **GitHub:** the shell reads the GitHub login, so that `git push` works. Your vault is on GitHub too, so a command can download it from there.
 - **Sockets:** where the socket filter is off, a socket that Eva's list misses can let a command run code outside the sandbox. An example is the socket of `ssh-agent` (the program that keeps your SSH keys) in the temporary folder.
-- **Programs outside the sandbox:** MCP servers and the hooks of a trusted clone run outside it.
-- **pi and Windows:** the shell has no sandbox there.
+- **Programs outside the sandbox:** MCP servers, the hooks of a trusted clone and the pi extensions of a trusted clone run outside it. A pi extension of a trusted clone, or its `.pi` settings such as a shell command prefix, can also change a command after Eva puts it in the sandbox.
+- **Windows:** the shell has no sandbox there.
 - **Another Eva:** the wall closes this Eva's folder only. Another Eva on the same computer stays open.
 - **Assistant chats:** they have no wall at all.
 
@@ -587,6 +587,10 @@ Some commands work differently in the sandbox:
 
 - `git push -u` cannot save the upstream branch, because the sandbox protects `.git/config`. Use `git push origin <branch>`.
 - Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
+- In a pi chat, a command line of more than about 100 KiB does not run. Linux takes at most 128 KiB in one argument, and Eva adds her own words to each command. Put a long script in a file, and run the file.
+- In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts placeholders there: empty files that stand in for names that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. git refuses to add them. So add files by name.
+- A command that pi stops can leave its placeholders in the chat's folder. They are empty, so delete them. Eva does not, because a placeholder can belong to a command of another chat that still runs. In a project folder, the vault sync never commits an empty placeholder.
+- In a pi chat, a command cannot write the `.pi` settings of the chat's folder, as a file tool cannot.
 
 ## Optional features
 

@@ -49,6 +49,14 @@ export type CliCommand =
       readonly instance: string | undefined;
       readonly action: "start" | "finish" | "drop" | "undo";
     }
+  /** Internal: Eva's pi extension runs each shell command of a Project chat through it (#759). */
+  | {
+      readonly command: "shell-sandbox";
+      readonly wallFile: string;
+      /** The chat's folder: the wrapper starts elsewhere, so Bun reads no file of the chat at start. */
+      readonly folder: string;
+      readonly shellCommand: string;
+    }
   | { readonly command: "usage-error"; readonly message: string };
 
 export const usageText = `Usage: eva [--instance <name>] [command]
@@ -148,6 +156,13 @@ function inFreeText(words: readonly string[]): boolean {
 }
 
 export function parseArguments(argv: readonly string[]): CliCommand {
+  // The model wrote the command, so a word in it such as `-v` or `--help` is never a flag of Eva's.
+  if (argv[0] === "shell-sandbox") {
+    const [, wallFile, folder, shellCommand] = argv;
+    return argv.length === 4 && wallFile !== undefined && folder !== undefined && shellCommand !== undefined
+      ? { command: "shell-sandbox", wallFile, folder, shellCommand }
+      : usageError("Use: eva shell-sandbox <wall file> <folder> <command>");
+  }
   const words: string[] = [];
   const options = new Map<string, string>();
   const switchesSeen = new Set<string>();

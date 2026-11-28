@@ -55,6 +55,8 @@ ldconfig -p | grep "libgomp.so.1" >/dev/null
 # Claude Code's shell sandbox, for the file wall of Project chats (#711), needs bubblewrap and socat.
 command -v bwrap >/dev/null
 command -v socat >/dev/null
+# pi's shell sandbox also needs ripgrep (#759). Claude Code brings its own.
+command -v rg >/dev/null
 "$HOME/.local/bin/eva" version
 grep -q ".local/bin" "$HOME/.profile"
 # A second run finds git and Eva, and installs Eva again. It also installs a sandbox tool that an

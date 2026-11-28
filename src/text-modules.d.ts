@@ -26,3 +26,9 @@ declare module "*.ps1" {
   const text: string;
   export default text;
 }
+
+/** The sandbox library's `apply-seccomp` helper, imported `with { type: "file" }` (#759). */
+declare module "*/apply-seccomp" {
+  const path: string;
+  export default path;
+}

@@ -7,7 +7,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
-import { homedir, hostname, userInfo } from "node:os";
+import { homedir, hostname, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
@@ -15,13 +15,23 @@ import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voic
 import { Eva } from "./core/eva.ts";
 import { vaultSearchIndex } from "./core/files/windows-search.ts";
 import { leftoverBwrapProfile, nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "./core/shell-wall.ts";
+import { sandboxRuntimeLibrary } from "./core/shell-sandbox/sandbox-runtime.ts";
+import { runShellSandbox } from "./core/shell-sandbox/shell-sandbox.ts";
+import { embeddedSeccompHelper, installSeccompHelper } from "./core/shell-sandbox/seccomp-helper.ts";
+import { systemSandboxedCommandStarter } from "./shared/sandboxed-command.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { hardExitGraceMs, shutdownDeadlineMs, stopSequence } from "./core/instance/shutdown.ts";
 import { prepareStart } from "./core/instance/startup.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
-import { createHomeFolders, instanceNameOf, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
+import {
+  createHomeFolders,
+  engineFolders,
+  instanceNameOf,
+  type EvaConfig,
+  type HomePaths,
+} from "./core/settings/home.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { PiLogin } from "./engines/pi/pi-login.ts";
@@ -97,7 +107,7 @@ const host: CliHost = {
   },
 };
 
-/** This computer, as the checks of Claude Code's shell sandbox see it. */
+/** This computer, as the checks of the shell sandbox see it. */
 function shellWallMachine(): ShellWallMachine {
   return {
     platform: process.platform,
@@ -137,6 +147,7 @@ function createEngines(
   config: EvaConfig,
   paths: HomePaths,
   logger: Logger,
+  seccompFile: string | null,
 ): { engines: EnginePort[]; claudeExecutable: string | null } {
   const engines: EnginePort[] = [];
   const claudeExecutable = locateEngine(config, "claude-code");
@@ -153,6 +164,8 @@ function createEngines(
         command: [piExecutable],
         workFolder: join(paths.enginesFolder, "pi"),
         models: config.engines.pi.models,
+        // pi's bash tool runs `eva shell-sandbox` for each command of a walled Project chat (#759).
+        shellSandbox: { command: evaCommand(host), seccompFile },
       }),
     );
   }
@@ -237,13 +250,20 @@ async function serve(paths: HomePaths): Promise<number> {
   await remoteAccess?.refresh();
 
   let stop: (exitCode: number) => void = () => undefined;
-  const { engines, claudeExecutable } = createEngines(config, paths, logger);
+  // The sandbox runs the helper inside the box, so it goes to a folder that the wall keeps readable.
+  const seccompFile = installSeccompHelper(await embeddedSeccompHelper(), join(paths.root, "bin"));
+  const { engines, claudeExecutable } = createEngines(config, paths, logger, seccompFile);
   const eva = new Eva({
     paths,
     config: withVoicePrograms(config),
     secrets,
     engines,
-    shellWallGap: () => shellWallGap(shellWallMachine()),
+    // pi's sandbox also needs ripgrep: on the PATH, or in pi's own bin, which pi puts on each command's PATH.
+    shellWallGap: () =>
+      shellWallGap(shellWallMachine(), {
+        ripgrep: engines.some((engine) => engine.name === "pi"),
+        ripgrepFolders: [join(engineFolders(paths).piAgent, "bin")],
+      }),
     bwrapProfileLeft: () => leftoverBwrapProfile(shellWallMachine()),
     nestedSandbox: () => nestedSandboxWorks(shellWallMachine()),
     // Windows Search excludes AppData, where the vault lives, so Eva adds it for the Start menu (#942).
@@ -360,6 +380,24 @@ runCli(process.argv.slice(2), host, {
   serve,
   startLongProcess: systemLongProcessStarter,
   startLineProcess: systemLineProcessStarter,
+  shellSandbox: (wallFile, folder, command) =>
+    runShellSandbox({
+      wallFile,
+      command,
+      cwd: folder,
+      // pi's own environment, which Eva built with buildChildEnvironment.
+      environment: Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      ),
+      library: sandboxRuntimeLibrary,
+      start: systemSandboxedCommandStarter,
+      readText: readTextTolerant,
+      writeError: (text) => process.stderr.write(text),
+      enterFolder: (path) => {
+        process.chdir(path);
+      },
+      temporaryRoot: tmpdir(),
+    }),
 })
   .then((code) => process.exit(code))
   .catch((error: unknown) => {

@@ -46,6 +46,7 @@ import {
   mcpServersFileVariable,
 } from "../../../../src/engines/pi/pi-mcp-extension.ts";
 import type { PiProcessStarter } from "../../../../src/engines/pi/pi-process.ts";
+import { shellWallVariable, shellWrapExtensionSource } from "../../../../src/engines/pi/pi-shell-wrap-extension.ts";
 import {
   lostHistoryPreamble,
   type ApprovalAnswer,
@@ -135,6 +136,7 @@ describe("buildPiArguments", () => {
     sessionFile: "/eva/pi/sessions/session-1.jsonl",
     sessionsFolder: "/eva/pi/sessions",
     extensionFile: "/eva/pi/eva-approval-extension.ts",
+    shellWrapExtensionFile: null,
     mcpExtensionFile: null,
     contextExtensionFile: null,
     questionExtensionFile: null,
@@ -186,6 +188,33 @@ describe("buildPiArguments", () => {
     expect(
       buildPiArguments({ ...project, trusted: false }, { ...inputs, promptFile: null, contextExtensionFile: filter }),
     ).toEqual([...base, "-e", filter, "--no-extensions"]);
+  });
+
+  test("the shell wrap loads right after the approval extension, also where the folder's own are off (#759)", () => {
+    const project = request({ mode: "project", appendSystemPrompt: null, pluginFolders: [], trusted: false });
+    const wrap = "/eva/pi/eva-shell-wrap-extension.ts";
+    const filter = "/eva/pi/eva-context-extension.ts";
+    expect(
+      buildPiArguments(project, {
+        ...inputs,
+        promptFile: null,
+        contextExtensionFile: filter,
+        shellWrapExtensionFile: wrap,
+      }),
+    ).toEqual([...base, "-e", wrap, "-e", filter, "--no-extensions"]);
+    const bridge = "/eva/pi/eva-mcp-extension.ts";
+    expect(buildPiArguments(request(), { ...inputs, mcpExtensionFile: bridge, shellWrapExtensionFile: wrap })).toEqual([
+      ...base,
+      "-e",
+      wrap,
+      "-e",
+      bridge,
+      "--no-extensions",
+      "--append-system-prompt",
+      "/eva/pi/prompts/session-1.md",
+      "--skill",
+      join("/demo-vault/.eva", "skills"),
+    ]);
   });
 
   test("a specialist chat loads none of its folder's extensions, and keeps Eva's filter (#703)", () => {
@@ -353,6 +382,125 @@ describe("PiEngine", () => {
     expect(readFileSync(bridge, "utf8")).toBe(mcpExtensionSource);
     expect(fake.runs[1]?.command).not.toContain(bridge);
     expect(fake.runs[1]?.environment).toEqual({ PATH: "/bin" });
+  });
+
+  describe("the shell sandbox of a Project chat (#759)", () => {
+    const area = "/vault/Projects/example-app/repos/clone-0";
+    const shellSandbox = { command: ["/opt/eva/bin/eva"], seccompFile: "/eva/bin/apply-seccomp" };
+    const walled = (wall: Partial<NonNullable<TurnRequest["fileWall"]>> = {}): TurnRequest =>
+      request({
+        mode: "project",
+        appendSystemPrompt: null,
+        pluginFolders: [],
+        startFolder: area,
+        projectFolder: "/vault/Projects/example-app",
+        environment: { PATH: "/bin", PI_CODING_AGENT_DIR: "/eva/engines/pi-agent" },
+        fileWall: {
+          area,
+          closed: ["/vault", "/eva"],
+          readable: ["/eva/bin"],
+          socketFilter: true,
+          shellSandbox: true,
+          ...wall,
+        },
+      });
+
+    test("wraps each bash command through a wall file that lives as long as the turn", async () => {
+      let variable = "";
+      let config: unknown = null;
+      const fake = new FakePi([
+        {
+          records: loadPiFixture("plain"),
+          onClose: (run) => {
+            variable = run.environment[shellWallVariable] ?? "";
+            const value = JSON.parse(variable) as { wallFile: string };
+            config = JSON.parse(readFileSync(value.wallFile, "utf8")) as unknown;
+          },
+        },
+      ]);
+      await drain(engine(fake, { shellSandbox }).runTurn(walled()));
+      const wrap = join(folder, "pi", "eva-shell-wrap-extension.ts");
+      const command = fake.runs[0]?.command ?? [];
+      // Right after the approval extension, so a call that it blocks is never wrapped.
+      expect(command.slice(command.indexOf(join(folder, "pi", "eva-approval-extension.ts")) + 1).slice(0, 2)).toEqual([
+        "-e",
+        wrap,
+      ]);
+      expect(readFileSync(wrap, "utf8")).toBe(shellWrapExtensionSource);
+      const value = JSON.parse(variable) as { command: string[]; wallFile: string };
+      expect(value.command).toEqual(["/opt/eva/bin/eva"]);
+      expect(value.wallFile.startsWith(join(folder, "pi", "shell-walls", "session-1-"))).toBe(true);
+      expect(config).toMatchObject({
+        filesystem: {
+          denyRead: ["/vault", "/eva"],
+          allowRead: [area, "/eva/bin", join("/eva/engines/pi-agent", "bin")],
+          denyWrite: [join(area, ".pi")],
+        },
+        seccomp: { applyPath: "/eva/bin/apply-seccomp" },
+      });
+      expect(existsSync(value.wallFile)).toBe(false);
+      // A sandboxed command may not write to the home folder, so the package caches move.
+      expect(fake.runs[0]?.environment).toMatchObject({ UV_CACHE_DIR: join(tmpdir(), "eva-tool-caches", "uv") });
+    });
+
+    test("wraps nothing where the start check found no sandbox, in an Assistant chat, or with no wrapper", async () => {
+      const turns: [TurnRequest, typeof shellSandbox | undefined][] = [
+        [walled({ shellSandbox: false }), shellSandbox],
+        [{ ...walled(), fileWall: { area, closed: ["/vault"], readable: [], socketFilter: true } }, shellSandbox],
+        [request(), shellSandbox],
+        [walled(), undefined],
+      ];
+      for (const [turn, option] of turns) {
+        const fake = new FakePi([{ records: loadPiFixture("plain") }]);
+        await drain(engine(fake, option === undefined ? {} : { shellSandbox: option }).runTurn(turn));
+        expect(fake.runs[0]?.command.some((part) => part.endsWith("eva-shell-wrap-extension.ts"))).toBe(false);
+        expect(fake.runs[0]?.environment[shellWallVariable]).toBeUndefined();
+      }
+    });
+
+    test("Eva removes no placeholder from the chat's folder: it can belong to a command that still runs", async () => {
+      const chat = join(folder, "clone-0");
+      mkdirSync(chat, { recursive: true });
+      // A placeholder that another chat's command holds: without it, that command could write `.bashrc`.
+      const fake = new FakePi([
+        {
+          records: loadPiFixture("plain"),
+          onClose: () => {
+            writeFileSync(join(chat, ".bashrc"), "");
+            mkdirSync(join(chat, ".vscode"));
+          },
+        },
+      ]);
+      await drain(engine(fake, { shellSandbox }).runTurn({ ...walled({ area: chat }), startFolder: chat }));
+      expect(readdirSync(chat).sort()).toEqual([".bashrc", ".vscode"]);
+    });
+
+    test("pi never gets the Claude login, which each shell command would see (#759)", async () => {
+      const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
+      const withToken = { PATH: "/bin", PI_CODING_AGENT_DIR: "/eva/engines/pi-agent", CLAUDE_CODE_OAUTH_TOKEN: "t" };
+      await drain(engine(fake, { shellSandbox }).runTurn({ ...walled(), environment: withToken }));
+      await drain(engine(fake, { shellSandbox }).runTurn(request({ environment: withToken })));
+      for (const run of fake.runs) expect(run.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBeUndefined();
+    });
+
+    test("a pi that cannot start leaves no wall file", async () => {
+      const failing: PiProcessStarter = () => {
+        throw new Error("no pi");
+      };
+      const events = await drain(engine(new FakePi([]), { shellSandbox, start: failing }).runTurn(walled()));
+      expect(events.at(-1)).toMatchObject({ kind: "turn_failed" });
+      expect(readdirSync(join(folder, "pi", "shell-walls"))).toEqual([]);
+    });
+
+    test("a wall file that Eva cannot write fails the turn, and runs no command with no wall", async () => {
+      // A file where the folder of the wall files should be.
+      mkdirSync(join(folder, "pi"), { recursive: true });
+      writeFileSync(join(folder, "pi", "shell-walls"), "");
+      const fake = new FakePi([{ records: loadPiFixture("plain") }]);
+      const events = await drain(engine(fake, { shellSandbox }).runTurn(walled()));
+      expect(fake.runs).toEqual([]);
+      expect(events.at(-1)).toMatchObject({ kind: "turn_failed" });
+    });
   });
 
   test("a Project chat gives the filter its project folder, and shows the filter's problem in the chat", async () => {

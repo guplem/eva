@@ -31,10 +31,16 @@ describe("describePiPermissions", () => {
   });
 });
 
-describe("the file wall in pi's permissions (#711)", () => {
-  test("each Project chat blocks the vault and Eva's folder, and says that the shell can still read them", () => {
+describe("the file wall in pi's permissions (#711, #759)", () => {
+  test("each Project chat blocks the vault and Eva's folder, by a file tool, and by a shell command where the sandbox runs", () => {
     for (const chat of describePiPermissions(context).chats.filter((each) => each.chat !== "assistant"))
-      expect(chat.blocks.join(" ")).toContain("a shell command can still read them");
+      expect(chat.blocks.join(" ")).toContain("by a file tool, and by a shell command where the sandbox runs");
+  });
+
+  test("a trusted clone's own pi extensions and settings run outside the sandbox, and Settings says so", () => {
+    const trusted = describePiPermissions(context).chats.find((chat) => chat.chat === "trusted-project");
+    expect(trusted?.note).toContain("Its own pi extensions run outside the sandbox");
+    expect(trusted?.note).toContain(".pi settings such as a shell command prefix");
   });
 });
 

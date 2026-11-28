@@ -6,6 +6,7 @@ import {
   evaProfileMark,
   leftoverBwrapProfile,
   nestedSandboxWorks,
+  shellSandboxPossible,
   shellWallGap,
   type ShellWallMachine,
 } from "../../../src/core/shell-wall.ts";
@@ -323,5 +324,51 @@ describe("nestedSandboxWorks, as Claude Code builds its sandbox (review of #760)
     const root = { ...machine("linux", ["bwrap", "socat"]), root: true };
     await nestedSandboxWorks(root);
     expect(root.runs[0]).toContain("CAP_SETFCAP");
+  });
+});
+
+describe("shellWallGap for pi chats, whose sandbox also needs ripgrep (#759)", () => {
+  const pi = { ripgrep: true, ripgrepFolders: ["/srv/eva/engines/pi-agent/bin"] };
+
+  test("Linux with no rg names ripgrep, and only pi chats have the gap", async () => {
+    const linux = machine("linux", ["bwrap", "socat"]);
+    const gap = await shellWallGap(linux, pi);
+    expect(gap?.reason).toContain("ripgrep");
+    expect(gap?.reason).toContain("sudo apt-get update && sudo apt-get install ripgrep");
+    expect(gap).toMatchObject({ fixable: true, piOnly: true });
+  });
+
+  test("the rg that pi keeps in its own folder counts, as pi puts it on each command's PATH", async () => {
+    const files = { "/srv/eva/engines/pi-agent/bin/rg": "" };
+    expect(await shellWallGap(machine("linux", ["bwrap", "socat"], undefined, files), pi)).toBeNull();
+    expect(await shellWallGap(machine("linux", ["bwrap", "socat", "rg"]), pi)).toBeNull();
+  });
+
+  test("a gap of bubblewrap is every chat's, and names ripgrep too when it is missing", async () => {
+    const gap = await shellWallGap(machine("linux", ["socat"]), pi);
+    expect(gap?.reason).toContain("bubblewrap and ripgrep");
+    expect(gap?.reason).toContain("sudo apt-get update && sudo apt-get install bubblewrap socat ripgrep");
+    expect(gap?.piOnly).toBe(false);
+  });
+
+  test("with no pi, ripgrep is not needed: Claude Code brings its own", async () => {
+    expect(await shellWallGap(machine("linux", ["bwrap", "socat"]))).toBeNull();
+    expect(await shellWallGap(machine("linux", ["bwrap", "socat"]), { ripgrep: false, ripgrepFolders: [] })).toBeNull();
+  });
+
+  test("macOS needs no ripgrep, and Windows names no engine", async () => {
+    expect(await shellWallGap(machine("darwin", []), pi)).toBeNull();
+    const windows = await shellWallGap(machine("win32", []), pi);
+    expect(windows?.reason).not.toContain("Claude Code");
+    expect(windows?.piOnly).toBe(false);
+  });
+});
+
+describe("shellSandboxPossible (#759)", () => {
+  test("only Linux and macOS can have the sandbox, so only they wrap a command before the start check ends", () => {
+    expect(shellSandboxPossible("linux")).toBe(true);
+    expect(shellSandboxPossible("darwin")).toBe(true);
+    expect(shellSandboxPossible("win32")).toBe(false);
+    expect(shellSandboxPossible("freebsd")).toBe(false);
   });
 });

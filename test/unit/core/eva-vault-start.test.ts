@@ -175,7 +175,8 @@ describe("migrations (#119)", () => {
       new FakeEngine(),
       {},
       {
-        shellWallGap: () => Promise.resolve({ reason: "Claude Code's shell sandbox needs bubblewrap.", fixable: true }),
+        shellWallGap: () =>
+          Promise.resolve({ reason: "The shell sandbox needs bubblewrap.", fixable: true, piOnly: false }),
       },
     );
     const alerts = collectAlerts(instance);
@@ -186,6 +187,27 @@ describe("migrations (#119)", () => {
     await Promise.resolve();
     expect(alerts.find((alert) => alert.key === "shell_wall")).toMatchObject({ level: "warn" });
     expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("bubblewrap");
+  });
+
+  test("a computer with only pi checks the sandbox too, and the notice names pi chats (#759)", async () => {
+    const engine = new FakeEngine();
+    // Only the engine's name matters here: the start check runs for each engine with a Project shell.
+    Object.defineProperty(engine, "name", { value: "pi" });
+    const instance = start(
+      engine,
+      {},
+      {
+        shellWallGap: () =>
+          Promise.resolve({ reason: "pi's shell sandbox needs ripgrep.", fixable: true, piOnly: true }),
+      },
+    );
+    const alerts = collectAlerts(instance);
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    expect(alerts.find((alert) => alert.key === "shell_wall")?.message).toContain("The shell of a pi Project chat");
   });
 
   test("Eva's AppArmor profile, left over next to the system's own, is a problem of its own (#903)", async () => {
@@ -224,7 +246,8 @@ describe("migrations (#119)", () => {
       new FakeEngine(),
       {},
       {
-        shellWallGap: () => Promise.resolve({ reason: "Claude Code has no shell sandbox on Windows.", fixable: false }),
+        shellWallGap: () =>
+          Promise.resolve({ reason: "Eva has no shell sandbox on Windows.", fixable: false, piOnly: false }),
       },
     );
     const alerts = collectAlerts(instance);

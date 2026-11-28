@@ -33,7 +33,8 @@ import { toolInputText, toolOutputText } from "../../shared/tool-details.ts";
 import type { EngineEventPayload, TaskState, TurnUsage, UsageWindow } from "../../shared/events.ts";
 import type { EnginePermissions, PermissionContext } from "../../shared/permissions.ts";
 import { describeClaudePermissions, type ClaudePermissionMode } from "./claude-code-permissions.ts";
-import { fileWallHooks, fileWallSandbox, toolCacheVariables } from "./claude-code-file-wall.ts";
+import { claudeShellFolders, fileWallHooks, fileWallSandbox } from "./claude-code-file-wall.ts";
+import { toolCacheVariables } from "../../shared/shell-wall-settings.ts";
 
 /** The SDK's query, with the one control request that Eva uses. */
 type QueryRun = AsyncIterable<SDKMessage> & { mcpServerStatus?: () => Promise<McpServerStatus[]> };
@@ -225,19 +226,20 @@ export function buildQueryOptions(
     // A bypass would let an untrusted clone's own text run any tool with no question.
     setPermissionMode(options, request.trusted ? permissionMode : "auto");
     if (request.fileWall !== null) {
+      const configFolder = request.environment["CLAUDE_CONFIG_DIR"] ?? null;
       // The chat cannot open the vault or Eva's folder, by a file tool or by the shell (#711).
+      const shellWall = {
+        ...request.fileWall,
+        readable: [...request.fileWall.readable, ...claudeShellFolders(configFolder)],
+      };
       options.settings = {
         ...(typeof options.settings === "object" ? options.settings : {}),
-        sandbox: fileWallSandbox(request.fileWall, {
+        sandbox: fileWallSandbox(shellWall, {
           runtimeFolder: request.environment["XDG_RUNTIME_DIR"] ?? null,
           platform: process.platform,
         }),
       };
-      options.hooks = fileWallHooks(
-        request.fileWall,
-        request.startFolder,
-        request.environment["CLAUDE_CONFIG_DIR"] ?? null,
-      );
+      options.hooks = fileWallHooks(request.fileWall, request.startFolder, configFolder);
       options.env = { ...options.env, ...toolCacheVariables() };
     }
   }

@@ -129,8 +129,8 @@ function writeEvaScriptFiles(folder: string, command: readonly string[]): void {
  * The folders that a Project chat may not open, but its own folder (#711), and the folders inside
  * them that its shell still reads. The instance folder holds Eva's logins and secrets. The shell
  * still needs the git config and the gh login of the engine's environment, so `git commit` keeps
- * its identity and a push keeps its login. It also needs the `eva` scripts on its PATH, and the
- * shell setup, skills and plugins that Claude Code keeps in its config folder.
+ * its identity and a push keeps its login. It also needs the `eva` scripts on its PATH. Each engine
+ * adds its own folders, such as the shell setup that Claude Code keeps in its config folder.
  */
 export function projectWallRoots(
   paths: HomePaths,
@@ -147,11 +147,6 @@ export function projectWallRoots(
       paths.root,
       userspaceFolders(homedir()).state,
     ],
-    readable: [
-      folders.git,
-      folders.gh,
-      join(paths.root, "bin"),
-      ...["shell-snapshots", "session-env", "skills", "plugins"].map((name) => join(folders.claude, name)),
-    ],
+    readable: [folders.git, folders.gh, join(paths.root, "bin")],
   };
 }

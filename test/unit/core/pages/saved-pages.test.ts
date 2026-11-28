@@ -78,6 +78,38 @@ describe("savePage", () => {
   });
 });
 
+describe("savePage and names", () => {
+  test.skipIf(process.platform === "win32")(
+    "names the saved file after the marker, so the marker finds it, also when the scratch file is a link",
+    () => {
+      write(".eva/scratch/real.html", page);
+      symlinkSync(join(vault, ".eva", "scratch", "real.html"), join(vault, ".eva", "scratch", "shown.html"));
+      expect(savePage(vault, ".eva/scratch/shown.html")).toBe(".eva/pages/shown.html");
+      expect(resolveShownPage(vault, ".eva/scratch/shown.html")).toMatchObject({
+        relativePath: ".eva/pages/shown.html",
+        kept: "saved",
+      });
+    },
+  );
+
+  test.skipIf(process.platform === "win32")("never writes over another entry of .eva/pages", () => {
+    write(".eva/scratch/chart.html", page);
+    mkdirSync(join(vault, ".eva", "pages"), { recursive: true });
+    // A link that leads nowhere: the marker finds no saved page, but its name is taken.
+    symlinkSync(join(vault, "nowhere.html"), join(vault, ".eva", "pages", "chart.html"));
+    expect(codeOf(() => savePage(vault, ".eva/scratch/chart.html"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
+    expect(existsSync(join(vault, "nowhere.html"))).toBe(false);
+  });
+
+  test("refuses a file in the place of the pages folder", () => {
+    write(".eva/scratch/chart.html", page);
+    write(".eva/pages", "not a folder");
+    expect(codeOf(() => savePage(vault, ".eva/scratch/chart.html"))).toBe("file_not_writable");
+    expect(existsSync(join(vault, ".eva", "scratch", "chart.html"))).toBe(true);
+  });
+});
+
 describe("removeSavedPage", () => {
   test("deletes a saved page, and the old marker then finds no page", () => {
     write(".eva/pages/chart.html", page);

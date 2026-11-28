@@ -302,6 +302,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - Retry, Fork and Copy show under each answer, with no menu.
 - The background tasks of an answer show at the right end of that row. They are information, not an action. A check shows when they all ended.
 - A page of an answer (#1129) shows under its text, at the full width of the bubble and 320 px high, with a `--line` border, the 14 px radius and `--bg` behind it. The corner button opens full screen, as for a widget. A page that Eva cannot show is a `--chip` note with an info icon.
+- When the answer ends with a question, the empty composer shows Eva's first suggested reply in `--muted`, where the placeholder is. A small pearl with an arrow to the right follows it, with the Tab key on a computer. A `+N` chip lists the other replies above the box.
 
 ### Eva asks for permission
 

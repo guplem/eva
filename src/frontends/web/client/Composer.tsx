@@ -52,6 +52,7 @@ import { Icon } from "./icons.tsx";
 import { ButtonSpinner, ProgressBar } from "./Loading.tsx";
 import { useMentionPicker } from "./MentionPicker.tsx";
 import { MenuButton, MenuItems, type MenuItem } from "./Menu.tsx";
+import { moreRepliesLabel, sendsSuggestion, shownReplies, suggestionHint } from "./suggested-replies.ts";
 import { composerMenuItems, insertedText } from "./menu-text.ts";
 import { setupBlock } from "./new-chat.ts";
 import { prepareSendMorph, startSendMorph } from "./send-morph-player.ts";
@@ -137,6 +138,8 @@ interface ComposerProps {
   readonly placeholder?: string;
   /** The chat whose unsent text the box keeps, so a switch of branch and back does not lose it. */
   readonly draftKey?: string;
+  /** The replies that Eva suggests (#1127). The empty box offers the first, and Tab or a tap sends it. */
+  readonly suggestions?: readonly string[];
 }
 
 export function Composer({
@@ -150,6 +153,7 @@ export function Composer({
   voiceNotes,
   placeholder = composerPlaceholder(null),
   draftKey,
+  suggestions = noSuggestions,
 }: ComposerProps): ReactElement {
   // A chat that goes on from a summary starts with it, so the person reads it before it goes (issue 522).
   const summary = session.turns.length === 0 ? (session.firstMessageDraft ?? null) : null;
@@ -285,8 +289,9 @@ export function Composer({
   /** The card of the box, which the send morph copies. */
   const shell = useRef<HTMLDivElement>(null);
 
-  const send = async (): Promise<void> => {
-    const message = messageWithFiles(text, [...mentions.notes(text), ...notes]);
+  /** Sends the text of the box, or a suggested reply through the same path, so the outbox and the morph stay the same. */
+  const send = async (reply?: string): Promise<void> => {
+    const message = reply ?? messageWithFiles(text, [...mentions.notes(text), ...notes]);
     if (message === "" || uploading || sending || rewriting !== null || blocker !== null) return;
     const attached = files.attachments;
     // The picture of the box is taken before it clears, so the morph starts from what the person saw (#943).
@@ -301,7 +306,8 @@ export function Composer({
     // The person must not type the message again, nor pick the files again.
     if (!(await onSend(message))) {
       morph?.cancel();
-      restore(text);
+      // A reply that did not go comes back as text, so the person can send it again.
+      restore(reply ?? text);
       files.set(attached);
     }
     setSending(false);
@@ -311,6 +317,7 @@ export function Composer({
   const showStop = running && (isEmpty || blocker !== null);
   const block = blocker === null ? null : setupBlock(blocker);
   const lineId = useId();
+  const hintId = useId();
   const box = useRef<HTMLTextAreaElement>(null);
   // Who wrote the text that Eva put in the box, such as a widget (#696). A fill also asks for the focus.
   const [source, setSource] = useState(() => (draftKey === undefined ? null : textSourceOf(draftKey)));
@@ -361,6 +368,13 @@ export function Composer({
   const mentions = useMentionPicker((kind === "assistant" || inClone) && block === null, box, text, setText, inClone);
   // A file picked during a send that fails would be lost when the box gets its files back.
   const takesFiles = canAttach && block === null && !sending;
+  const replies = shownReplies(suggestions, {
+    text,
+    files: files.attachments.length,
+    locked: block !== null,
+    busy: sending || uploading || rewriting !== null,
+  });
+  const suggestion = replies[0];
   if (voice.state.phase !== "idle") {
     return (
       <div className="composer">
@@ -393,6 +407,16 @@ export function Composer({
   const keepFocus = (event: ReactPointerEvent): void => {
     // A tap on these buttons keeps the focus in the text, so a phone keyboard stays open.
     event.preventDefault();
+  };
+  /**
+   * Sends a reply from the arrow or the list. The send removes the control that the keyboard used, and the focus
+   * would fall to the page, so it goes to the text. A tap kept the focus where it was, so the keyboard stays as it is.
+   */
+  const sendReply = (reply: string): void => {
+    const focused = document.activeElement;
+    const fromControl = focused !== box.current && shell.current?.contains(focused) === true;
+    void send(reply);
+    if (fromControl) requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
   };
   const textActions =
     block === null
@@ -559,66 +583,113 @@ export function Composer({
               onOpenChange={setPlusOpen}
             />
           )}
-          <textarea
-            ref={box}
-            className={height.share === null ? undefined : "resized"}
-            style={textStyle}
-            aria-label="Message"
-            aria-describedby={block === null ? undefined : lineId}
-            placeholder={block === null ? placeholder : "Eva cannot answer yet"}
-            rows={1}
-            disabled={block !== null}
-            // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
-            readOnly={rewriting !== null}
-            aria-busy={rewriting !== null}
-            value={text}
-            {...mentions.boxProps}
-            onChange={(event) => {
-              setText(event.target.value);
-              setUndoText(null);
-              touched.current = true;
-              mentions.follow();
-            }}
-            onSelect={mentions.follow}
-            onPointerDown={() => {
-              touched.current = true;
-            }}
-            onBlur={(event) => {
-              mentions.boxProps.onBlur();
-              // A press on the menu button takes the focus. The cursor counts only when the person placed it.
-              const field = event.currentTarget;
-              if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
-            }}
-            onPaste={(event) => {
-              const pasted = pastedFiles(event.clipboardData);
-              if (!takesFiles || pasted.length === 0) return;
-              event.preventDefault();
-              files.add(pasted);
-            }}
-            onKeyDown={(event) => {
-              touched.current = true;
-              if (mentions.onKeyDown(event)) return;
-              if (event.key === "Escape" && expanded) {
+          <div className="composer-field">
+            {suggestion !== undefined && (
+              // Before the text in the page order, so Shift+Tab from the box reaches these buttons.
+              <div className="composer-suggestion">
+                <span className="composer-suggestion-text" aria-hidden="true">
+                  {suggestion}
+                </span>
+                <button
+                  type="button"
+                  className="composer-suggestion-send"
+                  aria-label={`Send the suggested reply: ${suggestion}`}
+                  data-tooltip="Send this reply (Tab)"
+                  // The send itself plays its cue.
+                  data-cue="none"
+                  onPointerDown={keepFocus}
+                  onClick={() => sendReply(suggestion)}
+                >
+                  <Icon name="forward" />
+                  <kbd aria-hidden="true">Tab</kbd>
+                </button>
+                {replies.length > 1 && (
+                  <MenuButton
+                    className="chip composer-suggestion-more"
+                    name={moreRepliesLabel(replies.length - 1)}
+                    label="Suggested replies"
+                    fromStart
+                    above
+                    keepFocus
+                    items={replies.map((reply) => ({ label: reply, onChoose: () => sendReply(reply) }))}
+                  >
+                    +{replies.length - 1}
+                  </MenuButton>
+                )}
+                <span id={hintId} className="visually-hidden">
+                  {suggestionHint(suggestion)}
+                </span>
+              </div>
+            )}
+            <textarea
+              ref={box}
+              className={height.share === null ? undefined : "resized"}
+              style={textStyle}
+              aria-label="Message"
+              aria-describedby={block !== null ? lineId : suggestion === undefined ? undefined : hintId}
+              // The suggestion takes the place of the placeholder, in the same grey.
+              placeholder={block !== null ? "Eva cannot answer yet" : suggestion === undefined ? placeholder : ""}
+              rows={1}
+              disabled={block !== null}
+              // The answer of a text action takes the place of the text, so an edit meanwhile would be lost.
+              readOnly={rewriting !== null}
+              aria-busy={rewriting !== null}
+              value={text}
+              {...mentions.boxProps}
+              onChange={(event) => {
+                setText(event.target.value);
+                setUndoText(null);
+                touched.current = true;
+                mentions.follow();
+              }}
+              onSelect={mentions.follow}
+              onPointerDown={() => {
+                touched.current = true;
+              }}
+              onBlur={(event) => {
+                mentions.boxProps.onBlur();
+                // A press on the menu button takes the focus. The cursor counts only when the person placed it.
+                const field = event.currentTarget;
+                if (touched.current) caret.current = { start: field.selectionStart, end: field.selectionEnd };
+              }}
+              onPaste={(event) => {
+                const pasted = pastedFiles(event.clipboardData);
+                if (!takesFiles || pasted.length === 0) return;
                 event.preventDefault();
-                setExpanded(false);
-                return;
-              }
-              const press = {
-                key: event.key,
-                ctrlKey: event.ctrlKey,
-                metaKey: event.metaKey,
-                shiftKey: event.shiftKey,
-                isComposing: event.nativeEvent.isComposing,
-                // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
-                keyCode: event.keyCode,
-              };
-              // Read at each press, so a choice in Settings applies in an open chat too.
-              if (sendsOnEnter(press, readSendKeys())) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-          />
+                files.add(pasted);
+              }}
+              onKeyDown={(event) => {
+                touched.current = true;
+                if (mentions.onKeyDown(event)) return;
+                if (event.key === "Escape" && expanded) {
+                  event.preventDefault();
+                  setExpanded(false);
+                  return;
+                }
+                const press = {
+                  key: event.key,
+                  ctrlKey: event.ctrlKey,
+                  metaKey: event.metaKey,
+                  shiftKey: event.shiftKey,
+                  isComposing: event.nativeEvent.isComposing,
+                  // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari marks an input method's Enter only with this code.
+                  keyCode: event.keyCode,
+                };
+                const mentionOpen = mentions.boxProps["aria-controls"] !== undefined;
+                const shown = suggestion !== undefined;
+                if (shown && sendsSuggestion({ ...press, altKey: event.altKey }, { shown, mentionOpen })) {
+                  event.preventDefault();
+                  void send(suggestion);
+                  return;
+                }
+                // Read at each press, so a choice in Settings applies in an open chat too.
+                if (sendsOnEnter(press, readSendKeys())) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+          </div>
           {folded && sendButtons}
         </div>
         {source !== null && (
@@ -1150,6 +1221,7 @@ function isTextField(element: Element | null): boolean {
 }
 
 const noMenuItems: ComposerMenuItems = { textActions: [], savedPrompts: [] };
+const noSuggestions: readonly string[] = [];
 
 /** The vault's text actions and saved prompts. Without a vault, or on a failed read, the menu has none. */
 function useComposerMenu(): ComposerMenuItems {

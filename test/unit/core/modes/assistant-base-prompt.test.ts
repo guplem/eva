@@ -26,6 +26,14 @@ describe("assistantBasePrompt", () => {
     }
   });
 
+  test("teaches the reply marker, its limits, and when the question form fits better (#1127)", () => {
+    expect(assistantBasePrompt).toContain("## Suggested replies");
+    expect(assistantBasePrompt).toContain("`[[reply: <text>]]`");
+    expect(assistantBasePrompt).toContain("at most 4 replies");
+    expect(assistantBasePrompt).toContain("60 characters");
+    expect(assistantBasePrompt).toContain("`AskUserQuestion`");
+  });
+
   test("teaches the project tag of a calendar event, which the Calendar widget reads (#1012)", () => {
     expect(assistantBasePrompt).toContain("[eva-project:<project-id>]");
   });

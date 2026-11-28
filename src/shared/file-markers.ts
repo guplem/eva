@@ -29,6 +29,11 @@ const fencePattern = /^\s*(```|~~~)/;
 
 /** Reads the marker lines of an answer block. A marker inside a code fence stays text. */
 export function extractFileMarkers(answer: string): FileMarkers {
+  const { kept, ...markers } = readMarkers(answer);
+  return { text: kept.join("\n").trim(), ...markers };
+}
+
+function readMarkers(answer: string): Omit<FileMarkers, "text"> & { readonly kept: readonly string[] } {
   const kept: string[] = [];
   const attach: string[] = [];
   const offer: string[] = [];
@@ -61,7 +66,7 @@ export function extractFileMarkers(answer: string): FileMarkers {
   }
   // A file named twice goes once, and attach wins over offer.
   return {
-    text: kept.join("\n").trim(),
+    kept,
     attach,
     offer: offer.filter((path) => !attach.includes(path)),
     quiet,
@@ -87,6 +92,18 @@ export function shownAnswerText(answer: string, open = false): string {
   const lastBreak = text.lastIndexOf("\n");
   if (!open || !startsMarker(text.slice(lastBreak + 1))) return text;
   return text.slice(0, Math.max(lastBreak, 0)).trim();
+}
+
+/**
+ * The text of an answer with no marker lines, as a terminal writes it while the answer streams.
+ * The terminal writes only what it did not write yet, so the spaces and line ends stay. An `open`
+ * text holds back a last line that can start a marker, until that line is complete.
+ */
+export function untrimmedAnswerText(answer: string, open: boolean): string {
+  const lines = [...readMarkers(answer).kept];
+  if (!open || !startsMarker(lines.at(-1) ?? "")) return lines.join("\n");
+  lines.pop();
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }
 
 function startsMarker(line: string): boolean {

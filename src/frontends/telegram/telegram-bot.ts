@@ -998,12 +998,6 @@ export class TelegramBot {
     if (event.kind === "text_delta") return;
     // Only the web app shows unread and archived chats, and fork names. A mark can come during a turn, and must not release a held block.
     if (event.kind === "session_seen" || event.kind === "session_archived" || event.kind === "fork_named") return;
-    // The topic shows each message from `message_received`, so the whole message of the turn adds nothing here.
-    if (event.kind === "turn_started") {
-      // Only the newest answer offers replies, and none while a turn runs, as in the web app (#1128).
-      void this.inOrder(event.sessionId, this.replies.withdraw(event.sessionId));
-      return;
-    }
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () =>
@@ -1032,6 +1026,14 @@ export class TelegramBot {
     // it never releases a held block early, and the answer still rings the phone (issue #40).
     if (event.kind === "usage_limit") {
       this.holdUsageLine(event);
+      return;
+    }
+    // The topic shows each message from `message_received`, so the whole message of the turn adds nothing.
+    // A turn start must never release a held block. It waits with the other events while a topic
+    // opens, so it ends the offer of the turn before it (#1128).
+    if (event.kind === "turn_started") {
+      // Only the newest answer offers replies, and none while a turn runs, as in the web app.
+      void this.inOrder(event.sessionId, this.replies.withdraw(event.sessionId));
       return;
     }
     const target = targetOf(this.state, event.sessionId);

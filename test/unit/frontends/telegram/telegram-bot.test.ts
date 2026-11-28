@@ -2961,6 +2961,44 @@ describe("suggested replies (#1128)", () => {
     expect(engine.requests).toHaveLength(1);
   });
 
+  test("a turn that starts while the topic of its chat opens ends the offer of the turn before", async () => {
+    let releaseFirst: () => void = () => undefined;
+    const first = new Promise<void>((resolve) => (releaseFirst = resolve));
+    let releaseSecond: () => void = () => undefined;
+    const second = new Promise<void>((resolve) => (releaseSecond = resolve));
+    createEva(async function* (request) {
+      const count = engine.requests.length;
+      await (count === 1 ? first : second);
+      yield* FakeEngine.answer(request, count === 1 ? question : "Second.");
+    });
+    const session = eva.createAssistantSession({ source: "web" });
+    void eva.sessions.send(session.id, "one", "api");
+    const bot = createBot();
+    await settle(bot, () => engine.requests.length === 1);
+    void eva.sessions.send(session.id, "two", "api");
+    // A slow Telegram keeps the topic opening while turn 1 ends and turn 2 starts.
+    telegram.sendDelayMs = 300;
+    telegram.pressButton(owner, `o:${session.id}`);
+    const pressed = bot.pollOnce();
+    while (telegram.callsTo("createForumTopic").length === 0) await Bun.sleep(5);
+    releaseFirst();
+    while (engine.requests.length < 2) await Bun.sleep(5);
+    telegram.sendDelayMs = 0;
+    await pressed;
+    await settle(bot, () => telegram.sentTexts().includes("Shall I go on?"));
+    for (let round = 0; round < 10; round += 1) await bot.pollOnce();
+    // The offer of turn 1 never goes, or goes away again, and its button starts nothing.
+    const offer = offers()[0];
+    const offerId = (offer?.result as { message_id: number } | undefined)?.message_id;
+    if (offerId !== undefined)
+      expect(telegram.callsTo("deleteMessage").map((call) => call.params["message_id"])).toContain(offerId);
+    telegram.pressButton(owner, buttonsOf(offer)[0] ?? "p:none");
+    await settle(bot, () => notes().includes(gone));
+    expect(engine.requests).toHaveLength(2);
+    releaseSecond();
+    await settle(bot, () => telegram.sentTexts().includes("Second."));
+  });
+
   test("a chat whose topic opens during its turn gets its buttons at the turn end", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));

@@ -157,3 +157,28 @@ describe.if(process.platform !== "win32")("the quoting survives a real `bash -c`
     });
   });
 });
+
+describe.if(process.platform !== "win32")("a stale path of Eva fails closed (#759)", () => {
+  // An update renames the executable aside, then puts the new one at the same path. In between,
+  // or if a person moves Eva, the path names no file: the command must not run at all.
+  test("when Eva's executable is gone, bash cannot start the wrapper, and the command never runs", async () => {
+    const folder = mkdtempSync(join(tmpdir(), "eva-stale-"));
+    try {
+      const marker = join(folder, "ran");
+      const line = wrappedCommand(
+        { command: [join(folder, "eva")], wallFile: join(folder, "wall.json") },
+        folder,
+        `touch ${marker}`,
+      );
+      const result = await systemProcessRunner.run(["/bin/bash", "-c", line], {
+        cwd: folder,
+        environment: { PATH: process.env["PATH"] ?? "" },
+        timeoutMs: 20_000,
+      });
+      expect(result.exitCode).toBe(127);
+      expect(await Bun.file(marker).exists()).toBe(false);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+});

@@ -999,16 +999,16 @@ function heldEva(exits: number[] = []): {
 describe("eva shell-sandbox (#759)", () => {
   test("runs the wrapper with no instance and no question, and exits with the command's code", async () => {
     const host = fakeHost();
-    const calls: [string, string][] = [];
-    const code = await runCli(["shell-sandbox", "/srv/eva/wall.json", "ls -v"], inRoot(host), {
+    const calls: [string, string, string][] = [];
+    const code = await runCli(["shell-sandbox", "/srv/eva/wall.json", "/srv/vault/clone", "ls -v"], inRoot(host), {
       ...noWiring,
-      shellSandbox: (wallFile, command) => {
-        calls.push([wallFile, command]);
+      shellSandbox: (wallFile, folder, command) => {
+        calls.push([wallFile, folder, command]);
         return Promise.resolve(42);
       },
     });
     expect(code).toBe(42);
-    expect(calls).toEqual([["/srv/eva/wall.json", "ls -v"]]);
+    expect(calls).toEqual([["/srv/eva/wall.json", "/srv/vault/clone", "ls -v"]]);
     // The command's own output is all that pi reads.
     expect(printed(host)).toBe("");
   });

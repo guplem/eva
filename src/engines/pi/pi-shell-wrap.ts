@@ -52,10 +52,24 @@ function shellQuote(word: string): string {
   return `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
-/** The command line that runs `command` in the wrapper, with each part as one word. */
-export function wrappedCommand(wall: ShellWall, command: string): string {
-  return [...wall.command, "shell-sandbox", wall.wallFile, command].map(shellQuote).join(" ");
+/**
+ * The command line that runs `command` in the wrapper, in `folder`, with each part as one word.
+ * Eva starts in `/`: Bun reads a `bunfig.toml`, which can name a script to run first, and a `.env`
+ * from the folder where it starts. The chat can write its own folder, and a clone can bring them.
+ * The wrapper goes to the chat's folder itself, after Bun has started.
+ */
+export function wrappedCommand(wall: ShellWall, folder: string, command: string): string {
+  const words = [...wall.command, "shell-sandbox", wall.wallFile, folder, command].map(shellQuote);
+  return `cd / && exec ${words.join(" ")}`;
 }
+
+/** Linux takes at most 128 KiB in one argument, and bash gets the whole line as one. */
+const longestLine = 128 * 1024 - 1;
+
+const tooLong = {
+  block: true,
+  reason: "This command is too long for Eva's shell sandbox. Write it to a file, and run the file.",
+} as const;
 
 function parsedWall(text: string): ShellWall | null {
   try {
@@ -83,7 +97,10 @@ export default function evaShellWrap(pi: ShellWrapPi): void {
     try {
       const command = event.input["command"];
       if (wall === null || typeof command !== "string") return blocked;
-      event.input["command"] = wrappedCommand(wall, command);
+      // pi's bash tool runs in pi's own folder, which is the chat's folder.
+      const line = wrappedCommand(wall, process.cwd(), command);
+      if (Buffer.byteLength(line) > longestLine) return tooLong;
+      event.input["command"] = line;
       return undefined;
     } catch {
       return blocked;

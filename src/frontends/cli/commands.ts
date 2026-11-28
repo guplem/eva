@@ -73,7 +73,7 @@ export interface CliWiring {
   /** Starts the tray icon of `eva supervise` on Windows. */
   readonly startLineProcess: LineProcessStarter;
   /** `eva shell-sandbox`: runs one shell command of a pi Project chat in the sandbox (#759). */
-  readonly shellSandbox: (wallFile: string, command: string) => Promise<number>;
+  readonly shellSandbox: (wallFile: string, folder: string, command: string) => Promise<number>;
 }
 
 /** Runs one `eva` command and gives the process's exit code. */
@@ -93,7 +93,8 @@ const setupStoppedLine = "Setup stopped. Each answer is saved. Run `eva setup` t
 
 async function runCommand(command: CliCommand, host: CliHost, wiring: CliWiring): Promise<number> {
   // pi runs it for each command of a turn: it asks nothing and prints nothing of its own.
-  if (command.command === "shell-sandbox") return wiring.shellSandbox(command.wallFile, command.shellCommand);
+  if (command.command === "shell-sandbox")
+    return wiring.shellSandbox(command.wallFile, command.folder, command.shellCommand);
   if (command.command === "usage-error") {
     host.writeError(`${command.message}\n\n${usageText}`);
     return exitCodes.badConfig;

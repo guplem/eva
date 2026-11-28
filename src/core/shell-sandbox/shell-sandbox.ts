@@ -12,7 +12,6 @@
  * does not wrap it at all.
  */
 import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SandboxedCommandStarter } from "../../shared/sandboxed-command.ts";
 
@@ -45,6 +44,14 @@ export interface ShellSandboxRun {
   readonly start: SandboxedCommandStarter;
   readonly readText: (path: string) => string | null;
   readonly writeError: (text: string) => void;
+  /**
+   * Makes `cwd` this process's folder. The wrapper starts in `/`, so that Bun reads no
+   * `bunfig.toml` and no `.env` of the chat at start. The library protects the files of the folder
+   * where it runs, such as the clone's `.git/hooks`, so it must run in the chat's folder.
+   */
+  readonly enterFolder: (folder: string) => void;
+  /** Where each command's own temporary folder goes: the temporary folder that the wall keeps writable. */
+  readonly temporaryRoot: string;
 }
 
 /** Runs the command in the sandbox and gives its exit code. Never throws. */
@@ -55,8 +62,14 @@ export async function runShellSandbox(run: ShellSandboxRun): Promise<number> {
   // A new folder for each command, inside the temporary folder that the wall keeps writable.
   let temporaryFolder: string;
   try {
-    temporaryFolder = mkdtempSync(join(tmpdir(), "eva-shell-sandbox-"));
+    temporaryFolder = mkdtempSync(join(run.temporaryRoot, "eva-shell-sandbox-"));
   } catch {
+    return failed(run);
+  }
+  try {
+    run.enterFolder(run.cwd);
+  } catch {
+    rmSync(temporaryFolder, { recursive: true, force: true });
     return failed(run);
   }
   try {

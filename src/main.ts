@@ -7,7 +7,7 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
-import { homedir, hostname, userInfo } from "node:os";
+import { homedir, hostname, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { locateEngineProgram, pathWithOwnGh, pathWithUvFolder } from "./core/engine-install/engine-install.ts";
@@ -380,11 +380,11 @@ runCli(process.argv.slice(2), host, {
   serve,
   startLongProcess: systemLongProcessStarter,
   startLineProcess: systemLineProcessStarter,
-  shellSandbox: (wallFile, command) =>
+  shellSandbox: (wallFile, folder, command) =>
     runShellSandbox({
       wallFile,
       command,
-      cwd: process.cwd(),
+      cwd: folder,
       // pi's own environment, which Eva built with buildChildEnvironment.
       environment: Object.fromEntries(
         Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -393,6 +393,10 @@ runCli(process.argv.slice(2), host, {
       start: systemSandboxedCommandStarter,
       readText: readTextTolerant,
       writeError: (text) => process.stderr.write(text),
+      enterFolder: (path) => {
+        process.chdir(path);
+      },
+      temporaryRoot: tmpdir(),
     }),
 })
   .then((code) => process.exit(code))

@@ -64,6 +64,10 @@ function fakeRun(
       library,
       start,
       readText: (path) => (path === "/srv/eva/engines/pi/shell-walls/turn.json" ? wallText : null),
+      enterFolder: (folder) => {
+        recorded.steps.push(`enter ${folder}`);
+      },
+      temporaryRoot: tmpdir(),
       writeError: (text) => {
         recorded.errors.push(text);
       },
@@ -76,6 +80,7 @@ describe("eva shell-sandbox, the wrapper of a pi Project chat's shell (#759)", (
     const { run, recorded } = fakeRun();
     expect(await runShellSandbox(run)).toBe(7);
     expect(recorded.steps).toEqual([
+      "enter /srv/vault/Projects/p",
       `initialize ${JSON.stringify(wallConfig)}`,
       "wrap cat notes.md",
       "start",
@@ -167,5 +172,32 @@ describe("the temporary folder of each sandboxed command (#759)", () => {
     folders.push(...startFails.recorded.temporaryFolders);
     expect(folders).toHaveLength(2);
     for (const folder of folders) expect(existsSync(folder)).toBe(false);
+  });
+});
+
+describe("where the wrapper runs (#759)", () => {
+  test("it goes to the chat's folder before the library starts: the library protects that folder's files", async () => {
+    const { run, recorded } = fakeRun();
+    await runShellSandbox(run);
+    expect(recorded.steps.slice(0, 2)).toEqual([
+      "enter /srv/vault/Projects/p",
+      `initialize ${JSON.stringify(wallConfig)}`,
+    ]);
+  });
+
+  test("a folder that it cannot enter, or no temporary folder, runs nothing", async () => {
+    const noFolder = fakeRun();
+    const enterFails = {
+      ...noFolder.run,
+      enterFolder: () => {
+        throw new Error("no such folder");
+      },
+    };
+    expect(await runShellSandbox(enterFails)).toBe(126);
+    expect(noFolder.recorded.started).toEqual([]);
+    const noTemporary = fakeRun();
+    expect(await runShellSandbox({ ...noTemporary.run, temporaryRoot: "/no/such/temporary/folder" })).toBe(126);
+    expect(noTemporary.recorded.started).toEqual([]);
+    expect(noTemporary.recorded.steps).toEqual([]);
   });
 });

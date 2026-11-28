@@ -84,17 +84,21 @@ describe("cliCommands", () => {
 describe("shell-sandbox, the internal wrapper of a pi Project chat's shell (#759)", () => {
   test("takes the model's command as it is, even when it looks like an option or a word of help", () => {
     for (const command of ["-v", "--help", "--instance x", "help", "a 'b' \"c\" $(d) `e`", ""])
-      expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json", command])).toEqual({
+      expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json", "/srv/vault/clone", command])).toEqual({
         command: "shell-sandbox",
         wallFile: "/srv/eva/wall.json",
+        folder: "/srv/vault/clone",
         shellCommand: command,
       });
   });
 
-  test("needs exactly a wall file and a command", () => {
+  test("needs exactly a wall file, a folder and a command", () => {
     expect(parseArguments(["shell-sandbox"]).command).toBe("usage-error");
     expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json"]).command).toBe("usage-error");
-    expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json", "ls", "extra"]).command).toBe("usage-error");
+    expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json", "ls"]).command).toBe("usage-error");
+    expect(parseArguments(["shell-sandbox", "/srv/eva/wall.json", "/srv/c", "ls", "extra"]).command).toBe(
+      "usage-error",
+    );
   });
 
   test("a person never types it, so the help does not show it", () => {

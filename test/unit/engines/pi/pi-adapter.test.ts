@@ -202,6 +202,19 @@ describe("buildPiArguments", () => {
         shellWrapExtensionFile: wrap,
       }),
     ).toEqual([...base, "-e", wrap, "-e", filter, "--no-extensions"]);
+    const bridge = "/eva/pi/eva-mcp-extension.ts";
+    expect(buildPiArguments(request(), { ...inputs, mcpExtensionFile: bridge, shellWrapExtensionFile: wrap })).toEqual([
+      ...base,
+      "-e",
+      wrap,
+      "-e",
+      bridge,
+      "--no-extensions",
+      "--append-system-prompt",
+      "/eva/pi/prompts/session-1.md",
+      "--skill",
+      join("/demo-vault/.eva", "skills"),
+    ]);
   });
 
   test("a specialist chat loads none of its folder's extensions, and keeps Eva's filter (#703)", () => {

@@ -58,6 +58,7 @@ import { TelegramQuestions } from "./telegram-questions.ts";
 import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
+import { pageLine } from "./telegram-pages.ts";
 import type { OutwardActionCategory } from "../../shared/outward-actions.ts";
 import {
   alwaysConfirmText,
@@ -1065,6 +1066,7 @@ export class TelegramBot {
           await this.inOrder(event.sessionId, async () => {
             const markers = extractFileMarkers(answer);
             if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
+            if (markers.show.length > 0) await this.sendPageLine(target.chatId, target.topicId, event.sessionId);
             for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
             if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
             await this.sendUsageLines(usage, target.chatId, target.topicId);
@@ -1158,12 +1160,19 @@ export class TelegramBot {
       this.answers.set(event.sessionId, answer);
     }
     if (markers.text.length > 0) await this.sender.sendAnswer(chatId, topicId, markers.text, quiet);
+    if (markers.show.length > 0) await this.sendPageLine(chatId, topicId, event.sessionId, quiet);
     for (const path of markers.attach) {
       if (answer.attached.has(path)) continue;
       answer.attached.add(path);
       await this.files.sendVaultFile(chatId, topicId, path);
     }
     for (const path of markers.offer) answer.offered.add(path);
+  }
+
+  /** Telegram has no safe frame for a page (#1129), so it gets a line, never the HTML file. */
+  private async sendPageLine(chatId: number, topicId: number | null, sessionId: string, quiet = false): Promise<void> {
+    const url = this.options.eva.status().remoteAccess?.url ?? null;
+    await this.sender.sendPlain(chatId, topicId, pageLine(url, sessionId), quiet);
   }
 
   /**

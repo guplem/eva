@@ -1077,6 +1077,15 @@ describe("/chats: every chat of the instance (#9)", () => {
     expect(telegram.callsTo("editForumTopic")).toEqual([]);
   });
 
+  test("a press shows the page line of an earlier answer with a page (#1129)", async () => {
+    createEva((request) => FakeEngine.answer(request, "A chart.\n[[show: .eva/scratch/chart.html]]"));
+    const sessionId = await webChat("draw it");
+    const bot = createBot();
+    telegram.pressButton(owner, `o:${sessionId}`);
+    await settle(bot, () => telegram.sentTexts().includes("This answer has a page. Open it in Eva's web app."));
+    expect(telegram.sentTexts()).toContain("A chart.");
+  });
+
   test("a deleted first branch whose heir has its own topic loses its topic, and the heir keeps its own (issue 647)", async () => {
     const sessionId = await webChat("one");
     const fork = eva.sessions.fork(sessionId, eva.sessions.get(sessionId).turns[0]!.lastMessageId!);
@@ -2576,6 +2585,36 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(telegram.sentTexts().join("\n")).not.toContain("[[attach");
   });
 
+  test("a show marker sends no file, and links to the chat in the web app (#1129)", async () => {
+    sandbox.write(vault(), ".eva/scratch/chart.html", "<p>chart</p>");
+    createEva(
+      (request) => FakeEngine.answer(request, "A chart.\n[[show: .eva/scratch/chart.html]]"),
+      systemProcessRunner,
+      {
+        remoteAccess: fixedRemoteAccess({ url: "https://eva.example.ts.net", problem: null }),
+      },
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "draw it");
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("This answer has a page.")));
+    const id = eva.sessions.list()[0]?.id ?? "";
+    expect(telegram.sentTexts()).toContain(
+      `This answer has a page. Open it in the web app: https://eva.example.ts.net/#/chat/${id}`,
+    );
+    expect(telegram.sentTexts().join("\n")).not.toContain("[[show");
+    expect(uploads()).toEqual([]);
+  });
+
+  test("a show marker with no remote address says to open the web app (#1129)", async () => {
+    createEva((request) => FakeEngine.answer(request, "[[show: .eva/scratch/chart.html]]"), systemProcessRunner, {
+      remoteAccess: fixedRemoteAccess({ url: null, problem: "Turn on HTTPS." }),
+    });
+    const bot = createBot();
+    telegram.sendText(owner, "draw it");
+    await settle(bot, () => telegram.sentTexts().includes("This answer has a page. Open it in Eva's web app."));
+    expect(uploads()).toEqual([]);
+  });
+
   test("an offer marker shows a button, and the press sends the file", async () => {
     sandbox.write(vault(), "Methods/Plan.md", "# Plan\n");
     createEva((request) => FakeEngine.answer(request, "Want it?\n[[offer: Methods/Plan.md]]"));
@@ -2898,6 +2937,23 @@ describe("schedules (lessons 70, 126)", () => {
     await settle(bot, () => telegram.sentTexts().some((text) => text.includes("She replied")));
     await eva.idle();
     expect(telegram.sentTexts().slice(before)).toEqual(["She replied."]);
+  });
+
+  test("a run with a page sends the page line, and no file (#1129)", async () => {
+    writeSchedules([{ id: "chart", name: "Chart", at: "10:45", prompt: "Draw the week." }]);
+    createEva((request) => FakeEngine.answer(request, "The week.\n[[show: .eva/scratch/week.html]]"));
+    const bot = createBot();
+    await eva.schedules?.tick();
+    const before = telegram.sentTexts().length;
+    clock = new Date("2026-10-14T10:45:00Z");
+    await eva.schedules?.tick();
+    await settle(bot, () => telegram.sentTexts().some((text) => text.startsWith("This answer has a page.")));
+    await eva.idle();
+    expect(telegram.sentTexts().slice(before)).toEqual([
+      "The week.",
+      "This answer has a page. Open it in Eva's web app.",
+    ]);
+    expect(telegram.callsTo("sendDocument")).toEqual([]);
   });
 
   test("text before a tool call in a quiet run never reaches the topic (#687)", async () => {

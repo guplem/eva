@@ -14,7 +14,12 @@ export const sandboxRuntimeLibrary: SandboxLibrary = {
     // With no question callback, it refuses each host that no rule names.
     await SandboxManager.initialize(SandboxRuntimeConfigSchema.parse(config));
   },
-  wrap: async (command) => (await SandboxManager.wrapWithSandboxArgv(command)).argv,
+  wrap: async (command, temporaryFolder) => {
+    // The library reads the command's TMPDIR from this variable when it wraps. Without it, the
+    // TMPDIR is `/tmp/claude`, which only Claude Code makes.
+    process.env["CLAUDE_CODE_TMPDIR"] = temporaryFolder;
+    return (await SandboxManager.wrapWithSandboxArgv(command)).argv;
+  },
   cleanup: () => {
     SandboxManager.cleanupAfterCommand();
   },

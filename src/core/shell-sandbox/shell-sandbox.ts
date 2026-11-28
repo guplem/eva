@@ -11,6 +11,9 @@
  * reads why. Only Eva's start check may let a command run with no sandbox: then the extension
  * does not wrap it at all.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { SandboxedCommandStarter } from "../../shared/sandboxed-command.ts";
 
 /** What the model reads when the sandbox cannot start. It names no path: the chat must not know of a vault. */
@@ -24,8 +27,8 @@ const cannotRunExitCode = 126;
 export interface SandboxLibrary {
   /** Checks the config and starts the network proxy. Rejects when the sandbox cannot start. */
   initialize(config: Readonly<Record<string, unknown>>): Promise<void>;
-  /** The command line that runs `command` in the sandbox. */
-  wrap(command: string): Promise<readonly string[]>;
+  /** The command line that runs `command` in the sandbox, with `temporaryFolder` as its TMPDIR. */
+  wrap(command: string, temporaryFolder: string): Promise<readonly string[]>;
   /** Removes what the sandbox left on disk for one command. */
   cleanup(): void;
   /** Stops the network proxy. */
@@ -48,20 +51,32 @@ export interface ShellSandboxRun {
 export async function runShellSandbox(run: ShellSandboxRun): Promise<number> {
   const config = wallConfig(run.readText(run.wallFile));
   if (config === null) return failed(run);
-  let command: readonly string[];
+  // The library gives each command a TMPDIR that Claude Code makes for it, and git writes there.
+  // A new folder for each command, inside the temporary folder that the wall keeps writable.
+  let temporaryFolder: string;
   try {
-    await run.library.initialize(config);
-    command = await run.library.wrap(run.command);
+    temporaryFolder = mkdtempSync(join(tmpdir(), "eva-shell-sandbox-"));
   } catch {
-    await stop(run.library);
     return failed(run);
   }
   try {
-    return await run.start(command, { cwd: run.cwd, environment: run.environment });
-  } catch {
-    return failed(run);
+    let command: readonly string[];
+    try {
+      await run.library.initialize(config);
+      command = await run.library.wrap(run.command, temporaryFolder);
+    } catch {
+      await stop(run.library);
+      return failed(run);
+    }
+    try {
+      return await run.start(command, { cwd: run.cwd, environment: run.environment });
+    } catch {
+      return failed(run);
+    } finally {
+      await stop(run.library);
+    }
   } finally {
-    await stop(run.library);
+    rmSync(temporaryFolder, { recursive: true, force: true });
   }
 }
 

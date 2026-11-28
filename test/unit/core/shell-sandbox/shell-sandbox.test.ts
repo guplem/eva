@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
   runShellSandbox,
   sandboxFailedMessage,
@@ -16,18 +18,22 @@ interface Recorded {
   readonly steps: string[];
   readonly started: { command: readonly string[]; cwd: string; environment: Readonly<Record<string, string>> }[];
   readonly errors: string[];
+  readonly temporaryFolders: string[];
+  readonly temporaryFolderExisted: boolean[];
 }
 
 function fakeRun(
   overrides: { library?: Partial<SandboxLibrary>; start?: SandboxedCommandStarter; wallText?: string | null } = {},
 ): { run: ShellSandboxRun; recorded: Recorded } {
-  const recorded: Recorded = { steps: [], started: [], errors: [] };
+  const recorded: Recorded = { steps: [], started: [], errors: [], temporaryFolders: [], temporaryFolderExisted: [] };
   const library: SandboxLibrary = {
     initialize: (config) => {
       recorded.steps.push(`initialize ${JSON.stringify(config)}`);
       return Promise.resolve();
     },
-    wrap: (command) => {
+    wrap: (command, temporaryFolder) => {
+      recorded.temporaryFolders.push(temporaryFolder);
+      recorded.temporaryFolderExisted.push(existsSync(temporaryFolder));
       recorded.steps.push(`wrap ${command}`);
       return Promise.resolve(["/bin/bash", "-c", `boxed ${command}`]);
     },
@@ -129,5 +135,37 @@ describe("eva shell-sandbox, the wrapper of a pi Project chat's shell (#759)", (
       },
     });
     expect(await runShellSandbox(run)).toBe(7);
+  });
+});
+
+describe("the temporary folder of each sandboxed command (#759)", () => {
+  test("is new for each command, in the temporary folder that the wall keeps writable, and goes after it", async () => {
+    const first = fakeRun();
+    const second = fakeRun();
+    await runShellSandbox(first.run);
+    await runShellSandbox(second.run);
+    const [folder] = first.recorded.temporaryFolders;
+    expect(folder?.startsWith(tmpdir())).toBe(true);
+    expect(first.recorded.temporaryFolderExisted).toEqual([true]);
+    expect(second.recorded.temporaryFolders[0]).not.toBe(folder);
+    expect(existsSync(folder ?? "")).toBe(false);
+  });
+
+  test("goes also when the wrap or the command fails", async () => {
+    const folders: string[] = [];
+    const wrapFails = fakeRun({
+      library: {
+        wrap: (_command, temporaryFolder) => {
+          folders.push(temporaryFolder);
+          return Promise.reject(new Error("no shell"));
+        },
+      },
+    });
+    expect(await runShellSandbox(wrapFails.run)).toBe(126);
+    const startFails = fakeRun({ start: () => Promise.reject(new Error("no bash")) });
+    expect(await runShellSandbox(startFails.run)).toBe(126);
+    folders.push(...startFails.recorded.temporaryFolders);
+    expect(folders).toHaveLength(2);
+    for (const folder of folders) expect(existsSync(folder)).toBe(false);
   });
 });

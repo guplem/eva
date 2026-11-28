@@ -146,6 +146,7 @@ Two or more computers can run Eva with the same vault. The vault names the hub i
 - **Secrets never reach a front end.** The `Redactor` removes each known secret, and each common token shape, from the text of each event and log line.
 - **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, with either engine, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
 - **Trust of a clone.** A clone of an unknown repository runs with its hooks, project settings and MCP servers off, until you trust it.
+- **Eva's own git.** Eva runs her own git outside the sandbox, with the GitHub login. So it ignores each git setting of a chat's folder that names a program, and it never enters a submodule. Eva runs no git in a repository of a clone whose git data points to another place, or whose own config names a program.
 - **Signed updates.** See below.
 
 ## Updates

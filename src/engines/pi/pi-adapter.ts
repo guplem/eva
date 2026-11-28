@@ -824,7 +824,8 @@ const piReadTools = new Set(["read", "grep", "find", "ls"]);
 function decide(request: TurnRequest, toolName: string, input: Record<string, unknown>): Promise<ApprovalAnswer> {
   // A model call has no tools, and nobody waits for a question.
   if (request.mode === "model-call") return Promise.resolve("deny");
-  // A Project chat's file tools may not open a closed folder, such as the vault (#711). pi has no shell wall.
+  // A Project chat's file tools may not open a closed folder, such as the vault (#711). The shell wall is the
+  // sandbox around each bash command (#759), so a bash call passes here.
   const wall = request.fileWall;
   const options = {
     patternKeys: piPatternFields[toolName] ?? [],

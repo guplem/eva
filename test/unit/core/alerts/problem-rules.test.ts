@@ -299,13 +299,20 @@ describe("lastLocationProblem", () => {
 
 describe("shellWallProblem (#711)", () => {
   test("says that the shell of a Project chat can read the vault and Eva's folder, why, and that the file tools stay walled", () => {
-    const problem = shellWallProblem("Claude Code's shell sandbox needs bubblewrap.");
+    const problem = shellWallProblem({ reason: "The shell sandbox needs bubblewrap.", fixable: true, piOnly: false });
     expect(problem?.message).toContain("can read the vault and Eva's own folder on this computer");
     expect(problem?.message).toContain("bubblewrap");
     expect(problem?.message).toContain("file tools");
     // The guide says what the sandbox is and how to set it up (#760).
     expect(problem?.message).toContain("docs/guide/reference.md#set-up-the-sandbox");
     expect(shellWallProblem(null)).toBeNull();
+  });
+
+  test("names the chats whose shell has no wall: those of both engines, or pi's only (#759)", () => {
+    const every = shellWallProblem({ reason: "The shell sandbox needs bubblewrap.", fixable: true, piOnly: false });
+    expect(every?.message).toContain("The shell of a Project chat, with Claude Code or pi, can read");
+    const pi = shellWallProblem({ reason: "pi's shell sandbox needs ripgrep.", fixable: true, piOnly: true });
+    expect(pi?.message).toContain("The shell of a pi Project chat can read");
   });
 });
 

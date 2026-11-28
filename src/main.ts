@@ -25,7 +25,13 @@ import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
 import { hardExitGraceMs, shutdownDeadlineMs, stopSequence } from "./core/instance/shutdown.ts";
 import { prepareStart } from "./core/instance/startup.ts";
 import { assistantBasePrompt } from "./core/modes/assistant-base-prompt.ts";
-import { createHomeFolders, instanceNameOf, type EvaConfig, type HomePaths } from "./core/settings/home.ts";
+import {
+  createHomeFolders,
+  engineFolders,
+  instanceNameOf,
+  type EvaConfig,
+  type HomePaths,
+} from "./core/settings/home.ts";
 import { ClaudeCodeEngine } from "./engines/claude-code/claude-code-adapter.ts";
 import { PiEngine } from "./engines/pi/pi-adapter.ts";
 import { PiLogin } from "./engines/pi/pi-login.ts";
@@ -101,7 +107,7 @@ const host: CliHost = {
   },
 };
 
-/** This computer, as the checks of Claude Code's shell sandbox see it. */
+/** This computer, as the checks of the shell sandbox see it. */
 function shellWallMachine(): ShellWallMachine {
   return {
     platform: process.platform,
@@ -252,7 +258,12 @@ async function serve(paths: HomePaths): Promise<number> {
     config: withVoicePrograms(config),
     secrets,
     engines,
-    shellWallGap: () => shellWallGap(shellWallMachine()),
+    // pi's sandbox also needs ripgrep: on the PATH, or in pi's own bin, which pi puts on each command's PATH.
+    shellWallGap: () =>
+      shellWallGap(shellWallMachine(), {
+        ripgrep: engines.some((engine) => engine.name === "pi"),
+        ripgrepFolders: [join(engineFolders(paths).piAgent, "bin")],
+      }),
     bwrapProfileLeft: () => leftoverBwrapProfile(shellWallMachine()),
     nestedSandbox: () => nestedSandboxWorks(shellWallMachine()),
     // Windows Search excludes AppData, where the vault lives, so Eva adds it for the Start menu (#942).

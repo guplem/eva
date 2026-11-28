@@ -571,6 +571,12 @@ export class Eva {
    * says that it can: on a computer that blocks it, the filter breaks every command (#760).
    */
   private socketFilter: boolean;
+  /**
+   * Whether pi's shell goes in the sandbox (#759). On until the start check finds no sandbox: a
+   * command before the check goes in the sandbox, and where none can start, it fails and runs
+   * nothing. So no command runs with no wall while the check runs.
+   */
+  private shellSandbox: boolean;
   private readonly options: EvaOptions;
   private readonly redactor: Redactor;
   /** The last result of each Test since the start. A restart clears them: the tokens may have changed. */
@@ -799,6 +805,7 @@ export class Eva {
     this.uvAnswer = null;
     this.latestToolCache = new Map();
     this.socketFilter = false;
+    this.shellSandbox = true;
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,
@@ -1615,10 +1622,12 @@ export class Eva {
     this.reportVaultStructure();
     // A restart lost the open notices about plain versions: the unread ones open again, unsent (#1110).
     this.plainHistory.reopen();
-    // The sandbox of Claude Code says nothing when it cannot start, so Eva looks herself (#711).
-    if (this.options.engines.some((engine) => engine.name === "claude-code")) {
+    // Neither sandbox says anything when it cannot start, so Eva looks herself (#711). Each engine
+    // has one now: Claude Code its own, pi the same library around its shell (#759).
+    if (this.options.engines.length > 0) {
       void (this.options.shellWallGap?.() ?? Promise.resolve(null)).then((gap) => {
-        const problem = shellWallProblem(gap?.reason ?? null);
+        this.shellSandbox = gap === null;
+        const problem = shellWallProblem(gap);
         // A gap that no step of the person closes would wait in "Needs you" forever (#825).
         if (problem !== null && gap?.fixable === false) this.alerts.notifyOnce("shell_wall", "news", problem.message);
         else this.alerts.report("shell_wall", problem);
@@ -3065,10 +3074,17 @@ export class Eva {
     return ahead.version ?? "newest";
   }
 
-  /** The walls of each Project chat (#711), with the socket filter that this computer allows (#760). */
+  /**
+   * The walls of each Project chat (#711), with the socket filter that this computer allows (#760),
+   * and whether pi's shell goes in the sandbox (#759).
+   */
   private wallRoots(): WallRoots {
     const { paths, config } = this.options;
-    return { ...projectWallRoots(paths, config.vaultPath, config.projectRoots), socketFilter: this.socketFilter };
+    return {
+      ...projectWallRoots(paths, config.vaultPath, config.projectRoots),
+      socketFilter: this.socketFilter,
+      shellSandbox: this.shellSandbox,
+    };
   }
 
   private noticeVaultAhead(): void {

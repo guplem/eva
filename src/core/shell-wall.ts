@@ -1,5 +1,6 @@
 /**
- * Whether Claude Code's sandbox can wall the shell of a Project chat on this computer (#711). The
+ * Whether a sandbox can wall the shell of a Project chat on this computer: Claude Code's own (#711),
+ * or the same library around pi's shell (#759). The
  * sandbox reports nothing to Eva when it cannot start, so Eva looks for what it needs. The file
  * tools of each chat stay walled either way: only the shell can then read the vault.
  */
@@ -119,31 +120,66 @@ export interface ShellWallGap {
   readonly reason: string;
   /** False where no step of the person gives the shell a wall, such as on Windows (#825). */
   readonly fixable: boolean;
+  /** True when only pi's chats have the gap: Claude Code brings the ripgrep that pi's sandbox needs (#759). */
+  readonly piOnly: boolean;
 }
+
+/** What the sandbox of the engines on this computer needs beyond Claude Code's. */
+export interface ShellWallNeeds {
+  /** pi's sandbox library needs ripgrep on Linux. Claude Code brings its own. */
+  readonly ripgrep: boolean;
+  /** Folders beyond the PATH where an `rg` counts, such as pi's own `bin`, which pi puts on each command's PATH. */
+  readonly ripgrepFolders: readonly string[];
+}
+
+const noNeeds: ShellWallNeeds = { ripgrep: false, ripgrepFolders: [] };
 
 /** Null when the sandbox can run here, else why not. */
-export async function shellWallGap(machine: ShellWallMachine): Promise<ShellWallGap | null> {
+export async function shellWallGap(
+  machine: ShellWallMachine,
+  needs: ShellWallNeeds = noNeeds,
+): Promise<ShellWallGap | null> {
   if (machine.platform === "darwin") return null;
   if (machine.platform === "win32")
-    return { reason: "Claude Code has no shell sandbox that Eva can turn on for you on Windows.", fixable: false };
+    return {
+      reason: "Eva has no shell sandbox that she can turn on for you on Windows.",
+      fixable: false,
+      piOnly: false,
+    };
   if (machine.platform !== "linux")
-    return { reason: `Claude Code has no shell sandbox on ${machine.platform}.`, fixable: false };
-  const reason = await linuxGap(machine);
-  return reason === null ? null : { reason, fixable: true };
+    return { reason: `Eva has no shell sandbox on ${machine.platform}.`, fixable: false, piOnly: false };
+  const ripgrep = !needs.ripgrep || hasRipgrep(machine, needs.ripgrepFolders);
+  const reason = await linuxGap(machine, ripgrep);
+  if (reason !== null) return { reason, fixable: true, piOnly: false };
+  if (ripgrep) return null;
+  return {
+    reason:
+      "The shell sandbox of pi chats needs ripgrep. Run the install command of Eva again, or install it, such as with `sudo apt-get update && sudo apt-get install ripgrep`. Then restart Eva.",
+    fixable: true,
+    piOnly: true,
+  };
 }
 
-/** Null when bubblewrap can run here, else why not. */
-async function linuxGap(machine: ShellWallMachine): Promise<string | null> {
+function hasRipgrep(machine: ShellWallMachine, folders: readonly string[]): boolean {
+  return machine.which("rg") !== null || folders.some((folder) => machine.listFiles(folder).includes("rg"));
+}
+
+/** Null when bubblewrap can run here, else why not. A missing ripgrep is named with the other programs. */
+async function linuxGap(machine: ShellWallMachine, ripgrep: boolean): Promise<string | null> {
   const missing = [
     ...(machine.which("bwrap") === null ? ["bubblewrap"] : []),
     ...(machine.which("socat") === null ? ["socat"] : []),
   ];
-  if (missing.length > 0)
-    return `Claude Code's shell sandbox needs ${missing.join(" and ")}. Run the install command of Eva again, or install them, such as with \`sudo apt-get update && sudo apt-get install bubblewrap socat\`. Then restart Eva.`;
+  if (missing.length > 0) {
+    const all = [...missing, ...(ripgrep ? [] : ["ripgrep"])];
+    const names = all.length === 1 ? (all[0] ?? "") : `${all.slice(0, -1).join(", ")} and ${all.at(-1) ?? ""}`;
+    const packages = ["bubblewrap", "socat", ...(ripgrep ? [] : ["ripgrep"])].join(" ");
+    return `The shell sandbox needs ${names}. Run the install command of Eva again, or install them, such as with \`sudo apt-get update && sudo apt-get install ${packages}\`. Then restart Eva.`;
+  }
   // An installed bubblewrap can still fail, such as where the system allows no user namespace.
   const trial = ["bwrap", "--ro-bind", "/", "/", "--unshare-user", "--unshare-net", "true"];
   const cannot = (reason: string): string => {
-    const why = `Claude Code's shell sandbox cannot start on this computer: ${reason}`;
+    const why = `The shell sandbox cannot start on this computer: ${reason}`;
     if (!appArmorBlocksBwrap(machine)) return why;
     return `${withFinalPeriod(why)} AppArmor blocks bubblewrap here, and no AppArmor profile lets it run. Run the install command of Eva again: it adds the profile. Then restart Eva.`;
   };

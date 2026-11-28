@@ -262,6 +262,41 @@ describe("specialists (#703)", () => {
     expect(engine.requests.map((request) => request.fileWall?.socketFilter)).toEqual([false, true]);
   });
 
+  test("pi's shell goes in the sandbox unless the start check finds none, so no command runs with no wall before it (#759)", async () => {
+    const engine = new FakeEngine((request) => FakeEngine.answer(request, "Noted."));
+    const instance = start(
+      engine,
+      {},
+      {
+        shellWallGap: () =>
+          Promise.resolve({ reason: "The shell sandbox needs bubblewrap.", fixable: true, piOnly: false }),
+      },
+    );
+    const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+    // Before the check, a command goes in the sandbox: where none can start, it fails and runs nothing.
+    await instance.sessions.send(chat.id, "Before the check.");
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    await instance.sessions.send(chat.id, "After the check.");
+    expect(engine.requests.map((request) => request.fileWall?.shellSandbox)).toEqual([true, false]);
+  });
+
+  test("a computer whose start check finds a sandbox keeps pi's shell in it (#759)", async () => {
+    const engine = new FakeEngine((request) => FakeEngine.answer(request, "Noted."));
+    const instance = start(engine, {}, { shellWallGap: () => Promise.resolve(null) });
+    const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+    instance.reportStartMigrations({
+      machine: { kind: "done", applied: [], later: [] },
+      vault: { kind: "done", applied: [], later: [] },
+    });
+    await Promise.resolve();
+    await instance.sessions.send(chat.id, "After the check.");
+    expect(engine.requests.map((request) => request.fileWall?.shellSandbox)).toEqual([true]);
+  });
+
   test("a specialist has no clones: a named clone, a fork or a retry in a new clone are refused", async () => {
     const instance = start(new FakeEngine());
     const named = await instance

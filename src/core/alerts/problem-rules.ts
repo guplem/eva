@@ -10,6 +10,7 @@ import type { VaultSyncState, WithheldFile } from "../vault/vault-sync.ts";
 import type { AlertProblem, OpenAlert } from "./alert-center.ts";
 import type { VaultAhead } from "../migrations/migrations.ts";
 import type { LocationWrite } from "../location/last-location.ts";
+import type { ShellWallGap } from "../shell-wall.ts";
 import { evaRepository } from "../../shared/version.ts";
 
 const dayMs = 24 * 60 * 60_000;
@@ -75,11 +76,13 @@ export function vaultSyncProblem(
  * The shell of a Project chat has no wall on this computer (#711). A chat does not stop for it:
  * its file tools stay inside its own folder.
  */
-export function shellWallProblem(gap: string | null): AlertProblem | null {
+export function shellWallProblem(gap: ShellWallGap | null): AlertProblem | null {
   if (gap === null) return null;
+  // Claude Code brings the ripgrep that pi's sandbox needs, so a missing one opens pi's shell only (#759).
+  const chats = gap.piOnly ? "The shell of a pi Project chat" : "The shell of a Project chat, with Claude Code or pi,";
   return {
     level: "warn",
-    message: `The shell of a Project chat can read the vault and Eva's own folder on this computer. ${gap} The file tools of each chat stay out of them. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#set-up-the-sandbox`,
+    message: `${chats} can read the vault and Eva's own folder on this computer. ${gap.reason} The file tools of each chat stay out of them. See https://github.com/${evaRepository}/blob/main/docs/guide/reference.md#set-up-the-sandbox`,
     resolvedMessage: "The shell of each Project chat stays out of the vault and Eva's own folder on this computer.",
   };
 }

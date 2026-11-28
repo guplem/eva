@@ -175,7 +175,7 @@ export interface CarryHistoryInput {
 }
 
 /** The closed folders of every Project chat's wall, and the folders inside them that a shell may read (#711). */
-export type WallRoots = Pick<FileWall, "closed" | "readable" | "readOnly" | "socketFilter">;
+export type WallRoots = Pick<FileWall, "closed" | "readable" | "readOnly" | "socketFilter" | "shellSandbox">;
 
 /**
  * The line before the message of a turn whose engine lost the chat's history (lesson 46). Each

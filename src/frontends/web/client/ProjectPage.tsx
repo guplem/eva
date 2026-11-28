@@ -535,6 +535,11 @@ function RepositoryRow({
           <StatusPill key={pill.text} pill={pill} />
         ))}
       </div>
+      {typeof repository.refused === "string" && (
+        <div className="callout warning" role="note">
+          {repository.refused}
+        </div>
+      )}
       {((repository.behind ?? 0) > 0 || canPush(repository) || onPreview !== null) && (
         <div className="button-row">
           {onPreview !== null && (

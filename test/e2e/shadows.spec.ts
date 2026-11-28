@@ -97,6 +97,12 @@ test("No box that scrolls cuts the shadow of a card in it (issue 625)", async ({
     }),
   );
   await logIn(page);
+  // A chat of its own, so #/chats shows a chat with its details, whatever ran before this test.
+  await page.goto("/#/chats/new");
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("shade of a quiet room");
+  await composer.press("Control+Enter");
+  await expect(page.locator(".message.answer").first()).toBeVisible();
   const file = `Notes/${testInfo.project.name}-list.md`;
   // Only the hash changes, so the page does not load again: wait for the cards of each page.
   const pages: [string, Locator[]][] = [

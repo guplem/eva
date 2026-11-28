@@ -46,12 +46,19 @@ const scratchMaxAgeMs = 7 * 24 * 60 * 60_000;
 /** Only a text file this small is scanned for a secret: a larger one is a document or a media file. */
 const secretScanBytes = 2 * 1024 * 1024;
 
-/** Resolves a path from the vault root and checks that it may be sent. */
-export function resolveSendableFile(vaultPath: string, requested: string): SendableFile {
+/**
+ * Resolves a path from the vault root and checks that it may be sent. `verb` names the action in
+ * each refusal: a page of an answer (#1129) is shown, not sent.
+ */
+export function resolveSendableFile(
+  vaultPath: string,
+  requested: string,
+  verb: "send" | "show" = "send",
+): SendableFile {
   if (isAbsolute(requested)) return { ok: false, reason: `${requested} is not a path from the vault root.` };
   // Windows reads a colon in a name as a file stream, which a name check cannot see through.
   if (process.platform === "win32" && requested.split(/[/\\]/).some((part) => part.includes(":")))
-    return { ok: false, reason: `${requested} is not a path that Eva sends.` };
+    return { ok: false, reason: `${requested} is not a path that Eva ${verb}s.` };
   let root: string;
   let resolved: string;
   try {
@@ -63,22 +70,22 @@ export function resolveSendableFile(vaultPath: string, requested: string): Senda
   const relativePath = relative(root, resolved);
   // A name such as `..draft.md` is inside the vault: only a `..` part leaves it (#1069).
   if (!isInside(root, resolved))
-    return { ok: false, reason: `${requested} is outside the vault, so Eva does not send it.` };
+    return { ok: false, reason: `${requested} is outside the vault, so Eva does not ${verb} it.` };
   const parts = relativePath.split(sep);
   // Clones and git data can hold a project's secrets, which the owner allows inside a project only.
   if (parts.some((part) => part.toLowerCase() === ".git") || isClonePath(relativePath))
-    return { ok: false, reason: `${requested} is in a repository folder, so Eva does not send it.` };
+    return { ok: false, reason: `${requested} is in a repository folder, so Eva does not ${verb} it.` };
   // Telegram keeps each message on its servers, so an encrypted file opens only in Eva's web app (#707).
   if (isEncryptedOnDisk(resolved))
     return { ok: false, reason: `${requested} is encrypted. Open it in Eva's web app, on the Files page.` };
   if (secretMatcherOf(root).matches(relativePath.split(sep).join("/")))
-    return { ok: false, reason: `${requested} is a secret file, so Eva does not send it.` };
+    return { ok: false, reason: `${requested} is a secret file, so Eva does not ${verb} it.` };
   const stats = statSync(resolved);
   if (!stats.isFile()) return { ok: false, reason: `${requested} is not a file.` };
   if (stats.size > maxSendableBytes) return { ok: false, reason: `${requested} is larger than 50 MB.` };
   // Only text files are scanned; a large file is a document or a media file.
   if (stats.size <= secretScanBytes && containsSecretPattern(readFileSync(resolved, "utf8")))
-    return { ok: false, reason: `${requested} holds a secret, so Eva does not send it.` };
+    return { ok: false, reason: `${requested} holds a secret, so Eva does not ${verb} it.` };
   return { ok: true, path: resolved, relativePath: relativePath.split(sep).join("/"), name: basename(resolved) };
 }
 

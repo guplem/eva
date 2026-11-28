@@ -43,7 +43,7 @@ const pageName = "page.html";
  * A saved or pinned page (#1130) changes only this function.
  */
 export function resolveShownPage(vaultPath: string, requested: string): ShownPage {
-  const file = resolveSendableFile(vaultPath, requested);
+  const file = resolveSendableFile(vaultPath, requested, "show");
   if (!file.ok)
     return file.missing === true
       ? { state: "gone", reason: `${requested} does not exist.` }

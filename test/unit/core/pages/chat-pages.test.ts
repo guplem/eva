@@ -74,6 +74,14 @@ describe("resolveShownPage", () => {
     expect(resolveShownPage(vault, path).state).not.toBe("ready");
   });
 
+  test("says why it does not show a page, with the word show", () => {
+    write(".eva/scratch/keys.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/keys.html")).toEqual({
+      state: "refused",
+      reason: ".eva/scratch/keys.html holds a secret, so Eva does not show it.",
+    });
+  });
+
   test.skipIf(process.platform === "win32")("refuses a link that points out of the vault", () => {
     writeFileSync(join(folder, "outside.html"), page);
     mkdirSync(join(vault, ".eva", "scratch"), { recursive: true });

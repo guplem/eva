@@ -476,3 +476,24 @@ describe("the sync and the git data that a chat can write (#1131)", () => {
     expect(program.ran()).toBe(false);
   });
 });
+
+describe("the commit message and a submodule (#1131)", () => {
+  test("the person's own submodule diff setting never runs a program of the submodule's config", async () => {
+    const program = markerProgram(sandbox.root);
+    const module = sandbox.clone("module-source");
+    sandbox.git(clone.path, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "lib");
+    sandbox.git(clone.path, "commit", "-q", "-m", "submodule");
+    const lib = join(clone.path, "lib");
+    sandbox.git(lib, "config", "diff.external", program.path);
+    sandbox.write(lib, "new.txt", "new\n");
+    sandbox.git(lib, "add", "-A");
+    sandbox.git(lib, "commit", "-q", "-m", "new");
+    const global = join(sandbox.root, "global.gitconfig");
+    writeFileSync(global, "[diff]\n\tsubmodule = diff\n");
+    const environment = { ...gitEnvironment, GIT_CONFIG_GLOBAL: global, GIT_CONFIG_NOSYSTEM: "1" };
+
+    const changes = await describeChanges(clone, systemProcessRunner, environment);
+    expect(changes.files).toContain("lib");
+    expect(program.ran()).toBe(false);
+  });
+});

@@ -348,6 +348,7 @@ export async function describeChanges(
     "--no-ext-diff",
     // A text conversion is a program, and its text goes to a model call, which needs none.
     "--no-textconv",
+    "--submodule=short",
   ]);
   const parts = [tracked.exitCode === 0 ? tracked.stdout : ""];
   for (const entry of entries.filter((each) => each.untracked)) {

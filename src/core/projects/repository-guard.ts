@@ -5,7 +5,7 @@
  * program that the chat chose, and forces safe settings on every other call.
  */
 import { randomUUID } from "node:crypto";
-import { lstatSync } from "node:fs";
+import { lstatSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
@@ -36,10 +36,10 @@ const lfsFilter: Readonly<Record<string, string>> = {
 const booleanValue = /^(true|false|yes|no|on|off|-?\d+)?$/i;
 
 /** A hooks folder that does not exist: the repository's hooks are its code, and so is a husky folder. */
-const noHooks = join(tmpdir(), `eva-no-hooks-${randomUUID()}`);
+const missingHooksFolder = join(tmpdir(), `eva-no-hooks-${randomUUID()}`);
 
 /** The settings that the guard forces on each git call in a repository of a clone. */
-const guardedConfig = [...ownGitConfig, ["core.hooksPath", noHooks]] as const;
+const guardedConfig = [...ownGitConfig, ["core.hooksPath", missingHooksFolder]] as const;
 
 /**
  * The same settings as `-c` arguments, for each git call in a repository that passed the guard.
@@ -156,7 +156,24 @@ function layoutProblem(path: string): string | null {
   )
     return "its git data points to git data in another place.";
   if (entryKind(join(gitFolder, "config")) !== "file") return "its git config is not a plain file.";
+  // Git skips a git folder that it does not accept and reads the one above, which can be the vault.
+  if (
+    !validHead(join(gitFolder, "HEAD")) ||
+    entryKind(join(gitFolder, "objects")) !== "folder" ||
+    entryKind(join(gitFolder, "refs")) !== "folder"
+  )
+    return "its git data is not a whole repository.";
   return null;
+}
+
+/** True for a `HEAD` file that names a branch or a commit, as git wants it. */
+function validHead(path: string): boolean {
+  if (entryKind(path) !== "file") return false;
+  try {
+    return /^(ref: refs\/\S+|[0-9a-f]{40}|[0-9a-f]{64})\s*$/.test(readFileSync(path, "utf8"));
+  } catch {
+    return false;
+  }
 }
 
 function entryKind(path: string): "file" | "folder" | "other" | "absent" {

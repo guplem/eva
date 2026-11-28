@@ -23,6 +23,8 @@ export const ownGitConfig: readonly GitConfigEntry[] = [
   ["core.editor", ":"],
   ["sequence.editor", ":"],
   ["diff.ignoreSubmodules", "dirty"],
+  // `diff` or `log` would make a diff start a git in each submodule that has a new commit.
+  ["diff.submodule", "short"],
   ["submodule.recurse", "false"],
   ["status.submoduleSummary", "false"],
   ["fetch.recurseSubmodules", "false"],

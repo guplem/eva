@@ -277,6 +277,13 @@ describe("guardRepository: submodules and the folders above (#1131)", () => {
     expect(isEvaError(error)).toBe(true);
   });
 
+  test("a git folder that is not a whole repository gets no git call", async () => {
+    writeFileSync(join(app, ".git", "HEAD"), "not a branch\n");
+    const runner = recordingRunner();
+    await refusal(runner);
+    expect(runner.commands).toEqual([]);
+  });
+
   test("the call arguments force the same safe settings, for a git that reads no GIT_CONFIG_COUNT", () => {
     const pairs = guardedArguments().filter((_, index) => index % 2 === 1);
     expect(pairs).toContain("core.fsmonitor=");

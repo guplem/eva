@@ -93,6 +93,17 @@ describe("createEventPrinter", () => {
     ).toBe("Here it is.\nAnd more.\n");
   });
 
+  test("a marker line whose leading spaces come in an earlier piece never prints the block twice", () => {
+    const print = createEventPrinter(null, true);
+    const shown = [
+      { kind: "text_delta", text: "A\n  ", startsBlock: true },
+      { kind: "text_delta", text: "[[reply: Y]]\nB" },
+      { kind: "text", text: "A\n  [[reply: Y]]\nB", messageId: "m1" },
+      finished,
+    ] satisfies EngineEventPayload[];
+    expect(shown.map((payload) => print(stamped(payload)) ?? "").join("")).toBe("A\nB\nSuggested replies: Y\n");
+  });
+
   test("a block of markers alone prints nothing", () => {
     expect(printed([{ kind: "text", text: "[[reply: Yes]]", messageId: "m1" }, finished])).toBe("");
   });

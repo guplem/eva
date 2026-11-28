@@ -101,7 +101,9 @@ export function shownAnswerText(answer: string, open = false): string {
  */
 export function untrimmedAnswerText(answer: string, open: boolean): string {
   const lines = [...readMarkers(answer).kept];
-  if (!open || !startsMarker(lines.at(-1) ?? "")) return lines.join("\n");
+  const last = lines.at(-1) ?? "";
+  // A line of spaces alone can still become a marker line with its next piece.
+  if (!open || !(startsMarker(last) || last.trim() === "")) return lines.join("\n");
   lines.pop();
   return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
 }

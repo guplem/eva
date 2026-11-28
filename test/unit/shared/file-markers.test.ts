@@ -74,6 +74,7 @@ describe("untrimmedAnswerText (#1128)", () => {
     expect(untrimmedAnswerText("Sure.\n[[re", true)).toBe("Sure.\n");
     expect(untrimmedAnswerText("[[re", true)).toBe("");
     expect(untrimmedAnswerText("Sure.\n", true)).toBe("Sure.\n");
+    expect(untrimmedAnswerText("Sure.\n  ", true)).toBe("Sure.\n");
     expect(untrimmedAnswerText("Sure.\n[[re", false)).toBe("Sure.\n[[re");
   });
 });

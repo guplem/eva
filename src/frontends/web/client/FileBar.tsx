@@ -9,6 +9,7 @@ import { useBackLayer } from "./back-layer-hook.ts";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { copiedMs } from "./CopyButton.tsx";
 import { useShowError } from "./error-toast.tsx";
+import { withGroupItem } from "./file-actions.ts";
 import { sizeWords } from "./file-paths.ts";
 import { Icon } from "./icons.tsx";
 import { MoreMenu, type MenuItem } from "./Menu.tsx";
@@ -24,7 +25,7 @@ export function FileBar({
   readonly size: number;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
-  /** The menu items of this file. The bar adds the copy item and the large item after them. */
+  /** The menu items of this file. The bar adds the copy item and the large item to their sections. */
   readonly items: readonly MenuItem[];
   /** Puts the file on the clipboard, or null for a file that the clipboard cannot hold. */
   readonly copy?: (() => Promise<void>) | null;
@@ -57,12 +58,13 @@ export function FileBar({
   const canLarge = !isPhone && !oneFolder;
   const largeLabel = large ? "Make the file small" : "Make the file large";
   const largeIcon = large ? "shrink" : "expand";
-  const largeItem: MenuItem = { label: largeLabel, icon: largeIcon, onChoose: () => onLarge(!large) };
+  const largeItem: MenuItem = { label: largeLabel, icon: largeIcon, group: "View", onChoose: () => onLarge(!large) };
   const copyItem: MenuItem | null =
     copy === null
       ? null
       : {
           label: "Copy contents",
+          group: "Copy",
           icon: "copy",
           onChoose: () => {
             setCopied(false);
@@ -72,7 +74,8 @@ export function FileBar({
             );
           },
         };
-  const allItems = [...items, ...(copyItem === null ? [] : [copyItem]), ...(canLarge ? [largeItem] : [])];
+  const withCopy = copyItem === null ? [...items] : withGroupItem(items, copyItem);
+  const allItems = canLarge ? withGroupItem(withCopy, largeItem) : withCopy;
   return (
     <div className="files-file-bar">
       <span className="files-size">{sizeWords(size)}</span>

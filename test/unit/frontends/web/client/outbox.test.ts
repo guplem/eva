@@ -4,6 +4,7 @@ import {
   Outbox,
   retryWaitsMs,
   type OutboxEntry,
+  type OutboxStorage,
 } from "../../../../../src/frontends/web/client/outbox.ts";
 import { ApiError } from "../../../../../src/frontends/web/client/request.ts";
 
@@ -16,7 +17,7 @@ interface Call {
 }
 
 /** An outbox with a fake send and fake timers. Each send waits until the test answers it. */
-function setup(): {
+function setup(storage?: () => OutboxStorage): {
   outbox: Outbox;
   calls: Call[];
   timers: { run: () => void; ms: number; cleared: boolean }[];
@@ -26,6 +27,7 @@ function setup(): {
   const calls: Call[] = [];
   const timers: { run: () => void; ms: number; cleared: boolean }[] = [];
   const outbox = new Outbox({
+    ...(storage === undefined ? {} : { storage }),
     send: (sessionId, text, id) =>
       new Promise<{ readonly repeat: boolean }>((resolve, reject) => {
         calls.push({ sessionId, text, id, resolve: (answer) => resolve(answer ?? { repeat: false }), reject });
@@ -274,5 +276,156 @@ describe("Outbox", () => {
     stop();
     outbox.forget("s1", 5);
     expect(heard).toBe(2);
+  });
+});
+
+const storageKey = "eva-outbox";
+
+function memoryStorage(): OutboxStorage & { readonly items: Map<string, string> } {
+  const items = new Map<string, string>();
+  return {
+    items,
+    getItem: (key) => items.get(key) ?? null,
+    setItem: (key, value) => void items.set(key, value),
+    removeItem: (key) => void items.delete(key),
+  };
+}
+
+describe("Outbox in the tab's storage (#946)", () => {
+  test("a reload keeps each unsent message in its chat, with its state, and sends nothing before the page connects", async () => {
+    const storage = memoryStorage();
+    const before = setup(() => storage);
+    // A try runs at the reload, and a later message of its chat waits behind it.
+    before.outbox.add({ sessionId: "s1", text: "one", id: "m1", turnCount: 2 });
+    before.outbox.add({ sessionId: "s1", text: "two", id: "m2", turnCount: 2 });
+    before.outbox.add({ sessionId: "s2", text: "taken", id: "m3", turnCount: 4 });
+    before.outbox.add({ sessionId: "s3", text: "refused", id: "m4", turnCount: 0 });
+    before.outbox.add({ sessionId: "s4", text: "offline", id: "m5", turnCount: 1 });
+    before.calls[1]?.resolve();
+    before.calls[2]?.reject(new ApiError(400, "The file is gone."));
+    before.calls[3]?.reject(offline);
+    await before.settle();
+
+    const after = setup(() => storage);
+    expect(states(after.outbox.list("s1"))).toEqual(["one:waiting", "two:waiting"]);
+    expect(after.outbox.list("s2")[0]).toMatchObject({ text: "taken", id: "m3", state: "sent", turnCount: 4 });
+    expect(after.outbox.list("s3")[0]).toMatchObject({ state: "failed", reason: "The file is gone." });
+    expect(after.outbox.list("s4")[0]).toMatchObject({ state: "waiting", turnCount: 1, retried: true });
+    expect(after.calls).toHaveLength(0);
+
+    // The page connects: each chat sends its first message again with the same id, in order.
+    after.outbox.retryNow();
+    expect(after.calls.map((call) => call.id)).toEqual(["m1", "m5"]);
+    after.calls[0]?.resolve();
+    await after.settle();
+    expect(after.calls.map((call) => call.id)).toEqual(["m1", "m5", "m2"]);
+    // The sent message never goes again, and the failed one waits for Try again.
+    after.outbox.retry("m4");
+    expect(after.calls.map((call) => call.id)).toEqual(["m1", "m5", "m2", "m4"]);
+  });
+
+  test("after a reload, a message that Eva had already leaves at its repeat answer", async () => {
+    const storage = memoryStorage();
+    setup(() => storage).outbox.add({ sessionId: "s1", text: "hi", id: "m1", turnCount: 0 });
+    const after = setup(() => storage);
+    after.outbox.retryNow();
+    after.calls[0]?.resolve({ repeat: true });
+    await after.settle();
+    expect(after.outbox.list("s1")).toEqual([]);
+    expect(storage.items.has(storageKey)).toBe(false);
+  });
+
+  test("each change goes to the storage, and an empty outbox removes its key", async () => {
+    const storage = memoryStorage();
+    const { outbox, calls, settle } = setup(() => storage);
+    outbox.add({ sessionId: "s1", text: "hi", id: "m1", turnCount: 0 });
+    expect(JSON.parse(storage.items.get(storageKey) ?? "[]")).toEqual([
+      { sessionId: "s1", text: "hi", id: "m1", turnCount: 0, state: "sending", reason: null, retried: false },
+    ]);
+    calls[0]?.resolve();
+    await settle();
+    expect(setup(() => storage).outbox.list("s1")[0]?.state).toBe("sent");
+    outbox.forget("s1", 1);
+    expect(storage.items.has(storageKey)).toBe(false);
+    outbox.add({ sessionId: "s1", text: "edit me", id: "m2", turnCount: 1 });
+    outbox.remove("m2");
+    expect(storage.items.has(storageKey)).toBe(false);
+  });
+
+  test("a blocked storage leaves the outbox working in memory", async () => {
+    const blocked = (): never => {
+      throw new Error("The storage is blocked.");
+    };
+    const { outbox, calls, settle } = setup(blocked);
+    outbox.add({ sessionId: "s1", text: "hi", id: "m1", turnCount: 0 });
+    expect(states(outbox.list("s1"))).toEqual(["hi:sending"]);
+    calls[0]?.resolve();
+    await settle();
+    expect(states(outbox.list("s1"))).toEqual(["hi:sent"]);
+  });
+
+  test("a full storage keeps a long message in memory, and the message still goes", async () => {
+    const storage = memoryStorage();
+    const full: OutboxStorage = {
+      ...storage,
+      setItem: (key, value) => {
+        if (value.length > 1_000) throw new DOMException("The quota is full.", "QuotaExceededError");
+        storage.setItem(key, value);
+      },
+    };
+    const { outbox, calls, settle } = setup(() => full);
+    outbox.add({ sessionId: "s1", text: "short", id: "m1", turnCount: 0 });
+    const long = `Read [[Notes/example-app.md]] ${"x".repeat(5_000)}`;
+    outbox.add({ sessionId: "s1", text: long, id: "m2", turnCount: 0 });
+    expect(outbox.list("s1").map((entry) => entry.text)).toEqual(["short", long]);
+    calls[0]?.resolve();
+    await settle();
+    expect(calls.map((call) => call.text)).toEqual(["short", long]);
+    // An older list does not stay in the storage, so a reload never brings back a stale state.
+    expect(storage.items.has(storageKey)).toBe(false);
+  });
+
+  test("a bad stored value is dropped, and a bad entry does not drop the good ones", () => {
+    const storage = memoryStorage();
+    storage.setItem(storageKey, "not json");
+    expect(setup(() => storage).outbox.list("s1")).toEqual([]);
+    const good = { sessionId: "s1", text: "hi", id: "m1", turnCount: 0, state: "failed", reason: null, retried: true };
+    storage.setItem(
+      storageKey,
+      JSON.stringify([
+        { ...good, id: "m0", state: "lost" },
+        { ...good, id: "m2", turnCount: "3" },
+        { ...good, id: 7 },
+        { ...good, id: "m3", turnCount: 1.5 },
+        { ...good, id: "m4", reason: 7 },
+        { ...good, id: "m5", retried: "yes" },
+        null,
+        good,
+      ]),
+    );
+    expect(setup(() => storage).outbox.list("s1")).toEqual([good as OutboxEntry]);
+    storage.setItem(storageKey, JSON.stringify({ entries: [good] }));
+    expect(setup(() => storage).outbox.list("s1")).toEqual([]);
+  });
+
+  test("a failed write never lets a reload bring back a message that the person took out for an edit", () => {
+    const storage = memoryStorage();
+    let full = false;
+    const filling: OutboxStorage = {
+      ...storage,
+      setItem: (key, value) => {
+        if (full) throw new DOMException("The quota is full.", "QuotaExceededError");
+        storage.setItem(key, value);
+      },
+    };
+    const { outbox, calls } = setup(() => filling);
+    outbox.add({ sessionId: "s1", text: "first draft", id: "m1", turnCount: 0 });
+    calls[0]?.reject(offline);
+    full = true;
+    outbox.add({ sessionId: "s1", text: "a long paste", id: "m2", turnCount: 0 });
+    outbox.remove("m1");
+    const after = setup(() => storage);
+    after.outbox.retryNow();
+    expect(after.calls.map((call) => call.id)).not.toContain("m1");
   });
 });

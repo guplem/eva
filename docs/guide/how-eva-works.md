@@ -117,7 +117,7 @@ Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and 
 
 **Telegram** runs only on the hub. The bot talks only to the one Telegram chat that you paired. Each Telegram topic is one Eva chat.
 
-**Marker lines** carry the extras of an answer, such as `[[attach: <path>]]` for a file and `[[reply: <text>]]` for a suggested reply. A marker is plain text, so every engine can write it, and the core stores it with the answer. Each front end reads the lines with one shared parser, `src/shared/file-markers.ts`. The parser removes them from the text that a chat shows. It also applies the limits of the suggested replies: 4 replies, 60 characters each. The terminal chat still prints the raw lines.
+**Marker lines** carry the extras of an answer, such as `[[attach: <path>]]` for a file and `[[reply: <text>]]` for a suggested reply. A marker is plain text, so every engine can write it, and the core stores it with the answer. Each front end reads the lines with one shared parser, `src/shared/file-markers.ts`. The parser removes them from the text that a chat shows. It also applies the limits of the suggested replies: 4 replies, 60 characters each. A streamed line that can start a marker waits until it is complete, so `eva chat` never shows a marker either. Telegram keeps the buttons of the suggested replies in memory only: after a restart, an old button says that its reply is gone.
 
 ## The vault
 

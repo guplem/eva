@@ -394,6 +394,7 @@ export class SessionManager {
       forkedFrom: null,
       reportsTo: input.reportsTo ?? null,
       forkName: null,
+      pinnedPage: null,
     };
     this.options.store.save(record);
     return record;
@@ -474,6 +475,25 @@ export class SessionManager {
     this.options.store.save(updated);
     this.emit(sessionId, { kind: "fork_named", name: cleaned });
     return updated;
+  }
+
+  /**
+   * Pins a saved page beside one branch of a chat, or unpins it with null (#1130). A branch has one
+   * pin, so a new pin replaces the old one. The caller saves the page first.
+   */
+  pinPage(sessionId: string, path: string | null): SessionRecord {
+    const session = this.get(sessionId);
+    if (session.pinnedPage === path) return session;
+    const updated = { ...session, pinnedPage: path };
+    this.options.store.save(updated);
+    // Every device shows the same column, not only the one where the person pressed Pin.
+    this.emit(sessionId, { kind: "page_pinned", path });
+    return updated;
+  }
+
+  /** Unpins a page that the person removed from every chat that pins it, so no column shows a gone page. */
+  unpinEverywhere(path: string): void {
+    for (const session of this.list()) if (session.pinnedPage === path) this.pinPage(session.id, null);
   }
 
   /**
@@ -2101,6 +2121,8 @@ function redactPayload(
       return { ...payload, title: redactor.redact(payload.title) };
     case "fork_named":
       return { ...payload, name: redactor.redact(payload.name) };
+    case "page_pinned":
+      return payload.path === null ? payload : { ...payload, path: redactor.redact(payload.path) };
     case "tool_finished": {
       const { output } = payload;
       return output === undefined

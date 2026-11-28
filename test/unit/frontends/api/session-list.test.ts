@@ -57,6 +57,7 @@ function session(turns: Turn[]): SessionRecord {
     forkedFrom: null,
     reportsTo: null,
     forkName: null,
+    pinnedPage: null,
     turns,
   };
 }

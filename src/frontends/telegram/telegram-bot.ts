@@ -948,8 +948,15 @@ export class TelegramBot {
     // Telegram sends finished blocks only. A growing message would hit the edit limits and show
     // half-written Markdown. A piece must also never release a held block (issue 117).
     if (event.kind === "text_delta") return;
-    // Only the web app shows unread and archived chats, and fork names. A mark can come during a turn, and must not release a held block.
-    if (event.kind === "session_seen" || event.kind === "session_archived" || event.kind === "fork_named") return;
+    // Only the web app shows unread and archived chats, fork names and pinned pages. A mark can come during a turn, and
+    // must not release a held block.
+    if (
+      event.kind === "session_seen" ||
+      event.kind === "session_archived" ||
+      event.kind === "fork_named" ||
+      event.kind === "page_pinned"
+    )
+      return;
     // The topic shows each message from `message_received`, so the whole message of the turn adds nothing here.
     if (event.kind === "turn_started") return;
     if (event.kind === "approval_resolved") {

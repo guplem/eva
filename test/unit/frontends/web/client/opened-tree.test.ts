@@ -63,6 +63,7 @@ function listed(id: string, turnsKey: string, title = "A chat"): ListedSession {
     forkedFrom: null,
     reportsTo: null,
     forkName: null,
+    pinnedPage: null,
     running: false,
     turnCount: 1,
     lastTurn: null,

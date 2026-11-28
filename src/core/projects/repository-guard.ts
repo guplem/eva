@@ -147,6 +147,8 @@ async function submoduleSetting(
  * may have written. Eva makes no worktree clone herself.
  */
 function layoutProblem(path: string): string | null {
+  // A linked folder would make Eva's undo or push change a repository outside the clone.
+  if (entryKind(path) !== "folder") return "its folder is a link to another place.";
   const gitFolder = join(path, ".git");
   const kind = entryKind(gitFolder);
   if (kind !== "folder") return "its git data is not a plain folder inside it.";

@@ -277,6 +277,21 @@ describe("guardRepository: submodules and the folders above (#1131)", () => {
     expect(isEvaError(error)).toBe(true);
   });
 
+  test("a repository folder that is a link gets no git call: the work would land in another folder", async () => {
+    const linked = join(sandbox.root, "clone-0", "linked");
+    try {
+      symlinkSync(app, linked, "junction");
+    } catch {
+      return; // A Windows account without the right to make links cannot make this case.
+    }
+    const runner = recordingRunner();
+    const error = await guardRepository({ name: "linked", path: linked }, runner, environment).catch(
+      (caught: unknown) => caught,
+    );
+    expect(isEvaError(error, "repository_refused")).toBe(true);
+    expect(runner.commands).toEqual([]);
+  });
+
   test("a git folder that is not a whole repository gets no git call", async () => {
     writeFileSync(join(app, ".git", "HEAD"), "not a branch\n");
     const runner = recordingRunner();

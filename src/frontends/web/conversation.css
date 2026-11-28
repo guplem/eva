@@ -1018,8 +1018,10 @@ button.ghost .icon {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  height: 26px;
-  padding: 0 var(--space-2) 0 5px;
+  height: 28px;
+  /* A narrow window asks for tall buttons. The 44 px target comes from the ::after below instead. */
+  min-height: 0;
+  padding: 0 var(--space-2) 0 6px;
   border: 0;
   background: var(--send-fill);
   box-shadow: var(--send-shadow);
@@ -1040,10 +1042,18 @@ button.ghost .icon {
 
 .composer .chip.composer-suggestion-more {
   position: relative;
-  height: 26px;
+  height: 28px;
   min-height: 0;
   padding: 0 var(--space-2);
   color: var(--accent-ink);
+}
+
+/* The buttons stay small in the line of text, with a 44 px target around them. */
+.composer-suggestion-send::after,
+.composer .chip.composer-suggestion-more::after {
+  content: "";
+  position: absolute;
+  inset: calc((28px - var(--touch-target)) / 2) -4px;
 }
 
 /* The menu of the other replies opens above the box, from the start of the reply, so it stays on a narrow screen. */
@@ -1055,29 +1065,16 @@ button.ghost .icon {
   max-width: min(360px, calc(100vw - 32px));
 }
 
-/* A finger has no Tab key. The buttons stay small in the line of text, with a 44 px target around them. */
+/* A finger has no Tab key, so the pearl holds only the arrow. */
 @media (pointer: coarse) {
   .composer-suggestion-send {
     width: 28px;
-    height: 28px;
-    min-height: 0;
     padding: 0;
     justify-content: center;
   }
 
-  .composer .chip.composer-suggestion-more {
-    height: 28px;
-  }
-
   .composer-suggestion-send kbd {
     display: none;
-  }
-
-  .composer-suggestion-send::after,
-  .composer .chip.composer-suggestion-more::after {
-    content: "";
-    position: absolute;
-    inset: calc((28px - var(--touch-target)) / 2) -4px;
   }
 }
 

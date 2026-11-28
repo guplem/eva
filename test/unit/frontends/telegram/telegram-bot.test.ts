@@ -2890,6 +2890,28 @@ describe("suggested replies (#1128)", () => {
     createEva((request) => FakeEngine.answer(request, engine.requests.length === 1 ? question : later));
   }
 
+  test("the turn end goes: the answer, the page line, the file offers, then the replies nearest the message box", async () => {
+    sandbox.write(join(sandbox.root, "vault"), "Methods/Plan.md", "# Plan\n");
+    createEva((request) =>
+      FakeEngine.answer(
+        request,
+        "A chart. Want the plan?\n[[show: .eva/scratch/chart.html]]\n[[offer: Methods/Plan.md]]\n[[reply: Yes]]",
+      ),
+    );
+    const bot = createBot();
+    telegram.sendText(owner, "draw it");
+    await settle(bot, () => offers().length === 1);
+    const texts = telegram.sentTexts();
+    expect(
+      [
+        "A chart. Want the plan?",
+        "This answer has a page. Open it in Eva's web app.",
+        "Files you can open:",
+        "Suggested replies:",
+      ].map((text) => texts.indexOf(text)),
+    ).toEqual([0, 1, 2, 3]);
+  });
+
   test("an answer that suggests replies gets a button for each, and a press sends the reply as a message", async () => {
     askFirst("Going on.");
     const bot = createBot();

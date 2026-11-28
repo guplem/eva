@@ -1143,9 +1143,9 @@ export class TelegramBot {
           this.answers.delete(event.sessionId);
           // A file named twice goes once, and attach wins over offer, also across blocks.
           const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
-          if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
-          // Quiet: the last block of the answer already rang the phone.
+          // Quiet: the last block of the answer already rang the phone. The line belongs to the answer, so it comes first.
           if (answer?.shown === true) await this.sendPageLine(target.chatId, target.topicId, event.sessionId, true);
+          if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
           await this.sendUsageLines(usage, target.chatId, target.topicId);
           await sendReplies();
           if (event.kind === "turn_failed")

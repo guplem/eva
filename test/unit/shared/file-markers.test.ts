@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractFileMarkers, shownAnswerText } from "../../../src/shared/file-markers.ts";
+import { extractFileMarkers, maxReplies, maxReplyLength, shownAnswerText } from "../../../src/shared/file-markers.ts";
 
 describe("extractFileMarkers (lesson 124)", () => {
   test("removes marker lines and lists their paths; any case, spaces allowed", () => {
@@ -10,17 +10,25 @@ describe("extractFileMarkers (lesson 124)", () => {
       offer: ["Methods/Other.md"],
       quiet: false,
       done: false,
+      replies: [],
     });
   });
 
   test("a marker inside a sentence or a code fence stays text", () => {
     const answer = "Write [[attach: a.md]] like this:\n```\n[[attach: b.md]]\n```";
-    expect(extractFileMarkers(answer)).toEqual({ text: answer, attach: [], offer: [], quiet: false, done: false });
+    expect(extractFileMarkers(answer)).toEqual({
+      text: answer,
+      attach: [],
+      offer: [],
+      quiet: false,
+      done: false,
+      replies: [],
+    });
   });
 
   test("a file named twice goes once, and attach wins over offer", () => {
     const markers = extractFileMarkers("[[offer: a.md]]\n[[attach: a.md]]\n[[attach: a.md]]\n[[offer: b.md]]");
-    expect(markers).toEqual({ text: "", attach: ["a.md"], offer: ["b.md"], quiet: false, done: false });
+    expect(markers).toEqual({ text: "", attach: ["a.md"], offer: ["b.md"], quiet: false, done: false, replies: [] });
   });
 });
 
@@ -70,5 +78,53 @@ describe("the markers of a scheduled run (#687)", () => {
   test("hides the start of a run marker at the end of an open text", () => {
     expect(shownAnswerText("She replied.\n[[do", true)).toBe("She replied.");
     expect(shownAnswerText("[[qui", true)).toBe("");
+  });
+});
+
+describe("the suggested replies of an answer (#1127)", () => {
+  test("drops each reply line from the text, and gives the replies in order; any case, spaces allowed", () => {
+    const markers = extractFileMarkers("Shall I go on?\n[[reply: Yes, go on]]\n  [[ REPLY:No, stop here ]]  ");
+    expect(markers.text).toBe("Shall I go on?");
+    expect(markers.replies).toEqual(["Yes, go on", "No, stop here"]);
+  });
+
+  test("gives no reply for an answer without one", () => {
+    expect(extractFileMarkers("Done.").replies).toEqual([]);
+  });
+
+  test("keeps a reply marker inside a sentence or a code fence as text", () => {
+    const answer = "Write [[reply: Yes]] like this:\n```\n[[reply: No]]\n```";
+    expect(extractFileMarkers(answer)).toMatchObject({ text: answer, replies: [] });
+  });
+
+  test("keeps each reply once, and only the first 4", () => {
+    const lines = ["A?", "[[reply: One]]", "[[reply: One]]", "[[reply: Two]]", "[[reply: Three]]"];
+    const answer = [...lines, "[[reply: Four]]", "[[reply: Five]]"].join("\n");
+    expect(extractFileMarkers(answer).replies).toEqual(["One", "Two", "Three", "Four"]);
+    expect(maxReplies).toBe(4);
+  });
+
+  test("hides an empty reply and one longer than 60 characters, but offers neither", () => {
+    const long = "x".repeat(maxReplyLength + 1);
+    const longest = "y".repeat(maxReplyLength);
+    const answer = `A?\n[[reply: ]]\n[[reply:${long}]]\n[[reply: ${longest}]]`;
+    expect(maxReplyLength).toBe(60);
+    expect(extractFileMarkers(answer)).toMatchObject({ text: "A?", replies: [longest] });
+  });
+
+  test("counts an emoji as one character", () => {
+    const reply = "👍".repeat(maxReplyLength);
+    expect(extractFileMarkers(`[[reply: ${reply}]]`).replies).toEqual([reply]);
+  });
+
+  test("a reply that is too long takes no place of the first 4", () => {
+    const answer = [`[[reply: ${"z".repeat(61)}]]`, "[[reply: 1]]", "[[reply: 2]]", "[[reply: 3]]", "[[reply: 4]]"];
+    expect(extractFileMarkers(answer.join("\n")).replies).toEqual(["1", "2", "3", "4"]);
+  });
+
+  test("hides the start of a reply line at the end of an open text", () => {
+    expect(shownAnswerText("Shall I go on?\n[[reply: Ye", true)).toBe("Shall I go on?");
+    expect(shownAnswerText("Shall I go on?\n[[rep", true)).toBe("Shall I go on?");
+    expect(shownAnswerText("Shall I go on?\n[[reply: Yes]]…", true)).toBe("Shall I go on?");
   });
 });

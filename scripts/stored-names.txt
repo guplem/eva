@@ -217,6 +217,7 @@ machine state/sessions.json sessions[].modelAlias=opus
 machine state/sessions.json sessions[].modelAlias=sonnet
 machine state/sessions.json sessions[].parentId
 machine state/sessions.json sessions[].pendingRestore
+machine state/sessions.json sessions[].pinnedPage
 machine state/sessions.json sessions[].projectId
 machine state/sessions.json sessions[].reportsTo
 machine state/sessions.json sessions[].seenTurns

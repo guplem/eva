@@ -8,6 +8,7 @@ import type { NotificationKind } from "../../../core/alerts/chat-notifications.t
 import { api } from "./api.ts";
 import { describeAgent } from "./device-words.ts";
 import { ProgressBar } from "./Loading.tsx";
+import { pageActivity } from "./person-activity.ts";
 import type { PresencePage } from "./push-presence.ts";
 import { keyBytes, pushSupport, type PushSupport } from "./push-support.ts";
 import type { NotificationShelf } from "./seen-notifications.ts";
@@ -41,14 +42,19 @@ export const browserNotificationShelf: NotificationShelf = {
 
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
 export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {
-  // Capture: a part of the page that stops an event must not hide the person from Eva.
-  const options = { capture: true, passive: true };
-  const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
+  const listen = (
+    target: EventTarget,
+    names: readonly string[],
+    listener: (event: Event) => void,
+    options?: AddEventListenerOptions,
+  ): (() => void) => {
     for (const name of names) target.addEventListener(name, listener, options);
     return () => {
       for (const name of names) target.removeEventListener(name, listener, options);
     };
   };
+  // Capture: a part of the page that stops an event must not hide the person from Eva.
+  const inputOptions = { capture: true, passive: true };
   return {
     isInView: () => document.visibilityState === "visible" && document.hasFocus(),
     readEndpoint: async () => {
@@ -72,22 +78,26 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
     onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
     onInput: (listener) => {
       // No "scroll": the chat scrolls by itself while an answer grows, and the person may be away.
-      const stopInputs = listen(document, ["keydown", "pointerdown", "wheel", "touchmove"], listener);
+      const onInput = (): void => {
+        pageActivity.input();
+        listener();
+      };
+      const stopInputs = listen(document, ["keydown", "pointerdown", "wheel", "touchmove"], onInput, inputOptions);
       // A browser also sends a move when the page changes under a pointer that rests.
       let place = "";
       const onMove = (event: Event): void => {
         const { screenX, screenY } = event as PointerEvent;
         const moved = `${String(screenX)},${String(screenY)}`;
-        if (moved !== place) listener();
+        if (moved !== place) onInput();
         place = moved;
       };
-      document.addEventListener("pointermove", onMove, options);
+      const stopMoves = listen(document, ["pointermove"], onMove, inputOptions);
       return () => {
         stopInputs();
-        document.removeEventListener("pointermove", onMove, options);
+        stopMoves();
       };
     },
-    now: () => Date.now(),
+    isActive: () => pageActivity.isActive(),
     setInterval: (callback, ms) => {
       const timer = window.setInterval(callback, ms);
       return () => window.clearInterval(timer);

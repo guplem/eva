@@ -11,12 +11,6 @@
 /** Shorter than Eva's 90 seconds, so one late renewal does not end the claim. */
 const renewMs = 60_000;
 
-/**
- * How long after the last input the person still counts as active. Someone who reads a long answer
- * moves nothing for a while. Someone who left the computer must get the answer on the phone.
- */
-export const activeMs = 5 * 60_000;
-
 /** The browser's side of the claims. A test passes its own. */
 export interface PresencePage {
   /** In view and in front: a window behind another app is not where the person looks. */
@@ -40,8 +34,9 @@ export interface PresencePage {
   readonly onDeviceChange: (listener: () => void) => () => void;
   /** The person pressed a key, or moved or touched the page. A scroll that the page makes does not count. */
   readonly onInput: (listener: () => void) => () => void;
+  /** The person used the page a short time ago (`person-activity.ts`). */
+  readonly isActive: () => boolean;
   readonly setInterval: (callback: () => void, ms: number) => () => void;
-  readonly now: () => number;
   /** The tabs of one browser share one push address, so each tab claims under its own id. */
   readonly pageId: string;
 }
@@ -52,8 +47,6 @@ export function startPushPresence(page: PresencePage): () => void {
   let endpoint: string | null = null;
   /** False until the first read of the push address ends: a claim under the wrong address would stay for 90 seconds. */
   let ready = false;
-  // The person just opened the page.
-  let lastInput = page.now();
   /**
    * The last claim that went out. A blur and a hide often come together, and two requests can
    * arrive in either order, so the page sends only a change. Only the timer renews a claim.
@@ -64,7 +57,7 @@ export function startPushPresence(page: PresencePage): () => void {
   const claim = (inView: boolean): [boolean, readonly string[], boolean] => [
     inView,
     page.shownChats(),
-    inView && page.now() - lastInput < activeMs,
+    inView && page.isActive(),
   ];
   /** The claims stopped: a read of the push address that ends later must not start one more. */
   let stopped = false;
@@ -113,7 +106,6 @@ export function startPushPresence(page: PresencePage): () => void {
     }),
     page.onDeviceChange(refresh),
     page.onInput(() => {
-      lastInput = page.now();
       // An input comes many times each second, so only the first one after a quiet time reaches Eva.
       if (!sentActive) reportView();
     }),

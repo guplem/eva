@@ -284,7 +284,7 @@ Eva sends a device no notification while her page on that device is in view and 
 
 Eva sends no device the notification of a chat while you read that chat on any device. You read a chat when its page is in view and in front, and you pressed a key, or moved or touched the page in about the last 5 minutes. So a computer that you left with the chat open does not silence your phone. This also works when the device that you read on has its notifications off.
 
-Eva closes the notification of a chat on a device when you saw the chat, on that device or on another one. A device with Eva's page closed cannot close a notification, so there it closes when you open Eva. The notification of a chat that still works, or that waits for your approval, stays.
+Eva closes the notification of a chat on a device when you saw the chat, on that device or on another one. A page that you left open does not count: an answer shows as seen only when you are there, by the same rule. A device with Eva's page closed cannot close a notification, so there it closes when you open Eva. The notification of a chat that still works, or that waits for your approval, stays.
 
 Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
 

@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  activeMs,
-  startPushPresence,
-  type PresencePage,
-} from "../../../../../src/frontends/web/client/push-presence.ts";
+import { startPushPresence, type PresencePage } from "../../../../../src/frontends/web/client/push-presence.ts";
 
 type Listener = () => void;
 
@@ -12,7 +8,7 @@ interface FakePage {
   readonly sent: [string | null, string, boolean, readonly string[]][];
   /** Whether each claim said that the person is active. */
   readonly actives: boolean[];
-  now: number;
+  active: boolean;
   inView: boolean;
   chats: readonly string[];
   endpoint: string | null;
@@ -31,7 +27,7 @@ function fakePage(): FakePage {
   const fake: FakePage = {
     sent: [],
     actives: [],
-    now: 0,
+    active: true,
     inView: true,
     chats: [],
     endpoint: "https://fcm.googleapis.com/fcm/send/phone",
@@ -51,7 +47,7 @@ function fakePage(): FakePage {
       onLeave: on("leave"),
       onDeviceChange: on("device"),
       onInput: on("input"),
-      now: () => fake.now,
+      isActive: () => fake.active,
       setInterval: (callback) => on("timer")(callback),
       pageId: "tab-1",
     },
@@ -152,16 +148,16 @@ describe("the page's claim that it is in view", () => {
     ]);
   });
 
-  test("says that the person is active until 5 minutes pass with no input (#1136)", async () => {
+  test("says whether the person is active, and says at once that they came back (#1136)", async () => {
     const fake = fakePage();
     startPushPresence(fake.page);
     await settle();
-    fake.now = activeMs - 1;
     fake.fire("timer");
-    fake.now = activeMs;
+    fake.active = false;
     // The renewal finds that the person went away.
     fake.fire("timer");
     // The first input after the quiet time goes out at once, and the next ones send nothing.
+    fake.active = true;
     fake.fire("input");
     fake.fire("input");
     fake.inView = false;

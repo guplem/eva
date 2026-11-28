@@ -458,10 +458,10 @@ describe("PiEngine", () => {
       }
     });
 
-    test("the placeholders that a stopped command left in the chat's folder go at the end of the turn", async () => {
+    test("Eva removes no placeholder from the chat's folder: it can belong to a command that still runs", async () => {
       const chat = join(folder, "clone-0");
       mkdirSync(chat, { recursive: true });
-      writeFileSync(join(chat, ".mcp.json"), "");
+      // A placeholder that another chat's command holds: without it, that command could write `.bashrc`.
       const fake = new FakePi([
         {
           records: loadPiFixture("plain"),
@@ -472,18 +472,7 @@ describe("PiEngine", () => {
         },
       ]);
       await drain(engine(fake, { shellSandbox }).runTurn({ ...walled({ area: chat }), startFolder: chat }));
-      expect(readdirSync(chat)).toEqual([".mcp.json"]);
-      // With no sandbox, nothing put a placeholder there, so nothing goes.
-      const unwalled = new FakePi([
-        { records: loadPiFixture("plain"), onClose: () => writeFileSync(join(chat, ".bashrc"), "") },
-      ]);
-      await drain(
-        engine(unwalled, { shellSandbox }).runTurn({
-          ...walled({ area: chat, shellSandbox: false }),
-          startFolder: chat,
-        }),
-      );
-      expect(readdirSync(chat).sort()).toEqual([".bashrc", ".mcp.json"]);
+      expect(readdirSync(chat).sort()).toEqual([".bashrc", ".vscode"]);
     });
 
     test("pi never gets the Claude login, which each shell command would see (#759)", async () => {

@@ -589,7 +589,7 @@ Some commands work differently in the sandbox:
 - Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
 - In a pi chat, a command line of more than about 100 KiB does not run. Linux takes at most 128 KiB in one argument, and Eva adds her own words to each command. Put a long script in a file, and run the file.
 - In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts placeholders there: empty files that stand in for names that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. git refuses to add them. So add files by name.
-- A command that pi stops leaves its placeholders in the chat's folder. Eva removes them at the end of the turn.
+- A command that pi stops can leave its placeholders in the chat's folder. They are empty, so delete them. Eva does not, because a placeholder can belong to a command of another chat that still runs.
 - In a pi chat, a command cannot write the `.pi` settings of the chat's folder, as a file tool cannot.
 
 ## Optional features

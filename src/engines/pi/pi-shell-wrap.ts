@@ -1,7 +1,7 @@
 /**
  * The pi extension that runs each shell command of a pi Project chat in the sandbox (#759). pi
  * has no sandbox, so its bash tool could read the vault. Before each `bash` call, this extension
- * rewrites the command into a call of Eva's wrapper: `eva shell-sandbox <wall file> <command>`.
+ * rewrites the command into a call of Eva's wrapper: `eva shell-sandbox <wall file> <folder> <command>`.
  *
  * pi sends `tool_execution_start` and saves the model's message before it runs this handler, from
  * a copy of the input. So the chat shows, and the model keeps, the command as the model wrote it.

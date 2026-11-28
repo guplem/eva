@@ -6,6 +6,7 @@
 - Never embed `claude`: it adds about 270 MB and breaks updates. Never run pi inside the core process: it would see every secret.
 - Run a model call with no tools, no settings and no saved session, and deny every approval: its text can come from other people, such as a chat message.
 - The pi MCP bridge runs inside pi, so it spawns its servers without a seam.
+- Start `eva shell-sandbox` in `/`: Bun reads `bunfig.toml` and `.env` from its start folder, which a pi chat can write (#759).
 
 # File wall
 

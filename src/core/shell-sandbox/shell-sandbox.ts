@@ -1,5 +1,5 @@
 /**
- * `eva shell-sandbox <wall file> <command>`: the wrapper that runs each shell command of a pi
+ * `eva shell-sandbox <wall file> <folder> <command>`: the wrapper that runs each shell command of a pi
  * Project chat in the sandbox (#759). Eva's pi extension rewrites the model's command into a call
  * of this wrapper, and pi's bash tool runs it in the chat's folder.
  *
@@ -8,8 +8,8 @@
  * holds the library's config, which the pi engine writes for each turn.
  *
  * The wall fails closed. When the sandbox cannot start, the command does not run, and the model
- * reads why. Only Eva's start check may let a command run with no sandbox: then the extension
- * does not wrap it at all.
+ * reads that it could not start. Only Eva's start check may let a command run with no sandbox:
+ * then the extension does not wrap it at all.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";

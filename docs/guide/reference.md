@@ -512,7 +512,7 @@ In the sandbox, a command:
 - cannot reach Eva herself by the names `localhost` and `*.ts.net`, on this computer or on your tailnet (your private Tailscale network). A number address, such as `100.64.0.1`, is not blocked;
 - can serve on a port of this computer, such as for a dev server.
 
-In a pi chat, each command gets its own sandbox. When the sandbox cannot start, the command does not run, and the model reads that the sandbox could not start. Nothing runs it outside the sandbox.
+In a pi chat, each command gets its own sandbox. When the sandbox cannot start for a command, that command does not run, and the model reads that the sandbox could not start. Where Eva's start check finds no sandbox on the computer, the shell has no wall: see [Set up the sandbox](#set-up-the-sandbox).
 
 ### The socket filter
 
@@ -535,7 +535,7 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
-At start, Eva tries the sandbox. When it cannot start, a notice says why, and which chats it concerns: those of both engines, or only pi chats when only ripgrep is missing. The chats still run, and their file tools stay walled. While the test runs, each shell command of a pi chat goes in the sandbox. On a computer where it cannot start, such a command fails in the first moments after a start.
+At start, Eva tries the sandbox. When it cannot start, a notice says why, and which chats it concerns. Usually that is the chats of both engines. When only ripgrep is missing, it is only pi chats. The chats still run, and their file tools stay walled. While Eva tries the sandbox, each shell command of a pi chat goes in the sandbox. On a computer where it cannot start, such a command fails in the first moments after a start.
 
 ### AppArmor and bubblewrap
 
@@ -587,8 +587,9 @@ Some commands work differently in the sandbox:
 
 - `git push -u` cannot save the upstream branch, because the sandbox protects `.git/config`. Use `git push origin <branch>`.
 - Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
-- In a pi chat, a command line of more than about 100 KB does not run: Linux takes at most 128 KB in one argument. Put a long script in a file, and run the file.
-- In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts empty placeholders there for the files that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. Add files by name. A command that pi stops leaves its placeholders, and Eva removes them at the end of the turn.
+- In a pi chat, a command line of more than about 100 KiB does not run. Linux takes at most 128 KiB in one argument, and Eva adds her own words to each command. Put a long script in a file, and run the file.
+- In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts placeholders there: empty files that stand in for names that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. git refuses to add them. So add files by name.
+- A command that pi stops leaves its placeholders in the chat's folder. Eva removes them at the end of the turn.
 - In a pi chat, a command cannot write the `.pi` settings of the chat's folder, as a file tool cannot.
 
 ## Optional features

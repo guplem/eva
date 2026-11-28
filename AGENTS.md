@@ -42,7 +42,7 @@ A change to one of these goals needs the owner.
 - **Spawn a child process only through a seam** (`ProcessRunner`; pi's `PiProcessStarter`; `TerminalProcessStarter` for a program that needs a terminal), with an environment from `buildChildEnvironment` and a timeout. A seam is an interface that a test replaces with a fake.
   Some long children, such as the Windows tray icon, read Eva's newest line from a file. They write each answer as one line on their output. Run such a child through `LineProcessStarter`, with a bounded close instead of a timeout.
   Only Eva herself, under her supervisor, runs through `LongProcessStarter`. She gets the supervisor's whole environment, and a bounded stop instead of a timeout.
-  Only `eva shell-sandbox` runs a pi Project chat's shell command through `SandboxedCommandStarter`. The command gets pi's environment, and pi's bash tool stops it instead of a timeout.
+  Only `eva shell-sandbox` runs a pi Project chat's shell command through `SandboxedCommandStarter`. The wrapped command gets pi's environment, and pi's bash tool stops it instead of a timeout.
 - **Write state files atomically, and read them tolerantly** (`src/shared/files.ts`). A bad file never crashes Eva.
 - **Branch on `EvaError` codes,** never on message text.
 - **Redact the text of each event with `Redactor`** before it leaves the core.

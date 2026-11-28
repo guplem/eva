@@ -31,7 +31,7 @@ export function describePiPermissions(context: PermissionContext): EnginePermiss
         runs: ["Every action: pi has no questions of its own"],
         asks: [],
         blocks: [outsideFolder, settingsWrites],
-        note: "pi runs as you would run it in the clone: its own pi extensions load. Eva answers no to each question that an extension asks. Its own pi extensions run outside the sandbox. They, and its .pi settings such as a shell command prefix, can change a shell command after Eva puts it in the sandbox.",
+        note: "pi runs as you would run it in the clone: its own pi extensions load. Eva answers no to each question that an extension asks. Its own pi extensions run outside the sandbox. They, and its .pi settings such as a shell command prefix, can change a shell command after Eva wraps it.",
       },
       {
         chat: "untrusted-project",

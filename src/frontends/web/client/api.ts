@@ -70,6 +70,7 @@ import type { VaultSecretsStatus } from "../../../core/vault/vault-encryption.ts
 import type { WidgetInputValue } from "../../../core/widgets/widget-list.ts";
 import type { DefaultPlace } from "../../../core/widgets/widget-defaults.ts";
 import type { WidgetFrame, WidgetItem, WidgetReview } from "../../../core/widgets/widgets.ts";
+import type { PageFrame } from "../../../core/pages/chat-pages.ts";
 import type { LayoutChange } from "../../../core/widgets/widget-layout.ts";
 import type { PreviewMode, PreviewPlace, WidgetPreview } from "../../../core/widgets/widget-previews.ts";
 import type { ContextPart } from "../../../shared/chat-context.ts";
@@ -96,6 +97,7 @@ export type { PersonalFactsView, VaultStructureView };
 export type { VaultSecretsStatus };
 export type { ComputerSummary };
 export type { WidgetFrame, WidgetInputValue, WidgetItem, WidgetReview, PreviewMode, PreviewPlace, WidgetPreview };
+export type { PageFrame };
 /** Where the person is, for scripts: a recent point from a phone, or the home place. */
 export type CurrentPlaceView = CurrentPlace;
 
@@ -673,6 +675,12 @@ export const api = {
   /** Ends the tokens of a page that closes; keepalive, so it goes out as the page goes. */
   releaseWidgetFrames: (tokens: readonly string[]): Promise<void> =>
     request("POST", "/api/widgets/frames/release", { tokens }, { keepalive: true }),
+  /** The token of one page frame in a chat answer (#1129), or the note of a page that Eva cannot show. */
+  pageFrame: (path: string, scheme: "light" | "dark", colors: Readonly<Record<string, string>>): Promise<PageFrame> =>
+    request("POST", "/api/pages/frame", { path, scheme, colors }, { limit: quickRead }),
+  /** Ends the tokens of page frames that loaded or closed; keepalive, so it goes out as the page goes. */
+  releasePageFrames: (tokens: readonly string[]): Promise<void> =>
+    request("POST", "/api/pages/release", { tokens }, { keepalive: true }),
 };
 
 /** The browser's socket to Eva's event route, and its timers. */

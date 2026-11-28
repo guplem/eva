@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs Eva on Linux with one command:
 #   curl -fsSL https://github.com/guplem/eva/releases/latest/download/install.sh | sh
-# It installs git, the OpenMP library for voice notes, and bubblewrap and socat for the shell
+# It installs git, the OpenMP library for voice notes, and bubblewrap, socat and ripgrep for the shell
 # sandbox, when they are missing. Where AppArmor blocks bubblewrap, as on Ubuntu 24.04, it adds a
 # profile that lets bubblewrap run. It downloads Eva from the latest release, checks the download
 # against SHA256SUMS, puts it in ~/.local/bin, and starts `eva setup`. A second run updates Eva.
@@ -97,20 +97,21 @@ has_openmp() {
 }
 
 # Prints the packages, each after a space: the tools in $1, the OpenMP library when $2 is not empty,
-# and the shell sandbox when $3 is not empty. Each package manager names the library in its own way.
+# the shell sandbox when $3 is not empty, and ripgrep when $4 is not empty. Each package manager names
+# the library in its own way.
 package_names() {
   case "$(package_manager)" in
     pacman) openmp_package="gcc-libs" ;;
     dnf | apk) openmp_package="libgomp" ;;
     *) openmp_package="libgomp1" ;;
   esac
-  echo "$1${2:+ $openmp_package}${3:+ bubblewrap socat}"
+  echo "$1${2:+ $openmp_package}${3:+ bubblewrap socat}${4:+ ripgrep}"
 }
 
-# Installs the packages that package_names gives for $1, $2 and $3. $packages is a list of words on
+# Installs the packages that package_names gives for $1 to $4. $packages is a list of words on
 # purpose.
 install_packages() {
-  packages="$(package_names "$1" "$2" "$3")"
+  packages="$(package_names "$1" "$2" "$3" "$4")"
   case "$(package_manager)" in
     apt-get) run_apt install -y -qq $packages ;;
     dnf) as_root dnf install -y $packages ;;
@@ -122,9 +123,10 @@ install_packages() {
 }
 
 # Says that an optional package is missing: $1 says what needs it. It gives the command that
-# installs the OpenMP library when $2 is not empty, and the shell sandbox when $3 is not empty.
+# installs the OpenMP library when $2 is not empty, the shell sandbox when $3 is not empty, and
+# ripgrep when $4 is not empty.
 say_install_later() {
-  packages="$(package_names "" "$2" "$3")"
+  packages="$(package_names "" "$2" "$3" "$4")"
   # root has no need for sudo, and a container often has no sudo.
   sudo="sudo "
   [ "$(id -u)" -ne 0 ] || sudo=""
@@ -147,9 +149,14 @@ has_sandbox() {
   command -v bwrap >/dev/null 2>&1 && command -v socat >/dev/null 2>&1
 }
 
+has_ripgrep() {
+  command -v rg >/dev/null 2>&1
+}
+
 # Eva needs git for the vault. `eva setup` downloads uv and Claude Code with curl. Voice notes and
-# the shell sandbox of Claude Code are optional, so neither stops the install. The sandbox keeps the
-# shell of a Project chat out of the vault (#711). An Eva from before it gets it from a second run.
+# the shell sandbox are optional, so neither stops the install. The sandbox keeps the shell of a
+# Project chat out of the vault (#711). An Eva from before it gets it from a second run. pi's
+# sandbox also needs ripgrep, which Claude Code brings for its own (#759).
 install_tools() {
   missing=""
   for tool in git curl; do
@@ -159,45 +166,59 @@ install_tools() {
   has_openmp || openmp="yes"
   sandbox=""
   has_sandbox || sandbox="yes"
+  ripgrep=""
+  has_ripgrep || ripgrep="yes"
   if [ -n "$missing" ]; then
     package_manager >/dev/null ||
       fail "this system has no package manager that the script knows. Install$missing, then run this command again."
     can_be_root || fail "an administrator must install$missing, and this user has no sudo. Then run this command again."
     say "  Installing$missing. It needs administrator rights, so sudo can ask for your password."
     update_package_lists
-    install_packages "$missing" "" "" || true
+    install_packages "$missing" "" "" "" || true
     for tool in $missing; do
       command -v "$tool" >/dev/null 2>&1 || fail "$tool did not install."
       say "  [ok] Installed $tool."
     done
   fi
-  [ -z "$openmp$sandbox" ] && return 0
+  [ -z "$openmp$sandbox$ripgrep" ] && return 0
   if can_be_root; then
     # Each one alone, so a package that this system lacks does not stop the other.
     # The subshell keeps a failed step, such as a refused sudo, from stopping the install.
     if [ -n "$openmp" ]; then
       say "  Installing the OpenMP library for voice notes. It needs administrator rights, so sudo can ask for your password."
       update_package_lists
-      (install_packages "" yes "") || true
+      (install_packages "" yes "" "") || true
     fi
     if [ -n "$sandbox" ]; then
       say "  Installing bubblewrap and socat, the shell sandbox of Project chats. It needs administrator rights, so sudo can ask for your password."
       update_package_lists
-      (install_packages "" "" yes) || true
+      (install_packages "" "" yes "") || true
+    fi
+    if [ -n "$ripgrep" ]; then
+      say "  Installing ripgrep, which the shell sandbox of pi chats needs. It needs administrator rights, so sudo can ask for your password."
+      update_package_lists
+      (install_packages "" "" "" yes) || true
     fi
   fi
   if [ -n "$openmp" ]; then
     if has_openmp; then
       say "  [ok] Installed the OpenMP library."
     else
-      say_install_later "Voice notes need the OpenMP library." yes ""
+      say_install_later "Voice notes need the OpenMP library." yes "" ""
     fi
   fi
   if [ -n "$sandbox" ]; then
     if has_sandbox; then
       say "  [ok] Installed bubblewrap and socat."
     else
-      say_install_later "The shell of a Project chat needs bubblewrap and socat to stay out of the vault." "" yes
+      say_install_later "The shell of a Project chat needs bubblewrap and socat to stay out of the vault." "" yes ""
+    fi
+  fi
+  if [ -n "$ripgrep" ]; then
+    if has_ripgrep; then
+      say "  [ok] Installed ripgrep."
+    else
+      say_install_later "The shell of a pi Project chat needs ripgrep to stay out of the vault." "" "" yes
     fi
   fi
 }

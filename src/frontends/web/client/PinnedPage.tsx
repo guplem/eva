@@ -130,7 +130,7 @@ export function PinnedColumn({
       />
       <header className="pinned-page-header">
         <Icon name="pin" />
-        <h2 title={path}>{name}</h2>
+        <h2 data-tooltip={path}>{name}</h2>
         <UnpinButton name={name} />
       </header>
       {/* A new pin is a new page, so its frame starts again. */}

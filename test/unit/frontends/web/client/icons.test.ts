@@ -67,6 +67,8 @@ const designIcons: readonly IconName[] = [
   "code",
   "panel",
   "star",
+  "bookmark",
+  "pin",
   "command",
   "wand",
   "clipboard",

@@ -376,8 +376,9 @@ export class Scheduler {
     const markers = extractFileMarkers(answer.text);
     // A [[quiet]] line silences the run, also after text that it wrote while it worked, such as
     // "I check Gmail now". So does a [[done]] with no words. A file still goes out. An answer with
-    // no words and no marker, such as a stopped run, is no word from the agent, so it stays.
-    const files = markers.attach.length + markers.offer.length;
+    // no words and no marker, such as a stopped run, is no word from the agent, so it stays. A page
+    // of the answer (#1129) counts as a file.
+    const files = markers.attach.length + markers.offer.length + markers.show.length;
     const silent = files === 0 && (markers.quiet || (markers.done && markers.text === ""));
     const answered = { kind: "schedule_answered", scheduleId: schedule.id, name: schedule.name, sessionId } as const;
     if (failure !== null) {

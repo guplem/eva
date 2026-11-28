@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  assertPinnable,
   SessionManager,
   type FirstTurn,
   type ChatDefaults,
@@ -884,6 +885,25 @@ describe("renames (issue 46)", () => {
     events.length = 0;
     manager.pinPage(rootId, null);
     expect(events).toEqual([]);
+  });
+
+  test("only a chat with Eva pins a page, and any chat can drop a pin (#1130)", () => {
+    const manager = createManager(new FakeEngine());
+    const project = manager.createSession({
+      mode: "project",
+      engine: "claude-code",
+      model: "opus",
+      startFolder: "/vault/Projects/p/repos/clone-0",
+      source: "web",
+      projectId: "p",
+      clone: "clone-0",
+    });
+    expect(() => manager.pinPage(project.id, ".eva/pages/chart.html")).toThrow(
+      expect.objectContaining({ code: "page_not_pinnable" }),
+    );
+    expect(() => assertPinnable(project)).toThrow(expect.objectContaining({ code: "page_not_pinnable" }));
+    expect(manager.pinPage(project.id, null).pinnedPage).toBeNull();
+    expect(() => assertPinnable(manager.get(newAssistantSession(manager)))).not.toThrow();
   });
 
   test("a removed page leaves the pin of every chat that pins it (#1130)", () => {

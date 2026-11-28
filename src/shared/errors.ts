@@ -67,7 +67,9 @@ export type EvaErrorCode =
   /** A written data format of the widget conflicts with the format of its folder (#692). */
   | "widget_format_conflict"
   /** A vault upgrade command cannot run now, such as on a satellite or with no upgrade open (#773). */
-  | "vault_upgrade_refused";
+  | "vault_upgrade_refused"
+  /** Only a chat with Eva pins a page: a Project chat is a clean wrapper of its harness (#1130). */
+  | "page_not_pinnable";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

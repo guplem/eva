@@ -483,6 +483,7 @@ export class SessionManager {
    */
   pinPage(sessionId: string, path: string | null): SessionRecord {
     const session = this.get(sessionId);
+    if (path !== null) assertPinnable(session);
     if (session.pinnedPage === path) return session;
     const updated = { ...session, pinnedPage: path };
     this.options.store.save(updated);
@@ -1931,6 +1932,15 @@ ${engineText}`,
     }
     return runtime;
   }
+}
+
+/**
+ * Only a chat with Eva pins a page (#1130). A Project chat is a clean wrapper of its harness: it gets
+ * no prompt of Eva about pages, and its view has no pinned column.
+ */
+export function assertPinnable(session: SessionRecord): void {
+  if (session.mode !== "assistant")
+    throw new EvaError("page_not_pinnable", "Only a chat with Eva pins a page. A Project chat can save one.");
 }
 
 function createBatch(): PendingBatch {

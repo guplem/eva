@@ -169,7 +169,7 @@ import { ChatNamer } from "./sessions/chat-namer.ts";
 import { ChatSummarizer } from "./sessions/chat-summary.ts";
 import { StepExplainer } from "./sessions/step-explainer.ts";
 import { AssistantRules } from "./modes/assistant-rules.ts";
-import { SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
+import { assertPinnable, SessionManager, type AnswerTimeouts, type FirstTurn } from "./sessions/session-manager.ts";
 import { answersToUndo, refsStillNamed } from "./sessions/retry-undo.ts";
 import { ModelCalls, type ModelCallResult } from "./model-calls/model-calls.ts";
 import { ComposerMenu } from "./composer-menu/composer-menu.ts";
@@ -2450,7 +2450,8 @@ export class Eva {
 
   /** Pins a page beside one branch of a chat, which also saves it, or unpins with null (#1130). */
   pinPage(sessionId: string, path: string | null): SessionRecord {
-    this.sessions.get(sessionId);
+    // Before the save, so a refused pin changes no file.
+    if (path !== null) assertPinnable(this.sessions.get(sessionId));
     return this.sessions.pinPage(sessionId, path === null ? null : this.savePage(path).path);
   }
 

@@ -28,7 +28,7 @@ import { answerText, serveFolderFile, type WidgetCopies } from "./widget-copies.
 import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from "./widget-data.ts";
 import { evaDataAnswer } from "./widget-eva-data.ts";
 import { answerStatePath, statePath } from "./widget-state.ts";
-import { calendarAnswer } from "./widget-google-calendar.ts";
+import { calendarAnswer, calendarWriteAnswer } from "./widget-google-calendar.ts";
 import type { CalendarSource } from "../google/google-calendar.ts";
 import type { TasksSource } from "../google/google-tasks.ts";
 import { tasksAnswer } from "./widget-google-tasks.ts";
@@ -329,6 +329,19 @@ export class WidgetPreviews {
             exclusive: this.options.exclusive,
             redact: this.options.redact,
           });
+    // My data writes the calendar with the grant of the preview, as it writes `data/` (#974).
+    if (grant !== null) {
+      const calendarWrite = await calendarWriteAnswer({
+        path,
+        method,
+        query,
+        body,
+        access: grant.googleCalendar,
+        source: this.options.calendar,
+        projects: this.options.projects,
+      });
+      if (calendarWrite !== null) return calendarWrite;
+    }
     // Example data changes nothing: the widget shows its demo note.
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
     const location = session.manifest.inputs.some((input) => input.type === "eva-location");

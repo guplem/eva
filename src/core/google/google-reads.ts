@@ -97,6 +97,11 @@ export class GoogleAnswerCache {
   forget(key: string): void {
     this.entries.delete(key);
   }
+
+  /** Drops every kept answer: after a write, so the widget shows its own change at once. */
+  clear(): void {
+    this.entries.clear();
+  }
 }
 
 /** A text of Google, or null for a missing or empty one. */

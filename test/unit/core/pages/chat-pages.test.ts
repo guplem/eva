@@ -8,6 +8,7 @@ import {
   maxPageTokens,
   pageTokenLifeMs,
   resolveShownPage,
+  savedPathOf,
 } from "../../../../src/core/pages/chat-pages.ts";
 import { widgetTheme } from "../../../../src/core/widgets/widget-policy.ts";
 
@@ -117,7 +118,56 @@ describe("resolveShownPage", () => {
   });
 });
 
+describe("resolveShownPage and saved pages (#1130)", () => {
+  test("says how a page is kept: temporary in the scratch folder, saved in .eva/pages, or a note", () => {
+    write(".eva/scratch/chart.html", page);
+    write(".eva/pages/kept.html", page);
+    write("Notes/Old.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({ state: "ready", kept: "temporary" });
+    expect(resolveShownPage(vault, ".eva/pages/kept.html")).toMatchObject({ state: "ready", kept: "saved" });
+    expect(resolveShownPage(vault, "Notes/Old.html")).toMatchObject({ state: "ready", kept: "note" });
+  });
+
+  test("leads the scratch marker of a saved page to the saved file", () => {
+    write(".eva/pages/chart.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({
+      state: "ready",
+      relativePath: ".eva/pages/chart.html",
+      kept: "saved",
+    });
+  });
+
+  test("shows the saved page when a scratch page has the same name", () => {
+    write(".eva/scratch/chart.html", "<p>new</p>");
+    write(".eva/pages/chart.html", page);
+    expect(resolveShownPage(vault, ".eva/scratch/chart.html")).toMatchObject({ relativePath: ".eva/pages/chart.html" });
+  });
+
+  test("gives the reason of a saved page that it refuses, and never falls back to the scratch copy", () => {
+    write(".eva/scratch/keys.html", page);
+    write(".eva/pages/keys.html", "<p>ghp_abcdefghijklmnopqrstuvwxyz0123456789</p>");
+    expect(resolveShownPage(vault, ".eva/scratch/keys.html")).toMatchObject({ state: "refused" });
+  });
+
+  test("names a page in the old Scratch folder by its saved file too", () => {
+    write(".eva/pages/plan.html", page);
+    expect(savedPathOf("Scratch/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf(".eva/scratch/received/plan.html")).toBe(".eva/pages/plan.html");
+    expect(savedPathOf("Notes/plan.html")).toBeNull();
+    expect(savedPathOf(".eva/pages/plan.html")).toBeNull();
+  });
+});
+
 describe("ChatPages", () => {
+  test("tells the frame how its page is kept and which file it shows", () => {
+    write(".eva/pages/chart.html", page);
+    expect(pages().frame(".eva/scratch/chart.html", theme)).toMatchObject({
+      state: "ready",
+      kept: "saved",
+      path: ".eva/pages/chart.html",
+    });
+  });
+
   test("gives a token path for a page, and serves the page and the theme under it", () => {
     write(".eva/scratch/chart.html", page);
     const store = pages();

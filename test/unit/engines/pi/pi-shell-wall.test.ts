@@ -27,7 +27,7 @@ describe("the sandbox config of a pi Project chat's shell (#759)", () => {
       filesystem: {
         denyRead: wall.closed,
         // pi's managed rg and fd, but not its logins or its chats' history.
-        allowRead: [wall.area, ...wall.readOnly, ...wall.readable, "/srv/eva/engines/pi-agent/bin"],
+        allowRead: [wall.area, ...wall.readOnly, ...wall.readable, join(environment.PI_CODING_AGENT_DIR, "bin")],
         allowWrite: [wall.area, tmpdir(), join(homedir(), ".npm", "_cacache")],
         // pi reads its settings from `.pi`, and a shell command prefix there runs before the wrap.
         denyWrite: [join(wall.area, ".pi")],

@@ -1,8 +1,8 @@
 /**
  * Whether a sandbox can wall the shell of a Project chat on this computer: Claude Code's own (#711),
- * or the same library around pi's shell (#759). The
- * sandbox reports nothing to Eva when it cannot start, so Eva looks for what it needs. The file
- * tools of each chat stay walled either way: only the shell can then read the vault.
+ * or the same library around pi's shell (#759). The sandbox reports nothing to Eva when it cannot
+ * start, so Eva looks for what it needs. The file tools of each chat stay walled either way: only
+ * the shell can then read the vault.
  */
 import { failureReason, type ProcessRunner } from "../shared/process-runner.ts";
 

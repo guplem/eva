@@ -512,7 +512,7 @@ In the sandbox, a command:
 - cannot reach Eva herself by the names `localhost` and `*.ts.net`, on this computer or on your tailnet (your private Tailscale network). A number address, such as `100.64.0.1`, is not blocked;
 - can serve on a port of this computer, such as for a dev server.
 
-In a pi chat, each command gets its own sandbox. When the sandbox cannot start, the command does not run, and the model reads why. Nothing runs it outside the sandbox.
+In a pi chat, each command gets its own sandbox. When the sandbox cannot start, the command does not run, and the model reads that the sandbox could not start. Nothing runs it outside the sandbox.
 
 ### The socket filter
 
@@ -588,6 +588,8 @@ Some commands work differently in the sandbox:
 - `git push -u` cannot save the upstream branch, because the sandbox protects `.git/config`. Use `git push origin <branch>`.
 - Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
 - In a pi chat, a command line of more than about 100 KB does not run: Linux takes at most 128 KB in one argument. Put a long script in a file, and run the file.
+- In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts empty placeholders there for the files that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. Add files by name. A command that pi stops leaves its placeholders, and Eva removes them at the end of the turn.
+- In a pi chat, a command cannot write the `.pi` settings of the chat's folder, as a file tool cannot.
 
 ## Optional features
 

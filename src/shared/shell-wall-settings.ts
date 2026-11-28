@@ -139,3 +139,22 @@ export function shellWallSettings(wall: FileWall, machine: SandboxMachine): Shel
     },
   };
 }
+
+/**
+ * The file names in a command's folder that the sandbox library protects from writes: its own list
+ * (`DANGEROUS_FILES` of 0.0.83), and `.pi`, which pi's wall closes (#759). Where one is absent, the
+ * sandbox puts an empty placeholder there while a command runs, and a command that pi stops hard
+ * leaves it. In a project folder, the vault sync must not commit one (#759).
+ */
+export const sandboxPlaceholderFiles: readonly string[] = [
+  ".gitconfig",
+  ".gitmodules",
+  ".bashrc",
+  ".bash_profile",
+  ".zshrc",
+  ".zprofile",
+  ".profile",
+  ".ripgreprc",
+  ".mcp.json",
+  ".pi",
+];

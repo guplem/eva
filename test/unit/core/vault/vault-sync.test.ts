@@ -452,6 +452,31 @@ describe("VaultSync.save", () => {
     expect(remoteFiles()).not.toContain(".mentions");
   });
 
+  test("never commits or snapshots an empty placeholder that the shell sandbox puts in a project folder (#759)", async () => {
+    // While a command of a project folder's chat runs, the sandbox puts these there, and a stopped
+    // pi command leaves them.
+    for (const name of [".bashrc", ".mcp.json", ".pi", ".gitconfig"])
+      sandbox.write(vault, `Projects/2025-01-01-1200-coach/${name}`, "");
+    // A name with content is the person's own, and so is an empty file anywhere else.
+    sandbox.write(vault, "Projects/2025-01-01-1200-coach/.profile", "export A=1\n");
+    sandbox.write(vault, "Projects/2025-01-01-1200-coach/notes/.bashrc", "");
+    sandbox.write(vault, "Projects/2025-01-01-1200-coach/log.md", "Ran 5 km.\n");
+    const sync = createSync(vault);
+    await sync.snapshot("refs/eva/turns/s1/0/after");
+    const snapshot = sandbox.git(vault, "ls-tree", "-r", "--name-only", "refs/eva/turns/s1/0/after").split("\n");
+    expect(snapshot).not.toContain("Projects/2025-01-01-1200-coach/.bashrc");
+    expect(snapshot).toContain("Projects/2025-01-01-1200-coach/.profile");
+    const state = await sync.save();
+    expect(state.status).toBe("ok");
+    expect(state.withheldFiles).toEqual([]);
+    const files = remoteFiles().split("\n");
+    for (const name of [".bashrc", ".mcp.json", ".pi", ".gitconfig"])
+      expect(files).not.toContain(`Projects/2025-01-01-1200-coach/${name}`);
+    expect(files).toContain("Projects/2025-01-01-1200-coach/.profile");
+    expect(files).toContain("Projects/2025-01-01-1200-coach/notes/.bashrc");
+    expect(files).toContain("Projects/2025-01-01-1200-coach/log.md");
+  });
+
   test("never commits a file in .eva/scratch/, even when the vault's .gitignore does not list it (#415)", async () => {
     sandbox.write(vault, ".eva/scratch/received/statement.pdf", "A bank statement.\n");
     sandbox.write(vault, "Methods/New.md", "Steps.\n");

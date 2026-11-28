@@ -535,7 +535,7 @@ Without the filter, the wall is weaker: Eva's list can miss a socket in another 
 - **macOS:** the sandbox needs nothing.
 - **Windows:** Eva has no sandbox to turn on. The shell of a project chat can read the closed folders. Eva tells you this once, in the notification center. The file tools stay walled.
 
-At start, Eva tries the sandbox. When it cannot start, a notice says why, and which chats it concerns. Usually that is the chats of both engines. When only ripgrep is missing, it is only pi chats. The chats still run, and their file tools stay walled. While Eva tries the sandbox, each shell command of a pi chat goes in the sandbox. On a computer where it cannot start, such a command fails in the first moments after a start.
+At start, Eva tries the sandbox. When it cannot start, a notice says why, and which chats it concerns. Usually that is the chats of both engines. When only ripgrep is missing, it is only pi chats. The chats still run, and their file tools stay walled. While Eva tries the sandbox on Linux or macOS, each shell command of a pi chat goes in the sandbox. On a computer where it cannot start, such a command fails in the first moments after a start. On Windows, Eva never wraps a command.
 
 ### AppArmor and bubblewrap
 
@@ -589,7 +589,7 @@ Some commands work differently in the sandbox:
 - Cargo, Gradle and Maven cannot write their caches in the home folder. pip, uv, Go and the other tools keep their caches in the temporary folder.
 - In a pi chat, a command line of more than about 100 KiB does not run. Linux takes at most 128 KiB in one argument, and Eva adds her own words to each command. Put a long script in a file, and run the file.
 - In a pi chat on Linux, `git add -A` and `git add .` fail in the chat's folder. While a command runs, the sandbox puts placeholders there: empty files that stand in for names that no command may create, such as `.bashrc`, `.mcp.json` and `.pi`. git refuses to add them. So add files by name.
-- A command that pi stops can leave its placeholders in the chat's folder. They are empty, so delete them. Eva does not, because a placeholder can belong to a command of another chat that still runs.
+- A command that pi stops can leave its placeholders in the chat's folder. They are empty, so delete them. Eva does not, because a placeholder can belong to a command of another chat that still runs. In a project folder, the vault sync never commits an empty placeholder.
 - In a pi chat, a command cannot write the `.pi` settings of the chat's folder, as a file tool cannot.
 
 ## Optional features

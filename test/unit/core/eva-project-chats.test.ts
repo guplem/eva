@@ -270,6 +270,7 @@ describe("specialists (#703)", () => {
       {
         shellWallGap: () =>
           Promise.resolve({ reason: "The shell sandbox needs bubblewrap.", fixable: true, piOnly: false }),
+        toolPlaces: { platform: "linux", userHome: "/srv/person", standalone: true },
       },
     );
     const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
@@ -282,6 +283,18 @@ describe("specialists (#703)", () => {
     await Promise.resolve();
     await instance.sessions.send(chat.id, "After the check.");
     expect(engine.requests.map((request) => request.fileWall?.shellSandbox)).toEqual([true, false]);
+  });
+
+  test("on Windows, pi's shell is never wrapped, also before the start check, as before #759", async () => {
+    const engine = new FakeEngine((request) => FakeEngine.answer(request, "Noted."));
+    const instance = start(
+      engine,
+      {},
+      { toolPlaces: { platform: "win32", userHome: "/srv/person", standalone: true } },
+    );
+    const chat = await instance.createProjectSession({ projectId: coachId, source: "web" });
+    await instance.sessions.send(chat.id, "Before the check.");
+    expect(engine.requests.map((request) => request.fileWall?.shellSandbox)).toEqual([false]);
   });
 
   test("a specialist has no clones: a named clone, a fork or a retry in a new clone are refused", async () => {

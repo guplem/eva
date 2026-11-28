@@ -241,7 +241,7 @@ import { DataFormatRecord, dataFormatEditedMessage } from "./widgets/data-format
 import { Widgets } from "./widgets/widgets.ts";
 import { WidgetUpdates } from "./widgets/widget-updates.ts";
 import { PreviewGrants } from "./widgets/widget-previews.ts";
-import type { ShellWallGap } from "./shell-wall.ts";
+import { shellSandboxPossible, type ShellWallGap } from "./shell-wall.ts";
 import { searchIndexProblem, SearchIndexSync, type VaultSearchIndex } from "./files/windows-search.ts";
 
 /** The Vault structure card (#773). */
@@ -805,7 +805,7 @@ export class Eva {
     this.uvAnswer = null;
     this.latestToolCache = new Map();
     this.socketFilter = false;
-    this.shellSandbox = true;
+    this.shellSandbox = shellSandboxPossible(options.toolPlaces?.platform ?? process.platform);
     this.changelogCache = null;
     this.githubLogin = new GitHubBrowserLogin({
       login: options.githubBrowserLogin === undefined ? defaultGitHubLogin(options.now) : options.githubBrowserLogin,

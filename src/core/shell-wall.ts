@@ -134,6 +134,14 @@ export interface ShellWallNeeds {
 
 const noNeeds: ShellWallNeeds = { ripgrep: false, ripgrepFolders: [] };
 
+/**
+ * False where `shellWallGap` refuses with no check of the machine. Before the start check ends, a
+ * pi chat's command then runs as before #759, and is never wrapped in a sandbox that cannot exist.
+ */
+export function shellSandboxPossible(platform: NodeJS.Platform): boolean {
+  return platform === "linux" || platform === "darwin";
+}
+
 /** Null when the sandbox can run here, else why not. */
 export async function shellWallGap(
   machine: ShellWallMachine,

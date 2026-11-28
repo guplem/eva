@@ -6,6 +6,7 @@ import {
   evaProfileMark,
   leftoverBwrapProfile,
   nestedSandboxWorks,
+  shellSandboxPossible,
   shellWallGap,
   type ShellWallMachine,
 } from "../../../src/core/shell-wall.ts";
@@ -360,5 +361,14 @@ describe("shellWallGap for pi chats, whose sandbox also needs ripgrep (#759)", (
     const windows = await shellWallGap(machine("win32", []), pi);
     expect(windows?.reason).not.toContain("Claude Code");
     expect(windows?.piOnly).toBe(false);
+  });
+});
+
+describe("shellSandboxPossible (#759)", () => {
+  test("only Linux and macOS can have the sandbox, so only they wrap a command before the start check ends", () => {
+    expect(shellSandboxPossible("linux")).toBe(true);
+    expect(shellSandboxPossible("darwin")).toBe(true);
+    expect(shellSandboxPossible("win32")).toBe(false);
+    expect(shellSandboxPossible("freebsd")).toBe(false);
   });
 });

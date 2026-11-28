@@ -8,13 +8,15 @@ export interface FileMarkers {
   readonly text: string;
   readonly attach: readonly string[];
   readonly offer: readonly string[];
+  /** The pages that the web app shows inside the answer (#1129). */
+  readonly show: readonly string[];
   /** A `[[quiet]]` line came: a scheduled run with nothing to say (#687). */
   readonly quiet: boolean;
   /** A `[[done]]` line came: a scheduled run that ends its schedule (#687). */
   readonly done: boolean;
 }
 
-const markerPattern = /^\s*\[\[\s*(attach|offer)\s*:\s*(.+?)\s*\]\]\s*$/i;
+const markerPattern = /^\s*\[\[\s*(attach|offer|show)\s*:\s*(.+?)\s*\]\]\s*$/i;
 /** Eva acts on these only in a scheduled run, but every front end hides them. */
 const runMarkerPattern = /^\s*\[\[\s*(quiet|done)\s*\]\]\s*$/i;
 const fencePattern = /^\s*(```|~~~)/;
@@ -24,6 +26,7 @@ export function extractFileMarkers(answer: string): FileMarkers {
   const kept: string[] = [];
   const attach: string[] = [];
   const offer: string[] = [];
+  const show: string[] = [];
   let inFence = false;
   let quiet = false;
   let done = false;
@@ -41,11 +44,13 @@ export function extractFileMarkers(answer: string): FileMarkers {
       continue;
     }
     const path = match[2] ?? "";
-    const list = match[1]?.toLowerCase() === "attach" ? attach : offer;
+    const kind = match[1]?.toLowerCase();
+    const list = kind === "attach" ? attach : kind === "show" ? show : offer;
     if (!list.includes(path)) list.push(path);
   }
   // A file named twice goes once, and attach wins over offer.
-  return { text: kept.join("\n").trim(), attach, offer: offer.filter((path) => !attach.includes(path)), quiet, done };
+  const sent = offer.filter((path) => !attach.includes(path));
+  return { text: kept.join("\n").trim(), attach, offer: sent, show, quiet, done };
 }
 
 /**
@@ -66,7 +71,7 @@ function startsMarker(line: string): boolean {
   const compact = line.replace(/\s+/g, "").replace(/…$/, "").toLowerCase();
   if (compact === "") return false;
   // A cut can also fall just after a whole marker, so its line then ends with "]]…".
-  return ["[[attach:", "[[offer:", "[[quiet]]", "[[done]]"].some(
+  return ["[[attach:", "[[offer:", "[[show:", "[[quiet]]", "[[done]]"].some(
     (start) => start.startsWith(compact) || compact.startsWith(start),
   );
 }

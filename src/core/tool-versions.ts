@@ -34,6 +34,7 @@ export const tools: readonly ToolCheck[] = [
     required: true,
     install: "https://git-scm.com/downloads",
     update: "with the installer or package manager that installed git",
+    tooOld: gitTooOld,
   },
   {
     program: "bun",
@@ -209,4 +210,21 @@ export async function firstOutputLine(
   } catch {
     return null;
   }
+}
+
+/**
+ * Git 2.31 is the first that reads settings from `GIT_CONFIG_COUNT`, through which Eva forces safe
+ * settings on her own git (#1131). An older git still works, with the clone check alone.
+ */
+const minimumGitVersion = [2, 31];
+
+/** True for a git older than 2.31. A version such as `2.45.1.windows.1` counts by its numbers. */
+export function gitTooOld(version: string): boolean {
+  const parts = version.split(".").map((part) => Number.parseInt(part, 10));
+  for (const [index, wanted] of minimumGitVersion.entries()) {
+    const part = parts[index];
+    if (part === undefined || Number.isNaN(part)) return false;
+    if (part !== wanted) return part < wanted;
+  }
+  return false;
 }

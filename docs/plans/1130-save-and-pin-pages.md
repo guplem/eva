@@ -17,22 +17,25 @@ In a chat about data, Eva draws a chart as a page (#1129). The page lives 7 days
 
 ### Where a saved page lives, and how an old marker finds it
 
-- Save moves the file from `.eva/scratch/<name>.html` to `.eva/pages/<name>.html`. The vault sync commits it, and the 7-day clean never enters `.eva/pages/`.
-- `resolveShownPage` stays stateless. For a marker in `.eva/scratch/`, a file of the same name in `.eva/pages/` wins. So the stored answer needs no rewrite, and a later edit of the saved file shows in the old answer.
-- Save removes the scratch copy. So nothing shows two versions of one page.
-- Name clash: two different pages with one name. The prompt tells Eva to give each new page a name that is free in both folders, and to edit a saved page in `.eva/pages/`. A clash that still happens shows the saved page, never a mix. Save writes with no overwrite: a file that appears at the target name meanwhile stops the save with a clear reason.
-- A marker that names `.eva/pages/<name>.html` directly also works. Eva can write it in a later answer.
+The first review found wrong-page cases in a rule by file name only. The orchestrator chose this model:
+
+- **A name is one page.** The name of a page is its whole path under the scratch folder (`.eva/scratch/` or the old `Scratch/`). Save moves `.eva/scratch/a/chart.html` to `.eva/pages/a/chart.html`. So pages of different subfolders, such as a file that the person sent to `.eva/scratch/received/`, never share a saved file. The vault sync commits `.eva/pages/`, and the 7-day clean never enters it.
+- **The newest version answers.** When a scratch file exists at the marker's path, it is the page to show: Save removes the scratch copy, so a scratch file is newer than the saved one. It shows as not saved, with Save. Only when the scratch file is gone does the saved file answer the marker. `resolveShownPage` keeps no state, the stored answer needs no rewrite, and a later edit of the saved file shows in each old answer.
+- **Save replaces an older saved page of the same name**, and removes the scratch copy. The vault history keeps the old version. Save never writes over another entry of `.eva/pages/`: a folder, a link or a file that is not a page stops it with a clear reason. It writes through the atomic write of `src/shared/files.ts`, so a file system with no hard links works, and a failed write names its cause, such as a full disk.
+- A marker that names `.eva/pages/<name>.html` directly follows the same rule. Eva can write it in a later answer.
 - Save refuses each page that `resolveShownPage` refuses, with the same reason: a page with a secret never reaches the sync. `.eva/` is never encrypted, so the docs say that a saved page is plain text in the vault history.
-- Remove deletes the file in `.eva/pages/` only, and unpins it from each chat. The old marker then finds no file and shows the "gone" note.
-- The writes go through the checks of the vault file code: `resolveShownPage` for the source, and a real path inside the vault for the target folder.
+- **Remove always works for a saved page,** whatever it holds, such as a secret or more than 2 MB. It checks the path only: each folder from the vault to the file must be a plain folder, and a link goes, never its target. It unpins the page from each chat. The old marker then finds no file and shows the "gone" note. A note of a saved page that Eva refuses offers Remove too.
+- The prompt still tells Eva to edit a saved page in `.eva/pages/` and to give a new page a free name.
 
 ### The pin
 
 - `pinnedPage: string | null` on the chat record: the vault path of the saved page. A record with no field, or a bad value, reads as null (`.default(null).catch(null)`), as `forkName` does. No migration: no stored value changes meaning, and an older Eva drops the field only when it writes the record. Not breaking.
-- Pin saves first, then stores the saved path. Pin of another page replaces the first. Unpin stores null and keeps the file.
+- Pin saves first, then stores the saved path. A pin is by name, so the column shows the newest version, as a marker does. Pin of another page replaces the first. Unpin stores null and keeps the file.
 - A pin is a fact of one branch. A fork gets `pinnedPage: null`.
 - A new event `page_pinned` tells every device. The web app reloads the chat list. Telegram and the terminal ignore it.
-- Only Assistant chats pin: only they get the "Showing a page" prompt. A Project chat that shows a page offers Save.
+- Only Assistant chats pin: only they get the "Showing a page" prompt. The core refuses a pin of a Project chat with the `page_not_pinnable` code. A Project chat that shows a page offers Save.
+- The Pin toggle keeps one name, "Pin <page> beside the chat", and `aria-pressed` gives its state. The visible word is "Pin" or "Pinned".
+- The small Save button shows a `ButtonSpinner` and `aria-busy`, with no `ProgressBar`. Save is one local file write of 2 MB at most, so the wait is a flash. A bar under a 32 px row in a bubble would jump the row for that flash. A failure shows in a toast.
 
 ### Routes
 

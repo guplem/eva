@@ -421,7 +421,7 @@ describe("PiEngine", () => {
         filesystem: {
           denyRead: ["/vault", "/eva"],
           allowRead: [area, "/eva/bin", join("/eva/engines/pi-agent", "bin")],
-          denyWrite: [],
+          denyWrite: [join(area, ".pi")],
         },
         seccomp: { applyPath: "/eva/bin/apply-seccomp" },
       });
@@ -443,6 +443,51 @@ describe("PiEngine", () => {
         expect(fake.runs[0]?.command.some((part) => part.endsWith("eva-shell-wrap-extension.ts"))).toBe(false);
         expect(fake.runs[0]?.environment[shellWallVariable]).toBeUndefined();
       }
+    });
+
+    test("the placeholders that a stopped command left in the chat's folder go at the end of the turn", async () => {
+      const chat = join(folder, "clone-0");
+      mkdirSync(chat, { recursive: true });
+      writeFileSync(join(chat, ".mcp.json"), "");
+      const fake = new FakePi([
+        {
+          records: loadPiFixture("plain"),
+          onClose: () => {
+            writeFileSync(join(chat, ".bashrc"), "");
+            mkdirSync(join(chat, ".vscode"));
+          },
+        },
+      ]);
+      await drain(engine(fake, { shellSandbox }).runTurn({ ...walled({ area: chat }), startFolder: chat }));
+      expect(readdirSync(chat)).toEqual([".mcp.json"]);
+      // With no sandbox, nothing put a placeholder there, so nothing goes.
+      const unwalled = new FakePi([
+        { records: loadPiFixture("plain"), onClose: () => writeFileSync(join(chat, ".bashrc"), "") },
+      ]);
+      await drain(
+        engine(unwalled, { shellSandbox }).runTurn({
+          ...walled({ area: chat, shellSandbox: false }),
+          startFolder: chat,
+        }),
+      );
+      expect(readdirSync(chat).sort()).toEqual([".bashrc", ".mcp.json"]);
+    });
+
+    test("pi never gets the Claude login, which each shell command would see (#759)", async () => {
+      const fake = new FakePi([{ records: loadPiFixture("plain") }, { records: loadPiFixture("plain") }]);
+      const withToken = { PATH: "/bin", PI_CODING_AGENT_DIR: "/eva/engines/pi-agent", CLAUDE_CODE_OAUTH_TOKEN: "t" };
+      await drain(engine(fake, { shellSandbox }).runTurn({ ...walled(), environment: withToken }));
+      await drain(engine(fake, { shellSandbox }).runTurn(request({ environment: withToken })));
+      for (const run of fake.runs) expect(run.environment["CLAUDE_CODE_OAUTH_TOKEN"]).toBeUndefined();
+    });
+
+    test("a pi that cannot start leaves no wall file", async () => {
+      const failing: PiProcessStarter = () => {
+        throw new Error("no pi");
+      };
+      const events = await drain(engine(new FakePi([]), { shellSandbox, start: failing }).runTurn(walled()));
+      expect(events.at(-1)).toMatchObject({ kind: "turn_failed" });
+      expect(readdirSync(join(folder, "pi", "shell-walls"))).toEqual([]);
     });
 
     test("a wall file that Eva cannot write fails the turn, and runs no command with no wall", async () => {

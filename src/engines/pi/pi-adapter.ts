@@ -61,7 +61,7 @@ import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./p
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
 import { shellWallVariable, shellWrapExtensionSource } from "./pi-shell-wrap-extension.ts";
-import { piShellWallConfig } from "./pi-shell-wall.ts";
+import { absentPlaceholders, piShellWallConfig, removePlaceholders } from "./pi-shell-wall.ts";
 import { toolCacheVariables } from "../../shared/shell-wall-settings.ts";
 
 export interface PiEngineOptions {
@@ -245,6 +245,8 @@ export class PiEngine implements EnginePort {
         return;
       }
     }
+    // A command that pi stops hard leaves bubblewrap's placeholders. Only names absent now can be one.
+    const absentAtStart = shellWallFile === null ? null : absentPlaceholders(request.startFolder);
     if (shellSandbox !== undefined && shellWallFile !== null && request.fileWall !== null) {
       try {
         const machine = { runtimeFolder: request.environment["XDG_RUNTIME_DIR"] ?? null, platform: process.platform };
@@ -265,7 +267,7 @@ export class PiEngine implements EnginePort {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
         cwd: request.startFolder,
         environment: {
-          ...request.environment,
+          ...withoutClaudeLogin(request.environment),
           ...(specsFile === null ? {} : { [mcpServersFileVariable]: specsFile }),
           ...(request.projectFolder === null ? {} : { [projectFolderVariable]: request.projectFolder }),
           ...(shellSandbox === undefined || shellWallFile === null
@@ -287,11 +289,12 @@ export class PiEngine implements EnginePort {
       return;
     }
 
-    const state = { closed: false };
+    const state: { closed: boolean; closing: Promise<void> } = { closed: false, closing: Promise.resolve() };
     const close = (timeoutMs: number): Promise<void> => {
       state.closed = true;
       // A failed stop must not replace the turn's one end event, or reject with nobody to catch it.
-      return pi.close(timeoutMs).catch(() => undefined);
+      state.closing = pi.close(timeoutMs).catch(() => undefined);
+      return state.closing;
     };
     // A stuck pi never answers the abort and never ends its records, so only a hard stop ends the turn.
     let hardStop: ReturnType<typeof setTimeout> | undefined;
@@ -324,6 +327,9 @@ export class PiEngine implements EnginePort {
       removeSpecs(specsFile);
       // Each command reads its wall when it starts, so none that runs needs the file after the turn.
       removeSpecs(shellWallFile);
+      // Once pi has ended, no command runs, so each placeholder that a stopped command left can go.
+      const placeholders = absentAtStart;
+      if (placeholders !== null) void state.closing.then(() => removePlaceholders(request.startFolder, placeholders));
     }
   }
 
@@ -642,7 +648,7 @@ export class PiEngine implements EnginePort {
     try {
       check = (this.options.start ?? systemPiProcessStarter)(
         [...this.options.command, "auth", "check", ...target, "--json"],
-        { cwd: request.startFolder, environment: request.environment },
+        { cwd: request.startFolder, environment: withoutClaudeLogin(request.environment) },
       );
     } catch {
       return false;
@@ -984,3 +990,11 @@ export const backgroundStartedNote =
 /** The line before the results of background subagents, in the new round of the model. */
 export const backgroundResultsPreamble =
   "(Eva: your background subagents ended. Their results follow. Go on with the task, and answer the person.)\n\n";
+
+/**
+ * pi's environment with no Claude login. pi never uses one (AGENTS.md), and each shell command of
+ * pi gets pi's whole environment, in the sandbox too (#759).
+ */
+function withoutClaudeLogin(environment: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(Object.entries(environment).filter(([name]) => name !== "CLAUDE_CODE_OAUTH_TOKEN"));
+}

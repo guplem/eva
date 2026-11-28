@@ -1292,12 +1292,6 @@ export class VaultSync {
   }
 
   /**
-   * A scratch folder holds files received from a chat, such as a bank statement, so it never reaches
-   * a commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
-   * scratch file out of the tree. lstat, so a broken link in a scratch folder is not read as a removal.
-   * The old `Scratch/` counts only in an old vault: in a new one, it is the person's own folder (#767).
-   */
-  /**
    * A file that Eva or a chat's sandbox puts in a project: a copy for a chat, or an empty placeholder
    * of the shell sandbox in a project folder (#759). It reaches no commit and no snapshot.
    */
@@ -1305,6 +1299,12 @@ export class VaultSync {
     return isProjectCopyFile(relativePath) || isSandboxPlaceholder(this.options.vaultPath, relativePath);
   }
 
+  /**
+   * A scratch folder holds files received from a chat, such as a bank statement, so it never reaches
+   * a commit, whatever the vault's .gitignore says (#415). A removal still commits: it takes an old
+   * scratch file out of the tree. lstat, so a broken link in a scratch folder is not read as a removal.
+   * The old `Scratch/` counts only in an old vault: in a new one, it is the person's own folder (#767).
+   */
   private isScratchFile(relativePath: string, oldScratch: boolean): boolean {
     const folder = scratchFolderOf(relativePath);
     if (folder === null || (!folder.includes("/") && !oldScratch)) return false;

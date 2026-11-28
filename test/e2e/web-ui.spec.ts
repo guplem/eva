@@ -1910,6 +1910,10 @@ test("an answer that suggests replies offers the first one, and Tab sends it (#1
   await expect(composer).toHaveAccessibleDescription("Suggested reply: Yes, add them. Press Tab to send it.");
   await expect(page.getByRole("button", { name: /voice note/ }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "2 more suggested replies" })).toBeVisible();
+  // A small arrow to the right of the reply, the "forward" icon, with the key that sends it.
+  const arrow = page.getByRole("button", { name: "Send the suggested reply: Yes, add them" });
+  await expect(arrow.locator("svg path")).toHaveAttribute("d", "M5 12h14M13 6l6 6-6 6");
+  await expect(arrow.locator("kbd")).toHaveText("Tab");
 
   // A typed character hides the suggestion, and Tab then leaves the box as before.
   await composer.fill("x");

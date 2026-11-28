@@ -1016,7 +1016,7 @@ button.ghost .icon {
   display: inline-block;
 }
 
-/* A small pearl with the send arrow, and the key that sends it on a computer. */
+/* A small pearl with an arrow to the right, and the key that sends it on a computer. */
 .composer-suggestion-send {
   position: relative;
   flex: none;

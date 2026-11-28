@@ -301,7 +301,7 @@ Each page has a computer and a phone capture, in light and dark. The light captu
 - The context is a ring.
 - Retry, Fork and Copy show under each answer, with no menu.
 - The background tasks of an answer show at the right end of that row. They are information, not an action. A check shows when they all ended.
-- When the answer ends with a question, the empty composer shows Eva's first suggested reply in `--muted`, where the placeholder is. A small pearl with the send arrow follows it, with the Tab key on a computer. A `+N` chip lists the other replies above the box.
+- When the answer ends with a question, the empty composer shows Eva's first suggested reply in `--muted`, where the placeholder is. A small pearl with an arrow to the right follows it, with the Tab key on a computer. A `+N` chip lists the other replies above the box.
 
 ### Eva asks for permission
 

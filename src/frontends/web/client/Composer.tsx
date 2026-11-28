@@ -600,7 +600,7 @@ export function Composer({
                   onPointerDown={keepFocus}
                   onClick={() => sendReply(suggestion)}
                 >
-                  <Icon name="send" />
+                  <Icon name="forward" />
                   <kbd aria-hidden="true">Tab</kbd>
                 </button>
                 {replies.length > 1 && (

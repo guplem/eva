@@ -311,7 +311,7 @@ export const iconUses: Readonly<Record<IconName, string>> = {
   eye: "Show a secret",
   external: "Opens another site",
   link: "The notes that link to the open file",
-  forward: "Opens another page of Eva, such as a new chat",
+  forward: "Goes on: opens another page of Eva, such as a new chat, or sends a suggested reply",
   play: "Run now",
   stop: "Stop a turn",
   user: "The person, an account",

@@ -313,7 +313,7 @@ export function createEventPrinter(
       written = "";
       const endLine = (lineOpen || added !== "") && !screen.endsWith("\n") ? "\n" : "";
       lineOpen = false;
-      return `${added}${endLine}`;
+      return `${added}${endLine}${pageLines(event.text)}`;
     }
     const isEnd = event.kind === "turn_finished" || event.kind === "turn_failed";
     const replies = event.kind === "turn_finished" && offersReplies ? repliesLine(answerParts) : "";
@@ -330,6 +330,13 @@ export function createEventPrinter(
   };
 }
 
+/** The terminal cannot show a page (#1129), so it names the file of each one. */
+function pageLines(blockText: string): string {
+  return extractFileMarkers(blockText)
+    .show.map((path) => `Page: ${path}\n`)
+    .join("");
+}
+
 /** The line of the replies that the whole answer suggests, or nothing. The core joins the blocks of an answer this way. */
 function repliesLine(answerParts: readonly string[]): string {
   const replies = extractFileMarkers(answerParts.join("\n\n")).replies;
@@ -341,7 +348,8 @@ export function describeEvent(event: SessionEvent, clock: Clock | null = null): 
   switch (event.kind) {
     case "text": {
       const text = extractFileMarkers(event.text).text;
-      return text === "" ? null : `${text}\n`;
+      const shown = `${text === "" ? "" : `${text}\n`}${pageLines(event.text)}`;
+      return shown === "" ? null : shown;
     }
     case "tool_started":
       return `  · ${event.summary}\n`;

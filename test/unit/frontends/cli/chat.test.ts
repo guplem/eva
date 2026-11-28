@@ -104,6 +104,17 @@ describe("createEventPrinter", () => {
     expect(shown.map((payload) => print(stamped(payload)) ?? "").join("")).toBe("A\nB\nSuggested replies: Y\n");
   });
 
+  test("names each page that a block shows, since the terminal cannot show it (#1129)", () => {
+    expect(
+      printed([
+        { kind: "text_delta", text: "Here is the chart.\n[[show: .eva/scr" },
+        { kind: "text", text: "Here is the chart.\n[[show: .eva/scratch/chart.html]]", messageId: "m1" },
+        { kind: "text", text: "[[show: .eva/scratch/table.html]]", messageId: "m2" },
+        finished,
+      ]),
+    ).toBe("Here is the chart.\nPage: .eva/scratch/chart.html\nPage: .eva/scratch/table.html\n");
+  });
+
   test("a block of markers alone prints nothing", () => {
     expect(printed([{ kind: "text", text: "[[reply: Yes]]", messageId: "m1" }, finished])).toBe("");
   });

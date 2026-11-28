@@ -819,7 +819,7 @@ export class TelegramBot {
     }
   }
 
-  private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
+  private async forward(chatId: number, topicId: number | null, text: string): Promise<boolean> {
     const key = keyOf(chatId, topicId);
     let entry = this.state.topics[key];
     if (entry === undefined || !this.sessionExists(entry.sessionId)) {
@@ -843,17 +843,18 @@ export class TelegramBot {
     // Eva reused the clone of a closed chat (issue 521): the core refuses the message, so the phone hears why.
     if (this.options.eva.sessions.get(entry.sessionId).closed) {
       await this.send(chatId, topicId, closedChatText);
-      return;
+      return false;
     }
     // A gone or refused file stops the message, and the phone hears why (#706).
     try {
       this.options.eva.checkMessage(entry.sessionId, text);
     } catch (error) {
       await this.send(chatId, topicId, `The message was not sent: ${this.describeError(error)}`);
-      return;
+      return false;
     }
     this.startTyping(chatId, topicId, entry.sessionId);
     void this.options.eva.sessions.send(entry.sessionId, text, "telegram");
+    return true;
   }
 
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
@@ -969,9 +970,10 @@ export class TelegramBot {
       ...(isAllowed && reply === null ? { text: goneReplyText } : {}),
     });
     if (reply === null || message === undefined) return;
+    // The edit follows the send, so the topic never claims a reply that Eva refused.
+    const sent = await this.forward(message.chat.id, topicId, reply.text);
     const messageId = reply.messageId ?? message.message_id;
-    if (messageId !== undefined) await this.replies.showChosen(message.chat.id, messageId, reply.text);
-    await this.forward(message.chat.id, topicId, reply.text);
+    if (messageId !== undefined) await this.replies.showChosen(message.chat.id, messageId, reply.text, sent);
   }
 
   /** Registers the suggested replies of a finished answer at once, and returns their send for the turn end (#1128). */

@@ -86,12 +86,15 @@ export class TelegramReplies {
     return { text: offer.replies.get(buttonId) ?? "", messageId: offer.messageId };
   }
 
-  /** Shows the chosen reply in place of the buttons: Telegram does not show a message that a press sends. */
-  async showChosen(chatId: number, messageId: number, text: string): Promise<void> {
+  /**
+   * Shows the chosen reply in place of the buttons: Telegram does not show a message that a press
+   * sends. A reply that Eva refused says so, and the next message in the topic says why.
+   */
+  async showChosen(chatId: number, messageId: number, text: string, sent: boolean): Promise<void> {
     await this.sender.quietCall("editMessageText", {
       chat_id: chatId,
       message_id: messageId,
-      text: `You replied: ${text}`,
+      text: `${sent ? "You replied" : "Not sent"}: ${text}`,
     });
   }
 

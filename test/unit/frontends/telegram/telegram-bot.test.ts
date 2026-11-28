@@ -2947,6 +2947,20 @@ describe("suggested replies (#1128)", () => {
     expect(offers()).toEqual([]);
   });
 
+  test("a press on a reply that Eva refuses says so, and never claims the reply", async () => {
+    askFirst("Going on.");
+    const bot = createBot();
+    telegram.sendText(owner, "plan the trip");
+    await settle(bot, () => offers().length === 1);
+    await eva.idle();
+    eva.sessions.close(eva.sessions.list()[0]!.id);
+    telegram.pressButton(owner, buttonsOf(offers()[0])[0] ?? "");
+    await settle(bot, () => telegram.callsTo("editMessageText").length === 1);
+    expect(telegram.callsTo("editMessageText")[0]?.params["text"]).toBe("Not sent: Yes, go on");
+    await eva.idle();
+    expect(engine.requests).toHaveLength(1);
+  });
+
   test("a chat whose topic opens during its turn gets its buttons at the turn end", async () => {
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));

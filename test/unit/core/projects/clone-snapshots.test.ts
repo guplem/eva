@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   copySnapshot,
@@ -10,6 +10,7 @@ import {
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { markerProgram } from "../../../support/marker-program.ts";
 
 let sandbox: GitSandbox;
 /** A clone folder with one repository, `app`, as Eva makes it. */
@@ -158,5 +159,54 @@ describe("deleteSnapshots", () => {
     );
     await deleteSnapshots(clone, "all", run);
     expect(sandbox.git(app, "for-each-ref", "--format=%(refname)", "refs/eva/")).toBe("");
+  });
+});
+
+describe("snapshots and the git data that a chat can write (#1131)", () => {
+  test("a repository whose git data points elsewhere gets no snapshot, and the reason names only its folder", async () => {
+    const program = markerProgram(sandbox.root);
+    const other = join(sandbox.root, "other");
+    sandbox.git(sandbox.root, "init", "-q", other);
+    sandbox.git(other, "config", "core.fsmonitor", program.path);
+    writeFileSync(join(app, ".git", "commondir"), join(other, ".git") + "\n");
+    sandbox.write(app, "kept.txt", "changed\n");
+
+    const error = await takeSnapshot(clone, "one", run).catch((caught: unknown) => caught);
+    expect(isEvaError(error, "repository_refused")).toBe(true);
+    expect((error as Error).message).toContain("app");
+    expect((error as Error).message).not.toContain(sandbox.root);
+    expect(program.ran()).toBe(false);
+  });
+
+  test("a repository that a chat made in the clone, with a program in its own config, gets no snapshot", async () => {
+    const program = markerProgram(sandbox.root);
+    const made = join(clone, "made");
+    sandbox.git(clone, "init", "-q", made);
+    sandbox.git(made, "config", "filter.example.clean", program.path);
+    sandbox.write(made, ".gitattributes", "* filter=example\n");
+    sandbox.write(made, "file.txt", "text\n");
+
+    const error = await takeSnapshot(clone, "one", run).catch((caught: unknown) => caught);
+    expect(isEvaError(error, "repository_refused")).toBe(true);
+    expect(program.ran()).toBe(false);
+  });
+
+  test("a submodule whose own config names a program: the snapshot works, and nothing runs", async () => {
+    const program = markerProgram(sandbox.root);
+    const module = sandbox.clone("module-source");
+    sandbox.git(app, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "lib");
+    sandbox.git(app, "commit", "-q", "-m", "submodule");
+    const lib = join(app, "lib");
+    sandbox.git(lib, "config", "core.fsmonitor", program.path);
+    sandbox.git(lib, "config", "filter.example.clean", program.path);
+    sandbox.write(lib, ".gitattributes", "* filter=example\n");
+    sandbox.write(lib, "AGENTS.md", "# Changed inside the submodule\n");
+    sandbox.write(app, "kept.txt", "changed\n");
+
+    expect(await takeSnapshot(clone, "one", run)).toBe(true);
+    sandbox.write(app, "kept.txt", "later\n");
+    await restoreSnapshot(clone, "one", run);
+    expect(read(join(app, "kept.txt"))).toBe("changed\n");
+    expect(program.ran()).toBe(false);
   });
 });

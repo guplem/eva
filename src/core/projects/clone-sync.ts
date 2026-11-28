@@ -10,6 +10,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import type { CloneRepository, SyncState } from "./clones.ts";
+import { guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
 
 const localTimeoutMs = 20_000;
 const networkTimeoutMs = 2 * 60_000;
@@ -34,9 +35,10 @@ type Environment = Readonly<Record<string, string>>;
 export async function readSyncState(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<SyncState> {
   try {
+    const environment = await guardRepository(repository, runner, given);
     const counts = await git(repository, runner, environment, [
       "rev-list",
       "--left-right",
@@ -56,9 +58,10 @@ export async function readSyncState(
 export async function fetchClone(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<string | null> {
   try {
+    const environment = await guardRepository(repository, runner, given);
     const result = await git(
       repository,
       runner,
@@ -73,11 +76,8 @@ export async function fetchClone(
 }
 
 /** A fast-forward pull only: a pull never makes a merge commit or a conflict in the person's clone. */
-export async function pullClone(
-  repository: CloneRepository,
-  runner: ProcessRunner,
-  environment: Environment,
-): Promise<void> {
+export async function pullClone(repository: CloneRepository, runner: ProcessRunner, given: Environment): Promise<void> {
+  const environment = await guardRepository(repository, runner, given);
   const result = await git(
     repository,
     runner,
@@ -102,8 +102,9 @@ export interface PushReadiness {
 export async function readyToPush(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<PushReadiness> {
+  const environment = await guardRepository(repository, runner, given);
   if (usesLfs(repository)) {
     throw new EvaError(
       "git_failed",
@@ -141,9 +142,10 @@ export async function readyToPush(
 export async function hasLocalWork(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<boolean> {
   try {
+    const environment = await guardRepository(repository, runner, given);
     const top = await git(repository, runner, environment, ["rev-parse", "--show-cdup"]);
     if (top.exitCode !== 0 || top.stdout.trim() !== "") return true;
     const status = await git(repository, runner, environment, [
@@ -177,8 +179,9 @@ export async function hasLocalWork(
 export async function fetchDefaultBranch(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<string> {
+  const environment = await guardRepository(repository, runner, given);
   const network = (arguments_: readonly string[]): ReturnType<ProcessRunner["run"]> =>
     git(repository, runner, environment, [...githubCredentialArguments, ...noHooks(), ...arguments_], networkTimeoutMs);
   const fetched = await network(["fetch", "-q", "--no-tags", "origin"]);
@@ -204,8 +207,9 @@ export async function switchToBranch(
   repository: CloneRepository,
   branch: string,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<void> {
+  const environment = await guardRepository(repository, runner, given);
   await mustRun(
     repository,
     runner,
@@ -230,8 +234,9 @@ export async function commitAndPush(
   repository: CloneRepository,
   message: string,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<void> {
+  const environment = await guardRepository(repository, runner, given);
   const { files, branch } = await readyToPush(repository, runner, environment);
   if (files.length > 0) {
     await mustRun(repository, runner, environment, ["add", "-A"], "stage the changes of");
@@ -294,7 +299,7 @@ const operationMarkers: readonly (readonly [string, string])[] = [
 async function openOperation(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  environment: GuardedEnvironment,
 ): Promise<string | null> {
   // `--git-path` also finds the git folder of a worktree clone, whose `.git` is a file.
   const result = await git(repository, runner, environment, [
@@ -324,10 +329,17 @@ function usesLfs(repository: CloneRepository): boolean {
 export async function describeChanges(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  given: Environment,
 ): Promise<ChangeDescription> {
+  const environment = await guardRepository(repository, runner, given);
   const entries = await statusEntries(repository, runner, environment);
-  const tracked = await git(repository, runner, environment, ["--no-optional-locks", "diff", "HEAD", "--no-color"]);
+  const tracked = await git(repository, runner, environment, [
+    "--no-optional-locks",
+    "diff",
+    "HEAD",
+    "--no-color",
+    "--no-ext-diff",
+  ]);
   const parts = [tracked.exitCode === 0 ? tracked.stdout : ""];
   for (const entry of entries.filter((each) => each.untracked)) {
     parts.push(`New file ${entry.path}:\n${newFileStart(join(repository.path, entry.path))}\n`);
@@ -360,7 +372,7 @@ const unmergedCodes = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
 async function statusEntries(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  environment: GuardedEnvironment,
 ): Promise<StatusEntry[]> {
   // No index refresh, so no index.lock: a timeout kill would leave the lock (lesson 81).
   const result = await git(repository, runner, environment, [
@@ -406,7 +418,7 @@ export function noHooks(): string[] {
 async function mustRun(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  environment: GuardedEnvironment,
   arguments_: readonly string[],
   what: string,
   stdin?: string,
@@ -419,7 +431,7 @@ async function mustRun(
 function git(
   repository: CloneRepository,
   runner: ProcessRunner,
-  environment: Environment,
+  environment: GuardedEnvironment,
   arguments_: readonly string[],
   timeoutMs = localTimeoutMs,
   stdin?: string,

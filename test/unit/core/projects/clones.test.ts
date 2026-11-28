@@ -9,6 +9,7 @@ import {
   createClone,
   describeRepository,
   readGitState,
+  readOriginUrl,
   githubSlug,
   isTrustedByDefault,
   listClones,
@@ -18,6 +19,7 @@ import {
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { markerProgram } from "../../../support/marker-program.ts";
 
 let sandbox: GitSandbox;
 let project: string;
@@ -485,5 +487,84 @@ describe("clone origins", () => {
       sandbox.write(sandbox.root, "clone-origins.json", content);
       expect(new CloneOriginStore(originsPath()).origin(path)).toBeNull();
     }
+  });
+});
+
+describe("the status reads and the git data that a chat can write (#1131)", () => {
+  async function cloned(): Promise<{ name: string; path: string }> {
+    const clone = await createClone({
+      projectPath: project,
+      repositoryUrls: [sandbox.remote],
+      runner: systemProcessRunner,
+      environment: gitEnvironment,
+      origins: new CloneOriginStore(join(sandbox.root, "clone-origins.json")),
+    });
+    const [repository] = clone.repositories;
+    if (repository === undefined) throw new Error("The test needs one repository.");
+    return repository;
+  }
+
+  test("a repository whose own config names a program gets no status read, and nothing runs", async () => {
+    const repository = await cloned();
+    const program = markerProgram(sandbox.root);
+    sandbox.git(repository.path, "config", "filter.example.clean", program.path);
+    sandbox.write(repository.path, ".gitattributes", "* filter=example\n");
+    sandbox.write(repository.path, "AGENTS.md", "# Changed\n");
+    expect(await readGitState(repository.path, systemProcessRunner, gitEnvironment)).toBeNull();
+    expect(await countChanges(repository, systemProcessRunner, gitEnvironment)).toBeNull();
+    const described = await describeRepository(repository, systemProcessRunner, gitEnvironment);
+    // The project view shows the reason on the repository's row.
+    expect(described).toMatchObject({ branch: null });
+    expect(described.refused).toContain("filter.example.clean");
+    expect(described.refused).not.toContain(sandbox.root);
+    expect(program.ran()).toBe(false);
+  });
+
+  test("a submodule whose own config names a program: the reads work, and nothing runs", async () => {
+    const repository = await cloned();
+    const program = markerProgram(sandbox.root);
+    const module = sandbox.clone("module-source");
+    sandbox.git(repository.path, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "lib");
+    sandbox.git(repository.path, "commit", "-q", "-m", "submodule");
+    const lib = join(repository.path, "lib");
+    sandbox.git(lib, "config", "core.fsmonitor", program.path);
+    sandbox.write(lib, "new.txt", "new\n");
+    expect(await readGitState(repository.path, systemProcessRunner, gitEnvironment)).toStartWith("## main");
+    expect(await countChanges(repository, systemProcessRunner, gitEnvironment)).toBe(0);
+    expect(program.ran()).toBe(false);
+  });
+
+  test("gh starts its own git, so it gets the forced settings, and only after the check", async () => {
+    const repository = await cloned();
+    const commands: { command: readonly string[]; environment: Readonly<Record<string, string>> }[] = [];
+    const recording: ProcessRunner = {
+      run: (command, options) => {
+        commands.push({ command, environment: options.environment });
+        return systemProcessRunner.run(command[0] === "gh" ? ["git", "--version"] : command, options);
+      },
+    };
+    await describeRepository(repository, recording, gitEnvironment);
+    const gh = commands.find((entry) => entry.command[0] === "gh");
+    const keys = Object.entries(gh?.environment ?? {})
+      .filter(([name]) => name.startsWith("GIT_CONFIG_KEY_"))
+      .map(([, key]) => key);
+    expect(keys).toContain("core.fsmonitor");
+    expect(keys).toContain("core.hooksPath");
+    expect(commands.findIndex((entry) => entry.command.includes("--show-scope"))).toBe(0);
+
+    commands.length = 0;
+    writeFileSync(join(repository.path, ".git", "commondir"), join(sandbox.root, "elsewhere") + "\n");
+    await describeRepository(repository, recording, gitEnvironment);
+    expect(commands).toEqual([]);
+  });
+
+  test("reading the origin of a folder with hostile git data starts no program", async () => {
+    const repository = await cloned();
+    const program = markerProgram(sandbox.root);
+    sandbox.git(repository.path, "config", "core.fsmonitor", program.path);
+    sandbox.git(repository.path, "config", "filter.example.clean", program.path);
+    sandbox.write(repository.path, ".gitattributes", "* filter=example\n");
+    expect(await readOriginUrl(repository.path, systemProcessRunner, gitEnvironment)).toBe(sandbox.remote);
+    expect(program.ran()).toBe(false);
   });
 });

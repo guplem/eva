@@ -92,7 +92,6 @@ describe("the settings that Eva's own git forces (#1131)", () => {
       expect(config.get("core.fsmonitor")).toBe("false");
       expect(config.get("diff.ignoreSubmodules")).toBe("dirty");
       expect(config.get("submodule.recurse")).toBe("false");
-      expect(config.get("diff.external")).toBe("");
       expect(environment["GIT_PAGER"]).toBe("cat");
     }
   });

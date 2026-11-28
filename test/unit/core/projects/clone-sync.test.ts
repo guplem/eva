@@ -16,6 +16,7 @@ import { CloneOriginStore, createClone, type CloneRepository } from "../../../..
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { systemProcessRunner } from "../../../../src/shared/process-runner.ts";
 import { createGitSandbox, gitEnvironment, type GitSandbox, gitHookTimeoutMs } from "../../../support/git-sandbox.ts";
+import { markerProgram } from "../../../support/marker-program.ts";
 
 let sandbox: GitSandbox;
 // The one repository of a clone: the sync works on each repository apart.
@@ -433,5 +434,45 @@ describe("reuse (issue 521)", () => {
     sandbox.git(clone.path, "remote", "set-url", "origin", join(sandbox.root, "gone.git"));
     const error: unknown = await resetToDefault(clone).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
+  });
+});
+
+describe("the sync and the git data that a chat can write (#1131)", () => {
+  test("a submodule whose own config names a program: fetch, pull, commit and push work, and nothing runs", async () => {
+    const program = markerProgram(sandbox.root);
+    const module = sandbox.clone("module-source");
+    sandbox.git(clone.path, "-c", "protocol.file.allow=always", "submodule", "add", "-q", module, "lib");
+    sandbox.git(clone.path, "commit", "-q", "-m", "submodule");
+    sandbox.git(clone.path, "push", "-q", "origin", "main");
+    const lib = join(clone.path, "lib");
+    sandbox.git(lib, "config", "core.fsmonitor", program.path);
+    sandbox.git(lib, "config", "filter.example.clean", program.path);
+    sandbox.write(lib, ".gitattributes", "* filter=example\n");
+    sandbox.write(lib, "AGENTS.md", "# Changed inside the submodule\n");
+    commitElsewhere("remote.txt");
+
+    expect(await fetchClone(clone, systemProcessRunner, gitEnvironment)).toBeNull();
+    await pullClone(clone, systemProcessRunner, gitEnvironment);
+    writeFileSync(join(clone.path, "notes.txt"), "notes\n");
+    await commitAndPush(clone, "Add notes", systemProcessRunner, gitEnvironment);
+    expect(sandbox.git(sandbox.remote, "log", "-1", "--format=%s", "main")).toBe("Add notes");
+    expect(program.ran()).toBe(false);
+  });
+
+  test("a refused repository gets no pull and no push, and counts as local work, so no reuse loses it", async () => {
+    const program = markerProgram(sandbox.root);
+    sandbox.git(clone.path, "config", "remote.origin.uploadpack", program.path);
+    sandbox.git(clone.path, "config", "remote.origin.receivepack", program.path);
+    writeFileSync(join(clone.path, "notes.txt"), "notes\n");
+
+    const pulled = await pullClone(clone, systemProcessRunner, gitEnvironment).catch((error: unknown) => error);
+    expect(isEvaError(pulled, "repository_refused")).toBe(true);
+    const pushed = await commitAndPush(clone, "Add notes", systemProcessRunner, gitEnvironment).catch(
+      (error: unknown) => error,
+    );
+    expect(isEvaError(pushed, "repository_refused")).toBe(true);
+    expect(await fetchClone(clone, systemProcessRunner, gitEnvironment)).toContain(clone.name);
+    expect(await hasLocalWork(clone, systemProcessRunner, gitEnvironment)).toBe(true);
+    expect(program.ran()).toBe(false);
   });
 });

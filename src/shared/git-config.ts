@@ -9,7 +9,9 @@ export type GitConfigEntry = readonly [key: string, value: string];
 
 /**
  * The settings that name a program and that Eva can force for every git call, the vault's too,
- * with no loss for the person: Eva's git never needs a pager, an editor or an external diff.
+ * with no loss for the person: Eva's git never needs a pager or an editor. A setting with no
+ * neutral value, such as an external diff, which git runs even when it is empty, is not here:
+ * the clone guard refuses it in a repository's own config instead.
  * A folder that a chat writes, such as a nested repository, can hold any of them.
  * A submodule's git runs in a folder that a chat can write, so Eva's git never enters one.
  * `dirty` still shows a submodule's new commit, and starts no git inside it.
@@ -19,10 +21,6 @@ export const ownGitConfig: readonly GitConfigEntry[] = [
   ["core.pager", "cat"],
   ["core.editor", ":"],
   ["sequence.editor", ":"],
-  ["core.askPass", ""],
-  ["core.alternateRefsCommand", ""],
-  ["diff.external", ""],
-  ["gc.recentObjectsHook", ""],
   ["diff.ignoreSubmodules", "dirty"],
   ["submodule.recurse", "false"],
   ["status.submoduleSummary", "false"],

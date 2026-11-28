@@ -67,7 +67,9 @@ export type EvaErrorCode =
   /** A written data format of the widget conflicts with the format of its folder (#692). */
   | "widget_format_conflict"
   /** A vault upgrade command cannot run now, such as on a satellite or with no upgrade open (#773). */
-  | "vault_upgrade_refused";
+  | "vault_upgrade_refused"
+  /** Eva runs no git of her own in a repository of a clone whose git data could start a program (#1131). */
+  | "repository_refused";
 
 /** An expected failure, with a code a caller can branch on and a message a person can read. */
 export class EvaError extends Error {

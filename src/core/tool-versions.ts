@@ -214,7 +214,8 @@ export async function firstOutputLine(
 
 /**
  * Git 2.31 is the first that reads settings from `GIT_CONFIG_COUNT`, through which Eva forces safe
- * settings on her own git (#1131). An older git still works, with the clone check alone.
+ * settings on every git of her own (#1131). An older git still works. Her git in a clone gets the
+ * same settings as arguments, but her other git, such as the vault's, goes without them.
  */
 const minimumGitVersion = [2, 31];
 

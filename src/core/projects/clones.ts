@@ -11,7 +11,7 @@ import { EvaError, isEvaError } from "../../shared/errors.ts";
 import { readJsonTolerant, writeFileAtomic } from "../../shared/files.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { repositoryName } from "./repository-name.ts";
-import { guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
+import { guardedArguments, guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
 
 const gitTimeoutMs = 20_000;
 
@@ -233,7 +233,7 @@ export async function describeRepository(
   try {
     // `gh pr view` starts its own git in the repository, so it waits for the guard too.
     const options = gitOptions(repository, await guardRepository(repository, runner, environment));
-    const head = await runner.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], options);
+    const head = await runner.run(["git", ...guardedArguments(), "rev-parse", "--abbrev-ref", "HEAD"], options);
     if (head.exitCode === 0) branch = head.stdout.trim();
     const view = await runner.run(["gh", "pr", "view", "--json", "number", "--jq", ".number"], options);
     const number = Number.parseInt(view.stdout.trim(), 10);
@@ -258,7 +258,7 @@ export async function countChanges(
     // No index refresh, so no index.lock: a timeout kill would leave the lock and block the agent's git (lesson 81).
     // A new folder counts once, so a big folder that is not ignored stays fast.
     const status = await runner.run(
-      ["git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"],
+      ["git", ...guardedArguments(), "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"],
       gitOptions(repository, await guardRepository(repository, runner, environment)),
     );
     if (status.exitCode !== 0) return null;
@@ -281,9 +281,12 @@ export async function readGitState(
     const safe = await guardRepository({ name: basename(folder), path: folder }, runner, environment);
     const options = { cwd: folder, environment: safe, timeoutMs: gitTimeoutMs };
     // No index refresh, so no index.lock (lesson 81).
-    const status = await runner.run(["git", "--no-optional-locks", "status", "--porcelain=v1", "--branch"], options);
+    const status = await runner.run(
+      ["git", ...guardedArguments(), "--no-optional-locks", "status", "--porcelain=v1", "--branch"],
+      options,
+    );
     if (status.exitCode !== 0) return null;
-    const log = await runner.run(["git", "log", "--oneline", "-10"], options);
+    const log = await runner.run(["git", ...guardedArguments(), "log", "--oneline", "-10"], options);
     const commits = log.exitCode === 0 ? log.stdout.trim() : "";
     return [status.stdout.trim(), commits.length === 0 ? "" : `Last commits:\n${commits}`]
       .filter((part) => part.length > 0)
@@ -300,7 +303,11 @@ function gitOptions(
   return { cwd: repository.path, environment: { ...environment, GIT_TERMINAL_PROMPT: "0" }, timeoutMs: 20_000 };
 }
 
-/** The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102). */
+/**
+ * The `origin` URL of a git folder, or null. Through the process seam, so it has a timeout (lessons 81, 102).
+ * It reads the vault too, so it skips the clone guard (#1131). It only reads settings and starts no
+ * program, and the trust of a clone counts its answer as a claim only.
+ */
 export async function readOriginUrl(
   folder: string,
   runner: ProcessRunner,
@@ -308,7 +315,8 @@ export async function readOriginUrl(
 ): Promise<string | null> {
   const result = await runner.run(["git", "remote", "get-url", "origin"], {
     cwd: folder,
-    environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
+    // A `.git` folder that git does not accept must not make git read the origin of a repository above.
+    environment: { ...environment, GIT_TERMINAL_PROMPT: "0", GIT_CEILING_DIRECTORIES: dirname(folder) },
     timeoutMs: gitTimeoutMs,
   });
   const url = result.stdout.trim();

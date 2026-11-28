@@ -17,7 +17,8 @@ export type GitConfigEntry = readonly [key: string, value: string];
  * `dirty` still shows a submodule's new commit, and starts no git inside it.
  */
 export const ownGitConfig: readonly GitConfigEntry[] = [
-  ["core.fsmonitor", "false"],
+  // Empty, not `false`: before git 2.36 the value is a program, and git would start `false`.
+  ["core.fsmonitor", ""],
   ["core.pager", "cat"],
   ["core.editor", ":"],
   ["sequence.editor", ":"],

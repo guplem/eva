@@ -191,6 +191,15 @@ describe("snapshots and the git data that a chat can write (#1131)", () => {
     expect(program.ran()).toBe(false);
   });
 
+  test("a refused repository next to a good one leaves no snapshot in the good one", async () => {
+    const made = join(clone, "made");
+    sandbox.git(clone, "init", "-q", made);
+    sandbox.git(made, "config", "credential.helper", "example");
+    const error = await takeSnapshot(clone, "one", run).catch((caught: unknown) => caught);
+    expect(isEvaError(error, "repository_refused")).toBe(true);
+    expect(sandbox.git(app, "for-each-ref", "refs/eva/")).toBe("");
+  });
+
   test("a submodule whose own config names a program: the snapshot works, and nothing runs", async () => {
     const program = markerProgram(sandbox.root);
     const module = sandbox.clone("module-source");

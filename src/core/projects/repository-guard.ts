@@ -7,7 +7,7 @@
 import { randomUUID } from "node:crypto";
 import { lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { EvaError } from "../../shared/errors.ts";
 import { ownGitConfig, ownGitVariables, withGitConfig } from "../../shared/git-config.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
@@ -33,7 +33,25 @@ const lfsFilter: Readonly<Record<string, string>> = {
 };
 
 /** The values that git reads as a boolean: `core.fsmonitor` then means its own monitor, no program. */
-const booleanValue = /^(true|false|yes|no|on|off|1|0)?$/i;
+const booleanValue = /^(true|false|yes|no|on|off|-?\d+)?$/i;
+
+/** A hooks folder that does not exist: the repository's hooks are its code, and so is a husky folder. */
+const noHooks = join(tmpdir(), `eva-no-hooks-${randomUUID()}`);
+
+/** The settings that the guard forces on each git call in a repository of a clone. */
+const guardedConfig = [...ownGitConfig, ["core.hooksPath", noHooks]] as const;
+
+/**
+ * The same settings as `-c` arguments, for each git call in a repository that passed the guard.
+ * Git before 2.31 reads no `GIT_CONFIG_COUNT`, but every git reads these, and passes them on to
+ * the git that it starts in a submodule.
+ */
+export function guardedArguments(): string[] {
+  return guardedConfig.flatMap(([key, value]) => ["-c", `${key}=${value}`]);
+}
+
+/** The `ignore` values of a submodule that keep git from starting a git inside it. */
+const submoduleKeptOut = new Set(["dirty", "all"]);
 
 /**
  * Checks the repository, and gives the environment for its git calls. Throws EvaError
@@ -47,14 +65,19 @@ export async function guardRepository(
 ): Promise<GuardedEnvironment> {
   const layout = layoutProblem(repository.path);
   if (layout !== null) throw new EvaError("repository_refused", `Eva runs no git in ${repository.name}: ${layout}`);
-  // A hooks folder that does not exist: the repository's hooks are its code, and so is a husky folder.
-  const noHooks = join(tmpdir(), `eva-no-hooks-${randomUUID()}`);
-  const safe = withGitConfig({ ...environment, ...ownGitVariables, GIT_TERMINAL_PROMPT: "0" }, [
-    ...ownGitConfig,
-    ["core.hooksPath", noHooks],
-  ]);
-  // Listing the settings reads them and starts no program, so it is safe in any repository.
-  const listed = await runner.run(["git", "config", "--list", "--show-scope", "-z"], {
+  const safe = withGitConfig(
+    {
+      ...environment,
+      ...ownGitVariables,
+      GIT_TERMINAL_PROMPT: "0",
+      // A `.git` folder that git does not accept would make git search the folders above, up to the vault.
+      GIT_CEILING_DIRECTORIES: dirname(repository.path),
+    },
+    guardedConfig,
+  );
+  // Listing the settings reads them and starts no program, so it is safe in any repository. `--local`
+  // is every setting of the repository: the layout check refuses a `commondir` and a `config.worktree`.
+  const listed = await runner.run(["git", ...guardedArguments(), "config", "--local", "--includes", "--list", "-z"], {
     cwd: repository.path,
     environment: safe,
     timeoutMs: listTimeoutMs,
@@ -71,7 +94,51 @@ export async function guardRepository(
       `Eva runs no git in ${repository.name}: its own git settings name a program (${key}). ` +
         "Move the setting to your global git config, or remove it from the repository.",
     );
+  const submodule = await submoduleSetting(repository, runner, safe);
+  if (submodule !== null)
+    throw new EvaError(
+      "repository_refused",
+      `Eva runs no git in ${repository.name}: its submodule settings make git work inside a submodule (${submodule}). ` +
+        "Set it to dirty or all, or remove it.",
+    );
   return safe as GuardedEnvironment;
+}
+
+/**
+ * The first `submodule.<name>.ignore` of the repository's `.gitmodules` that makes git start a git
+ * inside the submodule, or null. Such a git reads the submodule's own config, which a chat can write.
+ * Git reads `.gitmodules` from the folder, else from the index, else from the last commit, so the
+ * check reads each one that exists.
+ */
+async function submoduleSetting(
+  repository: { readonly path: string },
+  runner: ProcessRunner,
+  environment: Readonly<Record<string, string>>,
+): Promise<string | null> {
+  const options = { cwd: repository.path, environment, timeoutMs: listTimeoutMs };
+  const sources: string[][] = [];
+  if (entryKind(join(repository.path, ".gitmodules")) !== "absent") sources.push(["--file", ".gitmodules"]);
+  const blobs = await runner.run(["git", ...guardedArguments(), "cat-file", "--batch-check"], {
+    ...options,
+    stdin: ":.gitmodules\nHEAD:.gitmodules\n",
+  });
+  for (const line of blobs.stdout.split(/\r?\n/)) {
+    const [id, type] = line.split(" ");
+    if (type === "blob" && id !== undefined) sources.push(["--blob", id]);
+  }
+  for (const source of sources) {
+    const listed = await runner.run(["git", ...guardedArguments(), "config", ...source, "--list", "-z"], options);
+    for (const [key, value] of entries(listed.stdout)) {
+      const lower = key.toLowerCase();
+      if (
+        lower.startsWith("submodule.") &&
+        lower.endsWith(".ignore") &&
+        !submoduleKeptOut.has(value.trim().toLowerCase())
+      )
+        return key;
+    }
+  }
+  return null;
 }
 
 /**
@@ -102,23 +169,24 @@ function entryKind(path: string): "file" | "folder" | "other" | "absent" {
   }
 }
 
+/** The key and value of each setting in the output of `git config --list -z`. */
+function entries(listed: string): [key: string, value: string][] {
+  return listed
+    .split("\0")
+    .filter((entry) => entry.length > 0)
+    .map((entry) => {
+      const newline = entry.indexOf("\n");
+      return newline === -1 ? [entry, ""] : [entry.slice(0, newline), entry.slice(newline + 1)];
+    });
+}
+
 /**
  * The first setting of the repository's own config that names a program or sends git elsewhere,
- * or null. `listed` is the output of `git config --list --show-scope -z`. Only the `local` and
- * `worktree` scopes come from the repository. The person's global and system settings are theirs.
+ * or null. `listed` is the output of `git config --local --includes --list -z`. The person's
+ * global and system settings are theirs, so the check reads only the repository's own.
  */
-export function programSetting(listed: string): string | null {
-  const fields = listed.split("\0");
-  for (let index = 0; index + 1 < fields.length; index += 2) {
-    const scope = fields[index] ?? "";
-    if (scope !== "local" && scope !== "worktree") continue;
-    const entry = fields[index + 1] ?? "";
-    const newline = entry.indexOf("\n");
-    const key = newline === -1 ? entry : entry.slice(0, newline);
-    const value = newline === -1 ? "" : entry.slice(newline + 1);
-    if (namesProgram(key, value)) return key;
-  }
-  return null;
+function programSetting(listed: string): string | null {
+  return entries(listed).find(([key, value]) => namesProgram(key, value))?.[0] ?? null;
 }
 
 /**
@@ -161,7 +229,11 @@ function namesProgram(key: string, value: string): boolean {
       return ["proxy", "sslverify", "sslcainfo", "sslcapath"].includes(leaf);
     case "protocol":
       return leaf === "allow";
+    case "lfs":
+      // Git LFS runs these programs when it cleans, smudges or moves a file.
+      return lower === "lfs.standalonetransferagent" || (named && ["path", "clean", "smudge"].includes(leaf));
     case "submodule":
+      if (named && leaf === "ignore") return !submoduleKeptOut.has(value.trim().toLowerCase());
       // Only a value that starts with `!` is a command. `rebase` or `merge` is no program.
       return named && leaf === "update" && value.trim().startsWith("!");
     case "pager":

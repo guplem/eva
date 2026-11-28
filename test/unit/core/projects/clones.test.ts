@@ -550,7 +550,7 @@ describe("the status reads and the git data that a chat can write (#1131)", () =
       .map(([, key]) => key);
     expect(keys).toContain("core.fsmonitor");
     expect(keys).toContain("core.hooksPath");
-    expect(commands.findIndex((entry) => entry.command.includes("--show-scope"))).toBe(0);
+    expect(commands.findIndex((entry) => entry.command.includes("--local"))).toBe(0);
 
     commands.length = 0;
     writeFileSync(join(repository.path, ".git", "commondir"), join(sandbox.root, "elsewhere") + "\n");
@@ -566,5 +566,16 @@ describe("the status reads and the git data that a chat can write (#1131)", () =
     sandbox.write(repository.path, ".gitattributes", "* filter=example\n");
     expect(await readOriginUrl(repository.path, systemProcessRunner, gitEnvironment)).toBe(sandbox.remote);
     expect(program.ran()).toBe(false);
+  });
+});
+
+describe("readOriginUrl and a git folder that git does not accept (#1131)", () => {
+  test("never reads the origin of a repository above the folder", async () => {
+    const vault = sandbox.clone("vault-like");
+    const made = join(vault, "made");
+    mkdirSync(join(made, ".git"), { recursive: true });
+    writeFileSync(join(made, ".git", "config"), "");
+    expect(await readOriginUrl(made, systemProcessRunner, gitEnvironment)).toBeNull();
+    expect(await readOriginUrl(vault, systemProcessRunner, gitEnvironment)).toBe(sandbox.remote);
   });
 });

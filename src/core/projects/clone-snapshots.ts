@@ -10,7 +10,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { noHooks } from "./clone-sync.ts";
 import { listRepositories, type CloneRepository } from "./clones.ts";
-import { guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
+import { guardedArguments, guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
 
 export interface SnapshotRun {
   readonly runner: ProcessRunner;
@@ -43,14 +43,17 @@ export async function takeSnapshot(clonePath: string, id: string, run: SnapshotR
   checkId(id);
   const repositories = listRepositories(clonePath);
   if (repositories.length === 0) return false;
-  const results = await Promise.allSettled(repositories.map((repository) => snapshotRepository(repository, id, run)));
-  const refused = results.find((result) => result.status === "rejected");
-  if (refused !== undefined) throw refused.reason;
-  return results.every((result) => result.status === "fulfilled" && result.value);
+  // Every repository passes the guard first, so a refusal leaves no snapshot in the others.
+  const checked = await Promise.all(
+    repositories.map(async (repository) => ({ repository, checkedRun: await guarded(repository, run) })),
+  );
+  const results = await Promise.all(
+    checked.map(({ repository, checkedRun }) => snapshotRepository(repository, id, checkedRun)),
+  );
+  return results.every(Boolean);
 }
 
-async function snapshotRepository(repository: CloneRepository, id: string, given: SnapshotRun): Promise<boolean> {
-  const run = await guarded(repository, given);
+async function snapshotRepository(repository: CloneRepository, id: string, run: GuardedRun): Promise<boolean> {
   const gitFolder = await git(repository, run, ["rev-parse", "--absolute-git-dir"]);
   if (gitFolder.exitCode !== 0) return false;
   const index = join(gitFolder.stdout.trim(), `eva-snapshot-index-${id}`);
@@ -226,7 +229,7 @@ function git(
   arguments_: readonly string[],
   stdin?: string,
 ): ReturnType<ProcessRunner["run"]> {
-  return run.runner.run(["git", ...arguments_], {
+  return run.runner.run(["git", ...guardedArguments(), ...arguments_], {
     cwd: repository.path,
     environment: { ...run.environment, GIT_TERMINAL_PROMPT: "0" },
     timeoutMs,

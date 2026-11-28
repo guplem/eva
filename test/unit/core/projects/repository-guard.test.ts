@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { guardRepository } from "../../../../src/core/projects/repository-guard.ts";
+import { guardedArguments, guardRepository } from "../../../../src/core/projects/repository-guard.ts";
 import type { EvaError } from "../../../../src/shared/errors.ts";
 import { isEvaError } from "../../../../src/shared/errors.ts";
 import { type ProcessRunner, systemProcessRunner } from "../../../../src/shared/process-runner.ts";
@@ -64,7 +64,7 @@ function forced(guarded: Readonly<Record<string, string>>, key: string): string 
 describe("guardRepository: the layout of the git folder", () => {
   test("a normal clone passes, with the forced settings and no hooks", async () => {
     const guarded = await guardRepository(repository(), systemProcessRunner, environment);
-    expect(forced(guarded, "core.fsmonitor")).toBe("false");
+    expect(forced(guarded, "core.fsmonitor")).toBe("");
     expect(forced(guarded, "core.hooksPath")).toContain("eva-no-hooks-");
   });
 
@@ -159,6 +159,10 @@ describe("guardRepository: the repository's own settings", () => {
     "include.path",
     "includeIf.gitdir:/.path",
     "core.fsmonitor",
+    "lfs.extension.example.clean",
+    "lfs.extension.example.smudge",
+    "lfs.customtransfer.example.path",
+    "lfs.standalonetransferagent",
   ];
 
   // An include names a config file, not a program. A missing one is no error for git.
@@ -232,5 +236,55 @@ describe("guardRepository: the repository's own settings", () => {
     };
     const error = await guardRepository(repository(), runner, environment).catch((caught: unknown) => caught);
     expect(isEvaError(error, "git_failed")).toBe(true);
+  });
+});
+
+describe("guardRepository: submodules and the folders above (#1131)", () => {
+  test("a .gitmodules that makes git look inside a submodule is refused, and the check runs nothing", async () => {
+    sandbox.write(app, ".gitmodules", '[submodule "lib"]\n\tpath = lib\n\turl = ../lib\n\tignore = none\n');
+    const error = await refusal();
+    expect(error.message).toContain("submodule.lib.ignore");
+    expect(program.ran()).toBe(false);
+  });
+
+  test("such a .gitmodules only in the index is refused too", async () => {
+    const blob = join(sandbox.root, "gitmodules.txt");
+    writeFileSync(blob, '[submodule "lib"]\n\tpath = lib\n\turl = ../lib\n\tignore = untracked\n');
+    const id = sandbox.git(app, "hash-object", "-w", blob);
+    sandbox.git(app, "update-index", "--add", "--cacheinfo", `100644,${id},.gitmodules`);
+    await refusal();
+  });
+
+  test("a submodule setting that keeps git out of the submodule passes", async () => {
+    sandbox.write(app, ".gitmodules", '[submodule "lib"]\n\tpath = lib\n\turl = ../lib\n\tignore = dirty\n');
+    await guardRepository(repository(), systemProcessRunner, environment);
+  });
+
+  test("a local submodule setting that makes git look inside it is refused", async () => {
+    sandbox.git(app, "config", "submodule.lib.ignore", "none");
+    await refusal();
+  });
+
+  test("a git folder that git does not accept never sends Eva's git to a repository above it", async () => {
+    const made = join(sandbox.root, "clone-0", "made");
+    mkdirSync(join(made, ".git"), { recursive: true });
+    writeFileSync(join(made, ".git", "config"), "");
+    // The sandbox folder holds no repository, so the clone folder becomes one, as a vault would be.
+    sandbox.git(sandbox.root, "init", "-q", join(sandbox.root, "clone-0"));
+    const error = await guardRepository({ name: "made", path: made }, systemProcessRunner, environment).catch(
+      (caught: unknown) => caught,
+    );
+    expect(isEvaError(error)).toBe(true);
+  });
+
+  test("the call arguments force the same safe settings, for a git that reads no GIT_CONFIG_COUNT", () => {
+    const pairs = guardedArguments().filter((_, index) => index % 2 === 1);
+    expect(pairs).toContain("core.fsmonitor=");
+    expect(pairs.some((pair) => pair.startsWith("core.hooksPath="))).toBe(true);
+    expect(
+      guardedArguments()
+        .filter((_, index) => index % 2 === 0)
+        .every((flag) => flag === "-c"),
+    ).toBe(true);
   });
 });

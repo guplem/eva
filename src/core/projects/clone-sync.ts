@@ -10,7 +10,7 @@ import { EvaError } from "../../shared/errors.ts";
 import { failureReason, type ProcessRunner } from "../../shared/process-runner.ts";
 import { githubCredentialArguments } from "../vault/vault-clone.ts";
 import type { CloneRepository, SyncState } from "./clones.ts";
-import { guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
+import { guardedArguments, guardRepository, type GuardedEnvironment } from "./repository-guard.ts";
 
 const localTimeoutMs = 20_000;
 const networkTimeoutMs = 2 * 60_000;
@@ -104,7 +104,14 @@ export async function readyToPush(
   runner: ProcessRunner,
   given: Environment,
 ): Promise<PushReadiness> {
-  const environment = await guardRepository(repository, runner, given);
+  return pushReadiness(repository, runner, await guardRepository(repository, runner, given));
+}
+
+async function pushReadiness(
+  repository: CloneRepository,
+  runner: ProcessRunner,
+  environment: GuardedEnvironment,
+): Promise<PushReadiness> {
   if (usesLfs(repository)) {
     throw new EvaError(
       "git_failed",
@@ -237,7 +244,7 @@ export async function commitAndPush(
   given: Environment,
 ): Promise<void> {
   const environment = await guardRepository(repository, runner, given);
-  const { files, branch } = await readyToPush(repository, runner, environment);
+  const { files, branch } = await pushReadiness(repository, runner, environment);
   if (files.length > 0) {
     await mustRun(repository, runner, environment, ["add", "-A"], "stage the changes of");
     // A machine with no git identity yet still commits, as the vault's first commit does.
@@ -301,7 +308,7 @@ async function openOperation(
   runner: ProcessRunner,
   environment: GuardedEnvironment,
 ): Promise<string | null> {
-  // `--git-path` also finds the git folder of a worktree clone, whose `.git` is a file.
+  // `--git-path` names each marker inside the git folder, as git itself finds it.
   const result = await git(repository, runner, environment, [
     "rev-parse",
     ...operationMarkers.flatMap(([marker]) => ["--git-path", marker]),
@@ -339,6 +346,8 @@ export async function describeChanges(
     "HEAD",
     "--no-color",
     "--no-ext-diff",
+    // A text conversion is a program, and its text goes to a model call, which needs none.
+    "--no-textconv",
   ]);
   const parts = [tracked.exitCode === 0 ? tracked.stdout : ""];
   for (const entry of entries.filter((each) => each.untracked)) {
@@ -436,7 +445,7 @@ function git(
   timeoutMs = localTimeoutMs,
   stdin?: string,
 ): ReturnType<ProcessRunner["run"]> {
-  return runner.run(["git", ...arguments_], {
+  return runner.run(["git", ...guardedArguments(), ...arguments_], {
     cwd: repository.path,
     environment: { ...environment, GIT_TERMINAL_PROMPT: "0" },
     timeoutMs,

@@ -41,6 +41,7 @@
     "test:windows-shard": "bun run scripts/test-with-time-limit.ts --timings=test/windows-timings.json",
     "test:e2e": "playwright test",
     "smoke:live": "bun run scripts/smoke-live.ts",
+    "smoke:shell-sandbox": "bun run scripts/smoke-shell-sandbox.ts",
     "build:executable": "bun build --compile --minify src/main.ts --outfile dist/eva"
   },
   "type": "module",

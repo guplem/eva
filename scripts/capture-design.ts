@@ -105,7 +105,8 @@ async function newChat(page: Page): Promise<string> {
 async function send(page: Page, text: string): Promise<void> {
   const composer = page.getByLabel("Message").first();
   await composer.fill(text);
-  await composer.press("Enter");
+  // Ctrl+Enter is the default send key. Enter starts a new line.
+  await composer.press("ControlOrMeta+Enter");
 }
 
 async function rename(page: Page, title: string): Promise<void> {
@@ -139,7 +140,7 @@ async function answeredChat(page: Page, text: string, title: string): Promise<st
   await send(page, text);
   await page
     .locator(".message.answer")
-    .filter({ hasText: /Done\.|Echo/ })
+    .filter({ hasText: /Done\.|Echo|calendar\?/ })
     .waitFor();
   await rename(page, title);
   return id;
@@ -152,7 +153,7 @@ async function setUp(browser: Browser): Promise<Demo> {
 
   await answeredChat(page, "Add coffee, oats and lemons to my shopping list.", "Shopping list");
   await answeredChat(page, "Give me three ideas for the home page of example-app.", "Ideas for example-app");
-  const weekChat = await answeredChat(page, "What do I have to do this week? Make a list.", "Plan for the week");
+  const weekChat = await answeredChat(page, "What is on for Saturday? Make a weekend plan.", "Plan for the weekend");
 
   await page.evaluate(() => {
     window.location.hash = "#/schedules";

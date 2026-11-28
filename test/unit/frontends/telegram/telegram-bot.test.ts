@@ -2605,6 +2605,22 @@ describe("files (lessons 72, 74, 124)", () => {
     expect(uploads()).toEqual([]);
   });
 
+  test("pages in two blocks of one answer give one line, after the whole answer (#1129)", async () => {
+    createEva(() => [
+      { kind: "text", text: "First.\n[[show: .eva/scratch/a.html]]", messageId: "m1" },
+      { kind: "text", text: "Second.\n[[show: .eva/scratch/b.html]]", messageId: "m2" },
+      { kind: "turn_failed", reason: "end" },
+    ]);
+    const bot = createBot();
+    telegram.sendText(owner, "draw both");
+    await settle(bot, () => telegram.sentTexts().includes("The turn failed: end"));
+    const line = "This answer has a page. Open it in Eva's web app.";
+    expect(telegram.sentTexts().filter((text) => text === line)).toHaveLength(1);
+    expect(telegram.sentTexts().indexOf(line)).toBeGreaterThan(telegram.sentTexts().indexOf("Second."));
+    const pageCall = telegram.callsTo("sendMessage").find((call) => call.params["text"] === line);
+    expect(pageCall?.params["disable_notification"]).toBe(true);
+  });
+
   test("a show marker with no remote address says to open the web app (#1129)", async () => {
     createEva((request) => FakeEngine.answer(request, "[[show: .eva/scratch/chart.html]]"), systemProcessRunner, {
       remoteAccess: fixedRemoteAccess({ url: null, problem: "Turn on HTTPS." }),

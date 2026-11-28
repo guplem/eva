@@ -2,10 +2,13 @@
 import { useEffect } from "react";
 import { api, type SessionRecord } from "./api.ts";
 import { hasUnseenTurns } from "./branch-path.ts";
+import { pageActivity } from "./person-activity.ts";
 
 /**
  * Marks each unseen turn of the open chat and its forks as seen while the page is in view. A page
  * in the background, or a list that covers the chat on a phone, shows no answer, so it marks nothing.
+ * A page whose person is away marks nothing either (#1136): the mark would close the notification
+ * that the phone just showed. The mark goes out when the person comes back.
  * The core then tells every device, which fetches the list again.
  */
 export function useMarkSeen(tree: readonly SessionRecord[], shown: boolean): void {
@@ -17,7 +20,7 @@ export function useMarkSeen(tree: readonly SessionRecord[], shown: boolean): voi
     const marks = JSON.parse(unseen) as [string, number][];
     if (!shown || marks.length === 0) return undefined;
     const mark = (): void => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || !pageActivity.isActive()) return;
       for (const [sessionId, turnCount] of marks) {
         // A failed mark keeps the chat unread, and the next visit tries again: no error is worth a toast.
         api.markSeen(sessionId, turnCount).catch(() => undefined);
@@ -25,6 +28,10 @@ export function useMarkSeen(tree: readonly SessionRecord[], shown: boolean): voi
     };
     mark();
     document.addEventListener("visibilitychange", mark);
-    return () => document.removeEventListener("visibilitychange", mark);
+    const stopBack = pageActivity.onBack(mark);
+    return () => {
+      document.removeEventListener("visibilitychange", mark);
+      stopBack();
+    };
   }, [unseen, shown]);
 }

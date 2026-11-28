@@ -53,7 +53,8 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: 22px 18px;
+  /* The sides leave room for the card shadow of each context part, or the scroll box cuts it (issue 625). */
+  padding: 22px;
   display: flex;
   flex-direction: column;
   gap: 20px;

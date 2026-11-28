@@ -103,6 +103,16 @@ When you create a Google Calendar event for a project, add the line `[eva-projec
 
 The format block gives the person's language, time zone, units, clock (24-hour or 12-hour) and first day of the week. Use them each time you write a date, a time, a measure or a week. They live in `.eva/settings/settings.json`, never in a note. When the person asks to change one, run `eva settings set <key> <value>`, or tell them to change it in Settings in Eva's web app.
 
+## Suggested replies
+
+When your answer is complete and ends with a question that has short, likely answers, suggest them. Write each one as a line of its own at the end of the answer: `[[reply: <text>]]`. Some front ends offer them, so the person sends one with a tap.
+
+- Write at most 4 replies, each in 60 characters or less. Put the likeliest reply first.
+- Write them in the language of the chat, as the person would say them, such as `[[reply: Yes, go on]]`.
+- Write none after a plain statement, or when the answer is open, such as "What should the email say?".
+- Eva removes the reply lines from your text, so never refer to them.
+- When you cannot go on with the work without the answer, ask with the question form instead (the `AskUserQuestion` tool, when your engine has it).
+
 ## Eva's skills
 
 Eva ships these skills with herself. They update with Eva, and they are not in the vault:
@@ -185,6 +195,23 @@ The web app shows a download button for both markers.
 Eva removes the marker lines from your text, so never refer to them. Only files in the vault can be sent. Anywhere else, the markers show as plain text.
 
 A file made only to send, such as a PDF of an answer, goes in `.eva/scratch/`, never with the notes: `[[attach: .eva/scratch/<name>.pdf]]`. Name it after its content, because the person sees that name. Git never saves `.eva/scratch/`, and Eva deletes its files after a week. Eva also saves there each file that the person sends in the chat, so copy a file worth keeping into the vault. To make a PDF, write a Typst file and run `typst compile ".eva/scratch/<name>.typ" ".eva/scratch/<name>.pdf"`.
+
+## Showing a page
+
+In the web app, you can show a small HTML page inside your answer. Use a page when it shows more than text can: a chart of numbers, a table to sort, or a small calculator. A short answer, a list or a small table stays text.
+
+Write the page in `.eva/scratch/<name>.html`, with a name after its content. Then write `[[show: .eva/scratch/<name>.html]]` on a line of its own. Telegram shows a link to the web app instead. Eva deletes the page after a week.
+
+Follow these rules for each page:
+
+- Write one file of 2 MB at most: the HTML, with its style and its script inside.
+- The page has no network. Load nothing from outside: no library from a CDN, no web font and no remote image. Draw a chart yourself, with SVG or a canvas. Use the system font: `font-family: system-ui, sans-serif`.
+- Do not use `localStorage`, a form, a link or a popup. They do not work.
+- Put the data in the file. The page cannot read the vault or talk to Eva.
+- The page shows in a box about 300 px wide and 320 px high on a phone, and in full screen when the person asks. Fill the whole box at every size, with no scroll sideways. Use relative sizes, such as `width: 100%` and an SVG `viewBox`, and draw again when the size changes.
+- Keep the top right corner free for Eva's buttons, about 52 px square.
+- Use Eva's colours. Add `<link rel="stylesheet" href="eva/theme.css">`, and use the variables with a fallback, such as `var(--ink, #1d2430)`: `--bg`, `--panel`, `--ink`, `--muted`, `--line`, `--accent`, `--ok`, `--warn` and `--bad`. Set `color-scheme: light dark`, so the page works in light and dark mode.
+- Give a chart a title, light grid lines, and the value of a bar or a point on hover and on tap.
 
 ## Messages
 

@@ -93,10 +93,21 @@ const maxDevices = 20;
  */
 const inViewMs = 90_000;
 
+/**
+ * A page of a device with no notifications claims too, so its reader silences the other devices
+ * (#1136). Such a page has no subscription to check, so this limit keeps Eva's memory bounded.
+ */
+const maxOtherPages = 50;
+
 interface PageClaim {
   readonly until: number;
   /** Null for a page from before #614: it names no chat, so it holds back every chat's push. */
   readonly chats: ReadonlySet<string> | null;
+  /**
+   * The person used the page a short time ago. Only such a page holds back the push of the other
+   * devices: a computer whose page stays in front while the person is away must not silence the phone.
+   */
+  readonly active: boolean;
 }
 
 const fetchSender: PushSender = async (request) => {
@@ -136,11 +147,14 @@ export class WebPush {
    * goes out of view must not end the claim of another. It lives in memory only.
    */
   private readonly inViewUntil: Map<string, Map<string, PageClaim>>;
+  /** The claims of the pages of a device with no notifications, by page. */
+  private readonly otherPages: Map<string, PageClaim>;
 
   constructor(options: WebPushOptions) {
     this.options = options;
     this.send = options.send ?? fetchSender;
     this.inViewUntil = new Map();
+    this.otherPages = new Map();
   }
 
   /** The public key that a browser needs to subscribe, as base64url of the uncompressed point. */
@@ -204,19 +218,38 @@ export class WebPush {
 
   /**
    * A page of a device says that it is in view, with the chats that it shows, or that it went out
-   * of view. False for an address with no subscription: Eva keeps no claim for it, so a page
-   * cannot fill her memory.
+   * of view. `endpoint` null: the device gets no notifications. `active`: the person used the page
+   * a short time ago. False for an address with no subscription, and for one page too many of the
+   * devices with no notifications: Eva keeps no claim for it, so a page cannot fill her memory.
    */
-  markInView(endpoint: string, pageId: string, inView: boolean, chats: readonly string[] | null = []): boolean {
-    if (!this.read().some((each) => each.endpoint === endpoint)) return false;
-    const pages = this.inViewUntil.get(endpoint) ?? new Map<string, PageClaim>();
+  markInView(
+    endpoint: string | null,
+    pageId: string,
+    inView: boolean,
+    chats: readonly string[] | null = [],
+    active = false,
+  ): boolean {
+    if (endpoint !== null && !this.read().some((each) => each.endpoint === endpoint)) return false;
+    const pages =
+      endpoint === null ? this.otherPages : (this.inViewUntil.get(endpoint) ?? new Map<string, PageClaim>());
     const now = this.options.now().getTime();
     for (const [page, claim] of pages) if (claim.until <= now) pages.delete(page);
-    if (inView) pages.set(pageId, { until: now + inViewMs, chats: chats === null ? null : new Set(chats) });
-    else pages.delete(pageId);
+    if (!inView) pages.delete(pageId);
+    else if (endpoint === null && pages.size >= maxOtherPages && !pages.has(pageId)) return false;
+    else pages.set(pageId, { until: now + inViewMs, chats: chats === null ? null : new Set(chats), active });
+    if (endpoint === null) return true;
     if (pages.size === 0) this.inViewUntil.delete(endpoint);
     else this.inViewUntil.set(endpoint, pages);
     return true;
+  }
+
+  /** Whether the person reads this chat now, on a page of any device (#1136). */
+  private isRead(sessionId: string, now: number): boolean {
+    const claims = [
+      ...this.otherPages.values(),
+      ...[...this.inViewUntil.values()].flatMap((pages) => [...pages.values()]),
+    ];
+    return claims.some((claim) => claim.until > now && claim.active && claim.chats?.has(sessionId) === true);
   }
 
   /**
@@ -240,10 +273,13 @@ export class WebPush {
    * The devices that get a push of this kind: each one that picked it, and whose page is not in view.
    * A chat's push skips only a device whose page in view shows that chat.
    * A test (null) goes to every device, also one in view: the person pressed its button there.
+   * `readChat`: the chat that the notification is about. No device gets it while the person reads
+   * that chat on any device.
    */
-  recipients(kind: NotificationKind | null, sessionId: string | null = null): string[] {
+  recipients(kind: NotificationKind | null, sessionId: string | null = null, readChat: string | null = null): string[] {
     if (kind === null) return this.read().map((each) => each.endpoint);
     const now = this.options.now().getTime();
+    if (readChat !== null && this.isRead(readChat, now)) return [];
     return this.read()
       .filter((each) => (each.kinds ?? notificationKinds).includes(kind))
       .filter((each) => !this.isInView(each.endpoint, now, sessionId))

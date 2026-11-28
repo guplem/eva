@@ -61,6 +61,8 @@ import type { OutboxState } from "./outbox.ts";
 import { outbox, useOutbox } from "./page-outbox.ts";
 import { CopyButton } from "./CopyButton.tsx";
 import { DownloadButton } from "./DownloadButton.tsx";
+import { PageFrame } from "./PageFrame.tsx";
+import { answerPages } from "./page-frames.ts";
 import { useShowError } from "./error-toast.tsx";
 import { Icon } from "./icons.tsx";
 import { MarkdownBody } from "./MarkdownBody.tsx";
@@ -70,6 +72,8 @@ import { stepsWithDraft, type LiveState } from "./live-state.ts";
 import { runningCount, TasksDialog, tasksOf } from "./ChatPanel.tsx";
 import { NewChatGreeting, NewChatSetup } from "./NewChatGreeting.tsx";
 import { StepFold } from "./TurnSteps.tsx";
+import { chatReplies } from "./suggested-replies.ts";
+import { chatKind } from "../../../shared/chat-kind.ts";
 import { Visor } from "./Visor.tsx";
 import { stateFaces, type Face } from "./visor-faces.ts";
 import { toWebHtml } from "./web-format.ts";
@@ -316,6 +320,13 @@ function Branch({
   const turnEnd = useTurnEndNotice(turnRuns);
   const usageLimit = live.usageLimits[session.id];
   const notes = live.notes[session.id] ?? [];
+  // Only the newest answer offers its replies, and only while the chat waits for the person (#1127).
+  const replies = chatReplies({
+    kind: chatKind(session),
+    closed: session.closed,
+    busy: working || turnRuns || liveSteps !== undefined || pending.length > 0 || waiting.length > 0,
+    newest: path.at(-1)?.turn,
+  });
 
   // The outbox sends the message, and tries again on a bad connection. So the box clears at once.
   const send = (message: string): Promise<boolean> => {
@@ -484,6 +495,7 @@ function Branch({
           blocker={blocker}
           voiceNotes={voiceNotes}
           placeholder={composerPlaceholder(projectTitle)}
+          suggestions={replies}
         />
       )}
     </section>
@@ -831,6 +843,8 @@ function AnswerBody({
   const html = useMemo(() => toWebHtml(body, { vaultLinks }), [body, vaultLinks]);
   // A running turn can still change its files, so the buttons come with the stored turn, as in Telegram.
   const files = useMemo(() => (live ? [] : answerFiles(wholeAnswer)), [live, wholeAnswer]);
+  // A page comes with the stored turn too: a running turn may still write its file (#1129).
+  const pages = useMemo(() => (live ? [] : answerPages(wholeAnswer)), [live, wholeAnswer]);
   return (
     <>
       <StepFold
@@ -844,6 +858,9 @@ function AnswerBody({
         {...(lastMessage === undefined ? {} : { bubble: lastMessage })}
       />
       {body !== "" && <MarkdownBody html={html} className="answer-body" copy={!live} />}
+      {pages.map((path) => (
+        <PageFrame key={path} path={path} />
+      ))}
       {files.length > 0 && (
         <div className="answer-files">
           {files.map((file) => (

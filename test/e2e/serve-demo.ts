@@ -28,6 +28,7 @@ import { createGitSandbox, gitEnvironment } from "../support/git-sandbox.ts";
 import visorGallery from "./visor-gallery.html";
 import { e2ePorts } from "./e2e-ports.ts";
 import { demoWidgets } from "./demo-widgets.ts";
+import { demoChartPage, networkProbePage } from "./demo-pages.ts";
 
 const { demo: demoPort, gallery: galleryPort } = e2ePorts();
 export const demoToken = "e2e-demo-token";
@@ -443,6 +444,42 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
   }
   if (lastLine.includes("hand me the parcel")) {
     yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
+    return;
+  }
+  // A page inside the answer (#1129): Eva writes the file in the scratch folder, then shows it.
+  const shownPage = lastLine.includes("draw my walking")
+    ? { name: "steps-this-week", html: demoChartPage, text: "Here are your steps of this week." }
+    : lastLine.includes("probe the wire")
+      ? { name: "network-probe", html: networkProbePage, text: "The probe ran." }
+      : null;
+  if (shownPage !== null) {
+    mkdirSync(join(vault, ".eva", "scratch"), { recursive: true });
+    writeFileSync(join(vault, ".eva", "scratch", `${shownPage.name}.html`), shownPage.html);
+    yield* FakeEngine.answer(request, `${shownPage.text}\n[[show: .eva/scratch/${shownPage.name}.html]]`);
+    return;
+  }
+  if (lastLine.includes("the lost drawing")) {
+    yield* FakeEngine.answer(request, "Here it was.\n[[show: .eva/scratch/old-chart.html]]");
+    return;
+  }
+  // An answer that ends with a question and suggests replies (#1127). No reply holds the name of a button.
+  if (lastLine.includes("weekend plan")) {
+    const replies = ["Yes, add them", "Only the first one", "Maybe later"].map((reply) => `[[reply: ${reply}]]`);
+    yield* FakeEngine.answer(
+      request,
+      ["Two things for the weekend:\n- water the plants\n- call the plumber", "Shall I add them to the calendar?"]
+        .concat(replies.join("\n"))
+        .join("\n\n"),
+    );
+    return;
+  }
+  // A reply of the longest size, 60 characters, which must show whole before a tap sends it.
+  if (lastLine.includes("garden question")) {
+    const longest = "Water the roses, the tomatoes and the basil before lunch, ok";
+    yield* FakeEngine.answer(
+      request,
+      `Which plants get water today?\n[[reply: ${longest}]]\n[[reply: Only the roses]]`,
+    );
     return;
   }
   if (lastLine.includes("list")) {

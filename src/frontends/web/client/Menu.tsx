@@ -47,10 +47,20 @@ interface MenuListProps {
   readonly listRef?: RefObject<HTMLDivElement | null>;
   /** `refocus` is true when the focus must go back to the element that opened the menu. */
   readonly onClose: (refocus: boolean) => void;
+  /** False leaves the focus where it is, such as in the message box, so a phone keyboard stays as it is. */
+  readonly takesFocus?: boolean;
 }
 
 /** The items, with the keys of a menu: the arrows, Home, End, Escape and Tab. */
-export function MenuList({ items, label, className, style, listRef, onClose }: MenuListProps): ReactElement {
+export function MenuList({
+  items,
+  label,
+  className,
+  style,
+  listRef,
+  onClose,
+  takesFocus = true,
+}: MenuListProps): ReactElement {
   const own = useRef<HTMLDivElement>(null);
   const menu = listRef ?? own;
   // A long press opens a menu on a phone, so the Back button closes it, as in the phone's own apps.
@@ -58,8 +68,8 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
 
   useEffect(() => {
     // No scroll: a fixed menu takes the focus before it is at its place.
-    menu.current?.querySelector("button")?.focus({ preventScroll: true });
-  }, [menu]);
+    if (takesFocus) menu.current?.querySelector("button")?.focus({ preventScroll: true });
+  }, [menu, takesFocus]);
 
   /** Moves the focus by `step` items, or to the first or the last item. */
   const moveFocus = (step: number | "first" | "last"): void => {
@@ -88,7 +98,18 @@ export function MenuList({ items, label, className, style, listRef, onClose }: M
   };
 
   return (
-    <div className={`menu ${className}`} role="menu" aria-label={label} ref={menu} style={style} onKeyDown={onKeyDown}>
+    <div
+      className={`menu ${className}`}
+      role="menu"
+      aria-label={label}
+      ref={menu}
+      style={style}
+      onKeyDown={onKeyDown}
+      onPointerDown={(event) => {
+        // A tap on an item keeps the focus where it is, so a phone keyboard stays as it is.
+        if (!takesFocus) event.preventDefault();
+      }}
+    >
       <MenuItems items={items} itemRole="menuitem" onChosen={() => onClose(false)} />
     </div>
   );
@@ -193,6 +214,7 @@ export function MenuButton({
   busy = false,
   fromStart = false,
   above = false,
+  keepFocus = false,
   children,
 }: {
   readonly items: readonly MenuItem[];
@@ -214,9 +236,16 @@ export function MenuButton({
   readonly fromStart?: boolean;
   /** Opens the menu above the button, for a button at the bottom of the page, such as in the message box. */
   readonly above?: boolean;
+  /**
+   * A press with the pointer leaves the focus in the message box, so a phone keyboard stays as it is. A key press
+   * still moves the focus into the menu, so the arrow keys work.
+   */
+  readonly keepFocus?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   const [open, setOpen] = useState(false);
+  /** False while a menu that keeps the focus is open from a pointer press. */
+  const [takesFocus, setTakesFocus] = useState(true);
   const root = useRef<HTMLDivElement>(null);
   const own = useRef<HTMLButtonElement>(null);
   const button = toggle ?? own;
@@ -234,7 +263,8 @@ export function MenuButton({
   }, [open, above]);
   const close = (refocus: boolean): void => {
     setOpen(false);
-    if (refocus) button.current?.focus();
+    // A menu that never took the focus leaves it where it is.
+    if (refocus && takesFocus) button.current?.focus();
   };
   // A press outside keeps the focus where it went. A chosen item unmounts with the focus, so the
   // button takes it back, unless the item moved it, as a dialog does.
@@ -259,8 +289,14 @@ export function MenuButton({
         disabled={disabled}
         aria-disabled={turnedOff ? true : undefined}
         aria-busy={busy}
-        onClick={() => {
-          if (!turnedOff) setOpen((isOpen) => !isOpen);
+        onPointerDown={(event) => {
+          if (keepFocus) event.preventDefault();
+        }}
+        onClick={(event) => {
+          if (turnedOff) return;
+          // A click from a key has no count of presses.
+          setTakesFocus(!keepFocus || event.detail === 0);
+          setOpen((isOpen) => !isOpen);
         }}
       >
         {children}
@@ -271,6 +307,7 @@ export function MenuButton({
           label={label}
           className={["more-menu", ...(fromStart ? ["from-start"] : []), ...(above ? ["above"] : [])].join(" ")}
           listRef={list}
+          takesFocus={takesFocus}
           {...(maxHeight === null ? {} : { style: { maxHeight, overflowY: "auto", overscrollBehavior: "contain" } })}
           onClose={closeList}
         />

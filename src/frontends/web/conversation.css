@@ -972,6 +972,123 @@ button.ghost .icon {
   min-width: 0;
 }
 
+/*
+ * The field of the text. A suggested reply (#1127) shares its one grid cell with the text, so a long reply makes the
+ * box taller and never shows cut: Tab sends all of it.
+ */
+.composer-field {
+  flex: 1;
+  display: grid;
+  min-width: 0;
+}
+
+.composer-field > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+/* The grey reply takes the place of the placeholder. A tap on the reply itself goes to the text below it. */
+.composer-suggestion {
+  position: relative;
+  z-index: 1;
+  align-self: start;
+  pointer-events: none;
+}
+
+.composer-box.folded .composer-suggestion {
+  margin-block: var(--space-2);
+}
+
+.composer-suggestion-text {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+/* The buttons follow the last word of the reply, on its line when it has room. */
+.composer-suggestion > button,
+.composer-suggestion > .more-picker {
+  margin-inline-start: var(--space-2);
+  vertical-align: middle;
+  pointer-events: auto;
+}
+
+.composer-suggestion > .more-picker {
+  display: inline-block;
+}
+
+/* A small pearl with an arrow to the right, and the key that sends it on a computer. */
+.composer-suggestion-send {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  /* A narrow window asks for tall buttons. The 44 px target comes from the ::after below instead. */
+  min-height: 0;
+  padding: 0 var(--space-2) 0 6px;
+  border: 0;
+  background: var(--send-fill);
+  box-shadow: var(--send-shadow);
+  color: var(--accent-ink);
+}
+
+.composer-suggestion-send .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.composer-suggestion-send kbd {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.composer .chip.composer-suggestion-more {
+  position: relative;
+  height: 28px;
+  min-height: 0;
+  padding: 0 var(--space-2);
+  color: var(--accent-ink);
+}
+
+/* The buttons stay small in the line of text, with a 44 px target around them. */
+.composer-suggestion-send::after,
+.composer .chip.composer-suggestion-more::after {
+  content: "";
+  position: absolute;
+  inset: calc((28px - var(--touch-target)) / 2) -4px;
+}
+
+/* The menu of the other replies opens above the box, from the start of the reply, so it stays on a narrow screen. */
+.composer-suggestion > .more-picker {
+  position: static;
+}
+
+.composer-suggestion .more-menu {
+  max-width: min(360px, calc(100vw - 32px));
+}
+
+/* Each item shows its whole reply, on more lines when it needs them. */
+.composer-suggestion .more-menu button {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* A finger has no Tab key, so the pearl holds only the arrow. */
+@media (pointer: coarse) {
+  .composer-suggestion-send {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .composer-suggestion-send kbd {
+    display: none;
+  }
+}
+
 /* A short screen gets one row: the + button, the text and Send. */
 .composer-box.folded {
   padding: var(--space-1);
@@ -1697,6 +1814,85 @@ button.ghost .icon {
 }
 
 /* The files that an answer sends. Each button names its file, also on a phone. */
+/*
+ * A page of an answer (#1129): the full width of the bubble and a fixed height. An answer with a
+ * page takes the widest bubble, so a short text above it never makes the page narrow.
+ */
+.message.answer:has(.page-frame) {
+  width: 86%;
+}
+
+/* A phone gives an answer the whole width, so a page keeps the 300 px that the prompt promises. */
+@media (max-width: 760px) {
+  .message.answer:has(.page-frame) {
+    width: 100%;
+  }
+
+  /* Half of the bubble's side padding goes to the page too: a 360 px phone then still gives it 300 px. */
+  .page-frame {
+    margin-inline: calc(var(--space-2) * -1);
+  }
+}
+
+.page-frame {
+  position: relative;
+  height: 320px;
+  margin-top: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.page-frame.is-note {
+  height: auto;
+  background: var(--chip);
+}
+
+.page-wait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.page-wait .progress {
+  width: min(240px, 100%);
+}
+
+.page-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* The note of a page that went away after the bubble showed it, in the middle of full screen. */
+.page-full-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--space-6);
+}
+
+.page-full-note .page-note {
+  max-width: 420px;
+  border-radius: var(--radius-input);
+  background: var(--chip);
+}
+
+.page-note .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
 .answer-files {
   display: flex;
   flex-wrap: wrap;

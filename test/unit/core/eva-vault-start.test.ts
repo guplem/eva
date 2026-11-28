@@ -435,6 +435,32 @@ describe("migrations (#119)", () => {
     ]);
   });
 
+  test("a finished turn goes to no device while the person reads its chat on any device (#1136)", async () => {
+    const pushed: string[] = [];
+    const pushSender = (request: { endpoint: string }): Promise<number> => {
+      pushed.push(request.endpoint);
+      return Promise.resolve(201);
+    };
+    const phone = { endpoint: "https://fcm.googleapis.com/fcm/send/phone", keys: { p256dh: "k", auth: "a" } };
+    const instance = start(
+      new FakeEngine((request) => FakeEngine.answer(request, "The report is ready.")),
+      { machineName: "example-pc", sync: syncOff },
+      { pushSender },
+    );
+    instance.subscribePush(phone, "Phone", null);
+    const session = instance.createAssistantSession({ source: "web", title: "Weekly report" });
+    // The computer gets no notifications, so its page claims with no push address.
+    instance.markPushInView(null, "desk-tab", true, [session.id], true);
+    await instance.sessions.send(session.id, "Write the report.", "api");
+    await Bun.sleep(10);
+    expect(pushed).toEqual([]);
+    // The person left the computer: the page is still in front, but nobody reads it.
+    instance.markPushInView(null, "desk-tab", true, [session.id], false);
+    await instance.sessions.send(session.id, "Write it again.", "api");
+    await Bun.sleep(10);
+    expect(pushed).toEqual([phone.endpoint]);
+  });
+
   test("a removed device login loses its notifications", () => {
     const instance = start(new FakeEngine());
     instance.deviceLogins.attachApprover({ name: "Test", canApprove: () => true, ask: () => undefined });

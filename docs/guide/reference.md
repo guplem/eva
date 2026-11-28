@@ -280,7 +280,13 @@ Eva can also tell a phone or a computer through the browser, with a system notif
 
 A tap on a notification opens its chat. Each device picks its own kinds. A notification shows the start of the answer as plain text, with no Markdown marks.
 
-Eva sends a device no notification while her page on that device is in view and in front. Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
+Eva sends a device no notification while her page on that device is in view and in front. A page that shows another chat still lets the notification of this chat through.
+
+Eva sends no device the notification of a chat while you read that chat on any device. You read a chat when its page is in view and in front, and you pressed a key, or moved or touched the page in about the last 5 minutes. So a computer that you left with the chat open does not silence your phone. This also works when the device that you read on has its notifications off.
+
+Eva closes the notification of a chat on a device when you saw the chat, on that device or on another one. A page that you left open does not count: an answer shows as seen only when you are there, by the same rule. A device with Eva's page closed cannot close a notification, so there it closes when you open Eva. The notification of a chat that still works, or that waits for your approval, stays.
+
+Eva sends no notification for her answer to a message that you sent from Telegram: Telegram shows the answer already. She sends none for a task that you stopped.
 
 On an iPhone or an iPad, add Eva to the home screen first, then open her from there. Each computer of your vault sends the notifications of its own chats, so turn them on in the page of each computer that you use.
 
@@ -316,6 +322,7 @@ A request from Eva's own computer can come from any program there, so only the t
 - **Open a page in a new tab:** middle-click or Ctrl-click (Cmd-click on a Mac) a button that opens a page on the web page. This works for the main navigation, the chats, the projects, the schedules, the Life cards and the Settings sections.
 - **Engine, model and effort:** tap the chip in the message box of a web chat to pick the engine (Claude Code or pi), the model (Smart, Balanced or Fast) and the effort of this chat. A new chat uses the defaults from [Settings](#settings).
 - **Send with the keyboard:** in the message box of a web chat, press Ctrl+Enter (Cmd+Enter on a Mac) to send. Enter and Shift+Enter start a new line. To choose other keys, open **Settings > Personalize > Send key**. Turn on any number of keys: each key that is on sends. Turn them all off, and only the send button sends. Each browser keeps its own keys.
+- **Suggested replies:** when an answer of Eva ends with a question, she can suggest up to 4 short replies. The empty message box of a web chat shows the first one in grey, with an arrow. Press Tab, or tap the arrow, to send it at once. The **+2** button (or **+1**, **+3**) lists the others: tap one to send it. Type a character and the suggestion goes away. Clear the box and it comes back. Only a chat with Eva suggests replies, and only for her newest answer, while she does not work. Telegram and the terminal do not offer them yet.
 - **Close a sheet on a phone:** drag it down from its top, or from its content when the content shows its start. A short drag springs it back. A form with unsaved changes asks first, as with the Back button.
 - **The message box on a short screen:** on a phone, on a touch screen lower than 640 px, or in a computer window lower than 480 px, the box is one row: **+**, the text and **Send**. Tap **+** to attach a file, run a text action, insert a saved prompt, or pick the engine, the model and the effort. A phone keyboard stays open while you use the menu.
 - **A long message:** the text grows to 3 to 10 lines, by the height of the screen, then scrolls. Drag the handle on top of the box to choose another height, and double-click it to go back. The arrows button at the top right of the box opens a large editor. **Send** works from it too.
@@ -339,6 +346,11 @@ A request from Eva's own computer can come from any program there, so only the t
 
   Eva restores only files: a sent message or a calendar event stays. A file that changed after the answer stays too, and so does a file that Eva does not save in git, such as a file in `.eva/scratch/`. The question names them. With the vault sync off, Eva does not ask.
 
+- **A page in an answer:** Eva can answer with a small page, such as a chart of your numbers or a small calculator. The web page shows it inside her answer, in your colours. Tap the corner button to open it in full screen. Tap the close button or Back to close it.
+  - Eva writes the page as one HTML file in `.eva/scratch/`, so it lasts 7 days. Then the answer shows "This page is gone" in its place.
+  - A page never connects to the internet. It holds its own data, and it cannot read your vault, Eva's API or your login. A page of more than 2 MB, or one that holds a secret, shows a short note instead.
+  - Telegram shows a link to the chat on the web page instead, when Tailscale gives Eva an address. Without one, it says to open the web page. The terminal chat shows the path of the page.
+  - Only a chat with Eva knows how to make a page. A Project chat shows a page too when its answer names one.
 - **pi chats:** a pi chat with Eva asks you questions with the same form as Claude Code. A pi project chat stays as pi is. pi keeps the history of each chat in a file in Eva's folder. When that file is gone, the chat goes on as a new conversation, and Eva tells you and the model.
 
 ## Projects

@@ -18,8 +18,8 @@ import type { WidgetSize } from "../../../core/widgets/widget-kinds.ts";
 import { placeHome, type LayoutBox } from "../../../core/widgets/widget-layout.ts";
 import { widgetSandbox } from "../../../shared/widget-sandbox.ts";
 import { api, type WidgetFrame } from "./api.ts";
-import { useBackLayer } from "./back-layer-hook.ts";
 import { goTo } from "./back-layers.ts";
+import { FullScreenFrame } from "./FullScreenFrame.tsx";
 import { useIsPhone } from "./ChatHeader.tsx";
 import { Icon } from "./icons.tsx";
 import { settingsHash } from "./settings-routes.ts";
@@ -157,7 +157,6 @@ export function WidgetGrid({
     (frame: WidgetFrame, request: AskRequest, tapped: boolean) => answerAsk(frame, request, tapped, closeFull),
     [closeFull],
   );
-  useBackLayer(full !== null, closeFull, "widget-full");
   const gridRef = useRef<HTMLDivElement>(null);
   const narrow = useNarrowGrid(gridRef);
   // A computer window with the chat list open can leave the panel too narrow for four columns (#1023).
@@ -223,22 +222,14 @@ export function WidgetGrid({
         })}
       </div>
       {full !== null && (
-        <div className="widget-full" role="dialog" aria-modal="true" aria-label={full.name}>
+        <FullScreenFrame label={full.name} onClose={closeFull}>
           <WidgetFrameView
             frame={full}
             size="full"
             scheme={scheme}
             onAsk={(request, tapped) => onAsk(full, request, tapped)}
           />
-          <button
-            type="button"
-            className="icon-button widget-full-button"
-            aria-label="Close full screen"
-            onClick={closeFull}
-          >
-            <Icon name="shrink" />
-          </button>
-        </div>
+        </FullScreenFrame>
       )}
     </>
   );

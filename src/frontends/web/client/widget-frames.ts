@@ -22,7 +22,11 @@ export function pageScheme(dataTheme: string | null, systemDark: boolean): "ligh
 export function contractColours(read: (name: string) => string): Record<string, string> {
   const colours: Record<string, string> = {};
   for (const name of themeVariables) {
-    const value = read(name).trim();
+    // Chromium joins the parts of a colour made of variables with empty comments, which the core
+    // refuses as unsafe. A space keeps the parts apart.
+    const value = read(name)
+      .replace(/\/\*.*?\*\//g, " ")
+      .trim();
     if (value !== "") colours[name] = value;
   }
   return colours;

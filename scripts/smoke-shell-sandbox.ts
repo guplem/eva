@@ -33,29 +33,24 @@ writeFileSync(join(project, "plan.md"), "the project's plan\n");
 writeFileSync(join(otherClone, "other.txt"), "another clone\n");
 writeFileSync(join(instance, "secrets.json"), '{"token":"demo"}\n');
 writeFileSync(join(instance, "engines", "pi-agent", "sessions", "chat.jsonl"), "a chat's history\n");
+// No global or system git config: the person's own one could sign each commit through a program outside.
+const environment = {
+  PATH: process.env["PATH"] ?? "",
+  HOME: root,
+  GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"),
+  GIT_CONFIG_NOSYSTEM: "1",
+};
 // A clone has its repository before its chat starts.
-const git = Bun.spawnSync(["git", "-c", "user.name=Demo", "-c", "user.email=demo@example.com", "init", "-q"], {
-  cwd: clone,
-  env: {
-    PATH: process.env["PATH"] ?? "",
-    HOME: root,
-    GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"),
-    GIT_CONFIG_NOSYSTEM: "1",
-  },
-});
-Bun.spawnSync(
-  ["git", "-c", "user.name=Demo", "-c", "user.email=demo@example.com", "commit", "-q", "--allow-empty", "-m", "first"],
-  {
+for (const step of [
+  ["init", "-q"],
+  ["commit", "-q", "--allow-empty", "-m", "first"],
+]) {
+  const git = Bun.spawnSync(["git", "-c", "user.name=Demo", "-c", "user.email=demo@example.com", ...step], {
     cwd: clone,
-    env: {
-      PATH: process.env["PATH"] ?? "",
-      HOME: root,
-      GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"),
-      GIT_CONFIG_NOSYSTEM: "1",
-    },
-  },
-);
-if (git.exitCode !== 0) throw new Error("git init failed.");
+    env: environment,
+  });
+  if (git.exitCode !== 0) throw new Error(`git ${step[0] ?? ""} failed.`);
+}
 
 const seccompFile = installSeccompHelper(await embeddedSeccompHelper(), join(instance, "bin"));
 const wall = {
@@ -66,13 +61,6 @@ const wall = {
   socketFilter: true,
   shellSandbox: true,
 };
-// No global or system git config: the person's own one could sign each commit through a program outside.
-const environment = {
-  PATH: process.env["PATH"] ?? "",
-  HOME: root,
-  GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"),
-  GIT_CONFIG_NOSYSTEM: "1",
-};
 const wallFile = join(instance, "wall.json");
 const machine = { runtimeFolder: null, platform: process.platform };
 writeFileSync(wallFile, JSON.stringify(piShellWallConfig(wall, environment, seccompFile, machine)));
@@ -80,12 +68,6 @@ writeFileSync(wallFile, JSON.stringify(piShellWallConfig(wall, environment, secc
 async function run(command: string): Promise<{ code: number; output: string }> {
   const child = Bun.spawn([...evaCommand, "shell-sandbox", wallFile, command], {
     cwd: clone,
-    env: {
-      PATH: process.env["PATH"] ?? "",
-      HOME: root,
-      GIT_CONFIG_GLOBAL: join(root, "no-gitconfig"),
-      GIT_CONFIG_NOSYSTEM: "1",
-    },
     env: environment,
     stdout: "pipe",
     stderr: "pipe",
@@ -150,13 +132,15 @@ for (const [name, command, passes] of checks) {
     `${ok ? "[ok]  " : "[FAIL]"} ${name}${ok ? "" : `: exit ${String(result.code)}, ${result.output.trim()}`}`,
   );
 }
-const missing = await run("true");
+const working = await run("exit 3");
+const passesCode = working.code === 3;
+if (!passesCode) failed += 1;
+console.log(`${passesCode ? "[ok]  " : "[FAIL]"} the command's exit code comes back`);
 writeFileSync(wallFile, "not json");
 const broken = await run("echo MARKER-OF-A-RUN");
 const closed = broken.code === 126 && !broken.output.includes("MARKER-OF-A-RUN");
 if (!closed) failed += 1;
 console.log(`${closed ? "[ok]  " : "[FAIL]"} a broken wall file runs nothing`);
-console.log(`The wrapper with a working wall ended with ${String(missing.code)}.`);
 rmSync(root, { recursive: true, force: true });
 if (failed > 0) {
   console.log(`${String(failed)} checks failed.`);

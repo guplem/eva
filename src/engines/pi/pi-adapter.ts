@@ -60,6 +60,9 @@ import { contextExtensionSource, contextNoticePrefix, projectFolderVariable } fr
 import { mcpExtensionSource, mcpNoticePrefix, mcpServersFileVariable } from "./pi-mcp-extension.ts";
 import { systemPiProcessStarter, type PiProcess, type PiProcessStarter } from "./pi-process.ts";
 import { lastAnswerEntryId, writeBranchFile } from "./pi-session-files.ts";
+import { shellWallVariable, shellWrapExtensionSource } from "./pi-shell-wrap-extension.ts";
+import { piShellWallConfig } from "./pi-shell-wall.ts";
+import { toolCacheVariables } from "../../shared/shell-wall-settings.ts";
 
 export interface PiEngineOptions {
   /** The command that starts pi, such as `["pi"]`. */
@@ -80,6 +83,12 @@ export interface PiEngineOptions {
   readonly backgroundRetryMs?: number;
   /** The longest wait for `pi auth check` after a failed turn. */
   readonly loginCheckMs?: number;
+  /**
+   * The wrapper that runs each shell command of a walled Project chat in the sandbox (#759): the
+   * command that runs Eva, and the path of the socket filter's helper. Without it, pi's shell has
+   * no wall.
+   */
+  readonly shellSandbox?: { readonly command: readonly string[]; readonly seccompFile: string | null };
 }
 
 interface PiMessage {
@@ -202,10 +211,19 @@ export class PiEngine implements EnginePort {
     const specsFile = hasMcpServers
       ? join(this.options.workFolder, "mcp-servers", `${engineSessionId}-${crypto.randomUUID()}.json`)
       : null;
+    // Where Eva's start check found a sandbox, each shell command of a walled chat runs in it (#759).
+    const shellSandbox = this.options.shellSandbox;
+    const shellWallFile =
+      shellSandbox !== undefined && request.fileWall?.shellSandbox === true
+        ? join(this.options.workFolder, "shell-walls", `${engineSessionId}-${crypto.randomUUID()}.json`)
+        : null;
+    const shellWrapExtensionFile =
+      shellWallFile === null ? null : this.writeIfChanged("eva-shell-wrap-extension.ts", shellWrapExtensionSource);
     const args = buildPiArguments(request, {
       sessionFile: subagent ? null : sessionFile(engineSessionId),
       sessionsFolder,
       extensionFile,
+      shellWrapExtensionFile,
       mcpExtensionFile,
       contextExtensionFile,
       questionExtensionFile,
@@ -227,6 +245,21 @@ export class PiEngine implements EnginePort {
         return;
       }
     }
+    if (shellSandbox !== undefined && shellWallFile !== null && request.fileWall !== null) {
+      try {
+        const machine = { runtimeFolder: request.environment["XDG_RUNTIME_DIR"] ?? null, platform: process.platform };
+        const config = piShellWallConfig(request.fileWall, request.environment, shellSandbox.seccompFile, machine);
+        writeFileAtomic(shellWallFile, JSON.stringify(config));
+      } catch (error) {
+        // A chat whose wall Eva cannot write must not run its commands with no wall.
+        removeSpecs(specsFile);
+        yield {
+          kind: "turn_failed",
+          reason: `Eva could not write the shell sandbox of this chat: ${error instanceof Error ? error.message : String(error)}`,
+        };
+        return;
+      }
+    }
     let pi: PiProcess;
     try {
       pi = (this.options.start ?? systemPiProcessStarter)([...this.options.command, ...args], {
@@ -235,10 +268,18 @@ export class PiEngine implements EnginePort {
           ...request.environment,
           ...(specsFile === null ? {} : { [mcpServersFileVariable]: specsFile }),
           ...(request.projectFolder === null ? {} : { [projectFolderVariable]: request.projectFolder }),
+          ...(shellSandbox === undefined || shellWallFile === null
+            ? {}
+            : {
+                [shellWallVariable]: JSON.stringify({ command: shellSandbox.command, wallFile: shellWallFile }),
+                // A sandboxed command may not write to the home folder, where the package caches live.
+                ...toolCacheVariables(),
+              }),
         },
       });
     } catch (error) {
       removeSpecs(specsFile);
+      removeSpecs(shellWallFile);
       yield {
         kind: "turn_failed",
         reason: `pi could not start: ${error instanceof Error ? error.message : String(error)}`,
@@ -281,6 +322,8 @@ export class PiEngine implements EnginePort {
       request.signal.removeEventListener("abort", onAbort);
       // The bridge deletes the file at start. This covers a pi that stopped before it.
       removeSpecs(specsFile);
+      // Each command reads its wall when it starts, so none that runs needs the file after the turn.
+      removeSpecs(shellWallFile);
     }
   }
 
@@ -646,6 +689,8 @@ export interface PiArgumentInputs {
   readonly sessionFile: string | null;
   readonly sessionsFolder: string;
   readonly extensionFile: string;
+  /** Eva's wrap of each shell command in the sandbox, in a walled Project chat (#759). */
+  readonly shellWrapExtensionFile: string | null;
   /** Eva's MCP bridge, when the turn has MCP servers. */
   readonly mcpExtensionFile: string | null;
   /** Eva's filter of the instruction files above a Project chat's project folder. */
@@ -673,6 +718,8 @@ export function buildPiArguments(request: TurnRequest, inputs: PiArgumentInputs)
     "-e",
     inputs.extensionFile,
   ];
+  // Right after the approval: a call that it blocks is never wrapped, and Eva's other extensions see the wrap.
+  if (inputs.shellWrapExtensionFile !== null) args.push("-e", inputs.shellWrapExtensionFile);
   if (inputs.mcpExtensionFile !== null) args.push("-e", inputs.mcpExtensionFile);
   if (inputs.contextExtensionFile !== null) args.push("-e", inputs.contextExtensionFile);
   if (inputs.questionExtensionFile !== null) args.push("-e", inputs.questionExtensionFile);

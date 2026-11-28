@@ -84,6 +84,11 @@ export interface FileWall {
    * Code's Unix socket filter needs one, so Eva turns it off there and each command still runs (#760).
    */
   readonly socketFilter: boolean;
+  /**
+   * True where Eva's start check found that the sandbox library can run, so an engine with no
+   * sandbox of its own, such as pi, runs each shell command in it (#759). Absent means false.
+   */
+  readonly shellSandbox?: boolean;
 }
 
 export interface TurnRequest {

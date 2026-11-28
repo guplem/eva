@@ -17,6 +17,7 @@ import { vaultSearchIndex } from "./core/files/windows-search.ts";
 import { leftoverBwrapProfile, nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "./core/shell-wall.ts";
 import { sandboxRuntimeLibrary } from "./core/shell-sandbox/sandbox-runtime.ts";
 import { runShellSandbox } from "./core/shell-sandbox/shell-sandbox.ts";
+import { embeddedSeccompHelper, installSeccompHelper } from "./core/shell-sandbox/seccomp-helper.ts";
 import { systemSandboxedCommandStarter } from "./shared/sandboxed-command.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
@@ -140,6 +141,7 @@ function createEngines(
   config: EvaConfig,
   paths: HomePaths,
   logger: Logger,
+  seccompFile: string | null,
 ): { engines: EnginePort[]; claudeExecutable: string | null } {
   const engines: EnginePort[] = [];
   const claudeExecutable = locateEngine(config, "claude-code");
@@ -156,6 +158,8 @@ function createEngines(
         command: [piExecutable],
         workFolder: join(paths.enginesFolder, "pi"),
         models: config.engines.pi.models,
+        // pi's bash tool runs `eva shell-sandbox` for each command of a walled Project chat (#759).
+        shellSandbox: { command: evaCommand(host), seccompFile },
       }),
     );
   }
@@ -240,7 +244,9 @@ async function serve(paths: HomePaths): Promise<number> {
   await remoteAccess?.refresh();
 
   let stop: (exitCode: number) => void = () => undefined;
-  const { engines, claudeExecutable } = createEngines(config, paths, logger);
+  // The sandbox runs the helper inside the box, so it goes to a folder that the wall keeps readable.
+  const seccompFile = installSeccompHelper(await embeddedSeccompHelper(), join(paths.root, "bin"));
+  const { engines, claudeExecutable } = createEngines(config, paths, logger, seccompFile);
   const eva = new Eva({
     paths,
     config: withVoicePrograms(config),

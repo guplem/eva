@@ -101,7 +101,7 @@ An engine adapter turns the harness's output into Eva's events, and turns Eva's 
 
 **Claude Code.** Eva runs the installed `claude` program through the Claude Agent SDK. She never puts `claude` inside her own executable. It uses your subscription login, never an API key.
 
-**pi.** Eva runs `pi --mode rpc` as a child process, and reads its JSON output line by line. pi never runs inside the core process, so it never sees the secrets that it does not need. pi uses your own subscription login or API key, but never a Claude login. Eva adds small pi extensions for the approvals, the questions, the context, the subagents and the MCP servers.
+**pi.** Eva runs `pi --mode rpc` as a child process, and reads its JSON output line by line. pi never runs inside the core process, so it never sees the secrets that it does not need. pi uses your own subscription login or API key, but never a Claude login. Eva adds small pi extensions for the approvals, the questions, the context, the subagents, the MCP servers and the shell sandbox. pi has no sandbox, so in a walled Project chat, Eva's extension turns each shell command into a call of `eva shell-sandbox`. That short process starts the sandbox library of Claude Code's own sandbox for the one command, runs it, and stops. The core runs no part of the sandbox.
 
 Each instance gives each harness its own config folder (`CLAUDE_CONFIG_DIR` and `PI_CODING_AGENT_DIR`), so two instances never share a login.
 
@@ -144,7 +144,7 @@ Two or more computers can run Eva with the same vault. The vault names the hub i
 - **Remote access only through Tailscale.** The local API listens on the computer itself. Tailscale gives the address to your devices only.
 - **Settings have homes.** Your personal settings live in the vault. The settings of the computer, and each security setting, stay in `config.json`. An agent can edit the vault, so Eva never reads a security setting from it. The levels of the actions that reach other people are a preference, so they live in the vault. An agent can edit them, so Eva asks you before an agent changes them.
 - **Secrets never reach a front end.** The `Redactor` removes each known secret, and each common token shape, from the text of each event and log line.
-- **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
+- **The file wall.** A Project chat cannot open the vault, the other projects or Eva's folder. On Linux and macOS, a sandbox also walls the shell of the chat, with either engine, when the computer can run it. See [What a chat can reach](reference.md#what-a-chat-can-reach).
 - **Trust of a clone.** A clone of an unknown repository runs with its hooks, project settings and MCP servers off, until you trust it.
 - **Signed updates.** See below.
 

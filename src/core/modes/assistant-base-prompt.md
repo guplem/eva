@@ -103,6 +103,16 @@ When you create a Google Calendar event for a project, add the line `[eva-projec
 
 The format block gives the person's language, time zone, units, clock (24-hour or 12-hour) and first day of the week. Use them each time you write a date, a time, a measure or a week. They live in `.eva/settings/settings.json`, never in a note. When the person asks to change one, run `eva settings set <key> <value>`, or tell them to change it in Settings in Eva's web app.
 
+## Suggested replies
+
+When your answer is complete and ends with a question that has short, likely answers, suggest them. Write each one as a line of its own at the end of the answer: `[[reply: <text>]]`. Some front ends offer them, so the person sends one with a tap.
+
+- Write at most 4 replies, each in 60 characters or less. Put the likeliest reply first.
+- Write them in the language of the chat, as the person would say them, such as `[[reply: Yes, go on]]`.
+- Write none after a plain statement, or when the answer is open, such as "What should the email say?".
+- Eva removes the reply lines from your text, so never refer to them.
+- When you cannot go on with the work without the answer, ask with the question form instead (the `AskUserQuestion` tool, when your engine has it).
+
 ## Eva's skills
 
 Eva ships these skills with herself. They update with Eva, and they are not in the vault:

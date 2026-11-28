@@ -12,6 +12,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { embeddedSeccompHelper, installSeccompHelper } from "../src/core/shell-sandbox/seccomp-helper.ts";
 import { piShellWallConfig } from "../src/engines/pi/pi-shell-wall.ts";
+import { nestedSandboxWorks } from "../src/core/shell-wall.ts";
+import { wrappedCommand } from "../src/engines/pi/pi-shell-wrap.ts";
+import { readTextTolerant } from "../src/shared/files.ts";
+import { systemProcessRunner } from "../src/shared/process-runner.ts";
 
 if (process.platform === "win32") {
   console.log("Windows has no shell sandbox: skipped.");
@@ -58,7 +62,16 @@ const wall = {
   closed: [vault, instance, join(project, "repos")],
   readable: [join(instance, "bin")],
   readOnly: [project],
-  socketFilter: true,
+  // As Eva's start check finds it: a recent Ubuntu blocks the filter's nested sandbox (#760).
+  socketFilter: await nestedSandboxWorks({
+    platform: process.platform,
+    which: (name) => Bun.which(name),
+    runner: systemProcessRunner,
+    environment,
+    root: process.getuid?.() === 0,
+    readText: readTextTolerant,
+    listFiles: () => [],
+  }),
   shellSandbox: true,
 };
 const wallFile = join(instance, "wall.json");
@@ -66,7 +79,9 @@ const machine = { runtimeFolder: null, platform: process.platform };
 writeFileSync(wallFile, JSON.stringify(piShellWallConfig(wall, environment, seccompFile, machine)));
 
 async function run(command: string): Promise<{ code: number; output: string }> {
-  const child = Bun.spawn([...evaCommand, "shell-sandbox", wallFile, command], {
+  // As pi's bash tool runs it: the extension's own line, with `bash -c`, in the chat's folder.
+  const line = wrappedCommand({ command: evaCommand, wallFile }, clone, command);
+  const child = Bun.spawn(["/bin/bash", "-c", line], {
     cwd: clone,
     env: environment,
     stdout: "pipe",
@@ -110,6 +125,7 @@ const checks: [string, string, (result: { code: number; output: string }) => boo
     (result) => result.output.trim().endsWith("2"),
   ],
   ["a hook of the clone stays read-only", "echo x > .git/hooks/pre-commit", (r) => r.code !== 0],
+  ["the clone's pi settings stay closed", "mkdir -p .pi && echo x > .pi/settings.json", (r) => r.code !== 0],
   ["a temporary file works", 'f=$(mktemp) && echo temp > "$f" && cat "$f"', (result) => result.output.includes("temp")],
   [
     "npm's registry is reachable",
@@ -136,6 +152,16 @@ const working = await run("exit 3");
 const passesCode = working.code === 3;
 if (!passesCode) failed += 1;
 console.log(`${passesCode ? "[ok]  " : "[FAIL]"} the command's exit code comes back`);
+// A chat can write its folder, and a clone can bring these files: Bun reads both where it starts.
+await run(
+  `printf 'preload = ["./pre.ts"]\\n' > bunfig.toml && echo 'console.log("PRELOAD-RAN-OUTSIDE")' > pre.ts && echo EVA_PLANTED=yes > .env`,
+);
+const planted = await run("echo planted:${EVA_PLANTED:-no}");
+const ignored = !planted.output.includes("PRELOAD-RAN-OUTSIDE") && planted.output.includes("planted:no");
+if (!ignored) failed += 1;
+console.log(
+  `${ignored ? "[ok]  " : "[FAIL]"} a bunfig.toml or .env of the chat runs nothing outside: ${planted.output.trim()}`,
+);
 writeFileSync(wallFile, "not json");
 const broken = await run("echo MARKER-OF-A-RUN");
 const closed = broken.code === 126 && !broken.output.includes("MARKER-OF-A-RUN");

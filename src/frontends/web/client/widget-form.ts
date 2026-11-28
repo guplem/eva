@@ -77,7 +77,11 @@ export function permissionLines(manifest: WidgetManifest, values: FormValues): P
   const evaData = manifest.inputs.flatMap((input): PermissionLine[] => {
     if (input.type === "eva-location") return [{ icon: "globe", text: "Reads your last location", why: input.why }];
     if (input.type === "eva-google-calendar") {
-      const text = input.access === "write" ? "Reads and changes your Google Calendar" : "Reads your Google Calendar";
+      // A write can invite other people to an event (#974): the person must know it before they approve.
+      const text =
+        input.access === "write"
+          ? "Reads and changes your Google Calendar, and sends invitations to other people"
+          : "Reads your Google Calendar";
       return [{ icon: "calendar", text, why: input.why }];
     }
     if (input.type === "eva-cases") return [{ icon: "case", text: "Reads your open cases", why: input.why }];

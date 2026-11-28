@@ -9,8 +9,9 @@ import manifestV1Text from "../../../docs/widgets/manifest-v1.json" with { type:
 import manifestV2Text from "../../../docs/widgets/manifest-v2.json" with { type: "text" };
 import manifestV3Text from "../../../docs/widgets/manifest-v3.json" with { type: "text" };
 import manifestV4Text from "../../../docs/widgets/manifest-v4.json" with { type: "text" };
-// Contracts 2 to 4 keep the data rules of contract 1 (a test pins it), so one meta-schema checks all.
-import metaSchemaText from "../../../docs/widgets/meta-schema-v4.json" with { type: "text" };
+import manifestV5Text from "../../../docs/widgets/manifest-v5.json" with { type: "text" };
+// Contracts 2 to 5 keep the data rules of contract 1 (a test pins it), so one meta-schema checks all.
+import metaSchemaText from "../../../docs/widgets/meta-schema-v5.json" with { type: "text" };
 // TypeScript types a JSON import as its value, but Bun gives a text import as a string.
 import type { WidgetAskType, WidgetInputType, WidgetSize } from "./widget-kinds.ts";
 
@@ -20,6 +21,8 @@ const manifestSchemas: ReadonlyMap<number, unknown> = new Map<number, unknown>([
   [2, manifestV2Text],
   [3, manifestV3Text],
   [4, manifestV4Text],
+  // Contract 5 adds the calendar writes, which are contract paths: its manifest rules are those of contract 4.
+  [5, manifestV5Text],
 ]);
 
 export const manifestPath = "eva-widget.json";

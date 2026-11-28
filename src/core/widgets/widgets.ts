@@ -19,7 +19,7 @@ import { answerDataPath, contractLocation, jsonAnswer, type WidgetAnswer } from 
 import { evaDataAnswer } from "./widget-eva-data.ts";
 import { answerStatePath, removeWidgetState, statePath } from "./widget-state.ts";
 import type { WidgetAskType } from "./widget-kinds.ts";
-import { calendarAnswer } from "./widget-google-calendar.ts";
+import { calendarAnswer, calendarWriteAnswer } from "./widget-google-calendar.ts";
 import { noCalendar, type CalendarSource } from "../google/google-calendar.ts";
 import { noTasks, type TasksSource } from "../google/google-tasks.ts";
 import { tasksAnswer } from "./widget-google-tasks.ts";
@@ -998,6 +998,17 @@ export class Widgets {
         exclusive: this.options.exclusive,
         redact: this.options.redact,
       });
+    // The approved record decides: only `write` access writes (#974).
+    const calendarWrite = await calendarWriteAnswer({
+      path,
+      method,
+      query,
+      body,
+      access: record.googleCalendar,
+      source: this.options.calendar ?? noCalendar,
+      projects: this.options.projects,
+    });
+    if (calendarWrite !== null) return calendarWrite;
     if (method !== "GET" && method !== "HEAD") return { status: 405 };
     if (path === "config.json") return jsonAnswer(configOf(record, entry));
     if (path === "eva/location.json")

@@ -56,11 +56,11 @@ describe("checkManifest", () => {
   });
 
   test("refuses a contract that Eva does not know, and asks for an update", () => {
-    const result = checkManifest(JSON.stringify({ ...manifest, contract: 5 }));
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 6 }));
     expect(result.manifest).toBeNull();
-    expect(result.problems).toEqual(["This widget follows contract 5. Update Eva to use this widget."]);
+    expect(result.problems).toEqual(["This widget follows contract 6. Update Eva to use this widget."]);
     expect(result.newerContract).toBe(true);
-    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 5 })).newerContract).toBe(true);
+    expect(checkWidget(() => JSON.stringify({ ...manifest, contract: 6 })).newerContract).toBe(true);
   });
 
   test("accepts contract 2, with its sizes and its inputs of Eva's data", () => {
@@ -164,6 +164,31 @@ describe("checkManifest", () => {
     );
     expect(result.problems).toEqual([]);
     expect(result.manifest?.inputs.at(-1)).toEqual(tasks);
+  });
+
+  test("accepts contract 5, the calendar writes, with the manifest of contract 4 (#974)", async () => {
+    const calendar = {
+      id: "calendar",
+      type: "eva-google-calendar",
+      access: "write",
+      label: "Calendar",
+      description: "Your Google Calendar.",
+      why: "The widget adds the events that you create.",
+      required: true,
+    } as const;
+    const result = checkManifest(JSON.stringify({ ...manifest, contract: 5, inputs: [...manifest.inputs, calendar] }));
+    expect(result.problems).toEqual([]);
+    expect(result.manifest?.inputs.at(-1)).toEqual(calendar);
+    // Contract 5 adds only contract paths: its manifest rules are those of contract 4.
+    const rules = async (contract: number): Promise<unknown> => {
+      const text = await Bun.file(
+        join(import.meta.dir, `../../../../docs/widgets/manifest-v${String(contract)}.json`),
+      ).text();
+      const { $id: _id, title: _title, properties, ...rest } = JSON.parse(text) as Record<string, unknown>;
+      const { contract: _contract, ...others } = properties as Record<string, unknown>;
+      return { ...rest, properties: others };
+    };
+    expect(await rules(5)).toEqual(await rules(4));
   });
 
   test("keeps the rules of the Google Tasks input, and keeps it out of contract 3", () => {
@@ -375,5 +400,6 @@ describe("the meta-schemas", () => {
     expect(await rules(2)).toEqual(await rules(1));
     expect(await rules(3)).toEqual(await rules(1));
     expect(await rules(4)).toEqual(await rules(1));
+    expect(await rules(5)).toEqual(await rules(1));
   });
 });

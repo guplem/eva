@@ -129,10 +129,10 @@ describe("grantChange", () => {
     expect(grantChange(change.grant, both, values, none, none).added).toEqual([]);
     const write = manifest({ contract: 2, inputs: [habits, { ...calendar, access: "write" }, cases] });
     expect(grantChange(change.grant, write, values, none, none).added).toEqual([
-      "Change your Google Calendar, not only read it.",
+      "Change your Google Calendar and send invitations to other people, not only read it.",
     ]);
     expect(grantChange(approved, write, values, none, none).added).toEqual([
-      "Read and change your Google Calendar.",
+      "Read and change your Google Calendar, and send invitations to other people.",
       "Read your open cases.",
     ]);
     // Less access asks for nothing.

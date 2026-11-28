@@ -148,7 +148,11 @@ describe("the activation form", () => {
     expect(missingInputs(day, {})).toEqual([]);
     expect(permissionLines(day, {})).toEqual([
       { icon: "calendar", text: "Reads your Google Calendar", why: "w" },
-      { icon: "calendar", text: "Reads and changes your Google Calendar", why: "w" },
+      {
+        icon: "calendar",
+        text: "Reads and changes your Google Calendar, and sends invitations to other people",
+        why: "w",
+      },
       { icon: "case", text: "Reads your open cases", why: "Shows your cases." },
       { icon: "check", text: "Reads your Google Tasks", why: "w" },
       { icon: "check", text: "Reads and changes your Google Tasks", why: "w" },

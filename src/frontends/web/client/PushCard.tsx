@@ -10,6 +10,7 @@ import { describeAgent } from "./device-words.ts";
 import { ProgressBar } from "./Loading.tsx";
 import type { PresencePage } from "./push-presence.ts";
 import { keyBytes, pushSupport, type PushSupport } from "./push-support.ts";
+import type { NotificationShelf } from "./seen-notifications.ts";
 import { Card, errorText, type SettingsContext } from "./SettingsParts.tsx";
 
 /** The card says so when the person turns the notifications of this device on or off. */
@@ -22,6 +23,16 @@ const shownChatsEvent = "eva-shown-chats";
 export function announceShownChats(): void {
   window.dispatchEvent(new Event(shownChatsEvent));
 }
+
+/** The notifications that this device shows now (`seen-notifications.ts`). */
+export const browserNotificationShelf: NotificationShelf = {
+  shown: async () => {
+    if (!("serviceWorker" in navigator)) return [];
+    const registration = await navigator.serviceWorker.getRegistration();
+    const shown = (await registration?.getNotifications()) ?? [];
+    return shown.map((notification) => ({ tag: notification.tag, close: () => notification.close() }));
+  },
+};
 
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
 export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {

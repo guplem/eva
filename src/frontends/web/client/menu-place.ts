@@ -33,3 +33,17 @@ function side(at: number, length: number, screen: number): number {
   // A menu larger than the screen starts at the margin, so its first item stays in view.
   return Math.max(menuMargin, Math.min(start, last));
 }
+
+/**
+ * The height that a menu below its button may take, or null when it fits. `clipBottom` is the
+ * lowest edge that the person sees: the screen, or a box that scrolls around the menu.
+ */
+export function roomBelow(top: number, height: number, clipBottom: number): number | null {
+  const room = clipBottom - menuMargin - top;
+  if (height <= room) return null;
+  // A menu with less room than a few items still shows a few, and the box around it scrolls.
+  return Math.max(room, minMenuHeight);
+}
+
+/** About three items, so a menu near the bottom edge never shrinks to nothing. */
+const minMenuHeight = 120;

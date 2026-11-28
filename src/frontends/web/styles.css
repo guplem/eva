@@ -1193,20 +1193,6 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.rename-form {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-/* On a phone, the buttons go to a second row, so the field gets the whole width. */
-.rename-form input {
-  flex: 1 1 12em;
-  min-width: 0;
-}
-
 /* The buttons beside the title keep their size, so a long title wraps instead. */
 .main-header > button {
   flex-shrink: 0;
@@ -3766,6 +3752,12 @@ button.small {
   }
 }
 
+/* A menu with a height limit scrolls: its items keep their own height. */
+.menu > *,
+.menu [role="group"] > * {
+  flex-shrink: 0;
+}
+
 .menu [role="group"] {
   display: flex;
   flex-direction: column;
@@ -3804,6 +3796,10 @@ button.small {
   z-index: 35;
   /* Two of menuMargin in menu-place.ts. */
   max-width: calc(100vw - 2 * var(--space-2));
+  /* A long menu, such as the menu of a vault file, scrolls instead of leaving the screen. */
+  max-height: calc(100dvh - 2 * var(--space-2));
+  overscroll-behavior: contain;
+  overflow-y: auto;
 }
 
 /* A long press opens Eva's menu, so a phone shows no callout and selects no text. */

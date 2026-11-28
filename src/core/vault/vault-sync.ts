@@ -144,7 +144,7 @@ export const maxScannedFileBytes = 1_000_000;
 /** The commits of one path that the check of the remote history reads, so a long history stays fast (#1110). */
 const maxHistoryCommits = 50;
 /** GitHub refuses a push with a file over 100 MB, and then every later push fails too. */
-const maxCommittedFileBytes = 50 * 1024 * 1024;
+export const maxCommittedFileBytes = 50 * 1024 * 1024;
 /** A note conflict shows each version only up to this size: the page compares them line by line. */
 const maxComparedTextBytes = 200_000;
 /** The `git status --porcelain` codes of a path with a merge conflict. */

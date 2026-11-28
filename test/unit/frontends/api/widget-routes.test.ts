@@ -371,7 +371,7 @@ describe("the widget files", () => {
     const base = src.replace(/index\.html$/, "");
     const preflight = await frameCall(`${base}data/habits/walk.json`, "OPTIONS");
     expect(preflight.status).toBe(204);
-    expect(preflight.headers.get("access-control-allow-methods")).toBe("GET, PUT, DELETE");
+    expect(preflight.headers.get("access-control-allow-methods")).toBe("GET, POST, PUT, DELETE");
     const write = await frameCall(
       `${base}data/habits/walk.json`,
       "PUT",
@@ -550,6 +550,151 @@ describe("the widget files", () => {
       expect(await (await frameCall(`${base}eva/google-tasks/lists.json`)).json()).toEqual([
         { id: "home", name: "Home" },
       ]);
+    } finally {
+      google.stop();
+    }
+  });
+
+  test("a calendar widget with write access adds, changes and deletes an event, and only it (#974)", async () => {
+    const google = fakeGoogle();
+    const logged: string[] = [];
+    try {
+      const client = { clientId: "123456789012-clientid.apps.googleusercontent.com", clientSecret: "GOCSPX-secret" };
+      const googleConfig = {
+        ...defaultConfig.google,
+        email: "person@example.com",
+        services: ["calendar" as const],
+        access: { ...defaultConfig.google.access, calendar: "full" as const },
+      };
+      const credentials = googleCredentialsFolder(homePaths(home));
+      mkdirSync(credentials, { recursive: true });
+      writeFileSync(
+        join(credentials, "person@example.com.json"),
+        JSON.stringify({
+          refresh_token: "the-refresh-token",
+          client_id: client.clientId,
+          client_secret: client.clientSecret,
+          scopes: googleScopes(googleConfig),
+        }),
+      );
+      google.calendarList = [
+        { id: "work", summary: "Work", primary: true, selected: true, timeZone: "UTC", accessRole: "owner" },
+      ];
+      api.stop();
+      eva.stop();
+      eva = new Eva({
+        paths: homePaths(home),
+        config: {
+          ...defaultConfig,
+          vaultPath: vault,
+          timeZone: "UTC",
+          sync: { ...defaultConfig.sync, enabled: false },
+          google: googleConfig,
+        },
+        secrets: { googleOauthClientId: client.clientId, googleOauthClientSecret: client.clientSecret },
+        engines: [new FakeEngine((request) => FakeEngine.answer(request, "answer"))],
+        runner: systemProcessRunner,
+        processEnvironment: gitEnvironment,
+        now: () => new Date("2026-10-14T10:30:00Z"),
+        basePrompt: "Base.",
+        widgetRemote: () => sandbox.remote,
+        baseWidgets: [],
+        githubRequest: () => Promise.resolve({ status: 404, body: "" }),
+        googleBaseUrl: google.url,
+      });
+      api = startLocalApi({
+        eva,
+        port: 0,
+        token,
+        extraHosts: [],
+        allowedTailscaleIdentities: [],
+        logger: { log: (level, message, details) => logged.push(`${level} ${message} ${JSON.stringify(details)}`) },
+      });
+      const work = sandbox.clone("calendar");
+      const calendar = {
+        id: "calendar",
+        type: "eva-google-calendar",
+        access: "read",
+        label: "Calendar",
+        description: "Your Google Calendar.",
+        why: "The widget adds your events.",
+        required: true,
+      };
+      const publish = (access: "read" | "write"): void => {
+        sandbox.write(
+          work,
+          "eva-widget.json",
+          JSON.stringify({ ...manifest, contract: 5, inputs: [...manifest.inputs, { ...calendar, access }] }),
+        );
+        sandbox.git(work, "commit", "-q", "-am", `feat: calendar ${access}`);
+        sandbox.git(work, "push", "-q", "origin", "main");
+      };
+      const event = JSON.stringify({
+        calendarId: "work",
+        title: "Planning with the team",
+        place: "Room B",
+        startAt: "2026-10-15T10:00:00Z",
+        endAt: "2026-10-15T11:00:00Z",
+        guests: ["guest@example.com"],
+      });
+
+      // A read approval writes nothing, also with a body that needs no preflight.
+      publish("read");
+      const reader = (await approvedSrc()).replace(/index\.html$/, "");
+      const plain = { "content-type": "text/plain" };
+      expect((await frameCall(`${reader}eva/google-calendar/events.json`, "POST", event, plain)).status).toBe(405);
+      expect((await frameCall(`${reader}eva/google-calendar/events/standup.json`, "PUT", event)).status).toBe(405);
+      expect(google.calendarWrites).toEqual([]);
+
+      publish("write");
+      await call(`/api/widgets/${id}`, { method: "DELETE" });
+      const writer = (await approvedSrc()).replace(/index\.html$/, "");
+      // The token of the read approval died with its commit.
+      expect((await frameCall(`${reader}eva/google-calendar/events.json`, "POST", event, plain)).status).toBe(404);
+      // Another site, a page of its own, an unknown host and a dead token never reach Google.
+      const created = `${writer}eva/google-calendar/events.json`;
+      expect((await frameCall(created, "POST", event, { ...plain, origin: "https://evil.example" })).status).toBe(403);
+      expect((await frameCall(created, "POST", event, { "sec-fetch-dest": "document" })).status).toBe(403);
+      expect((await frameCall(created, "POST", event, { host: "evil.example" })).status).toBe(403);
+      const dead = `/widgets/${"c".repeat(43)}/eva/google-calendar/events.json`;
+      expect((await frameCall(dead, "POST", event, plain)).status).toBe(404);
+      expect((await frameCall(dead, "OPTIONS")).status).toBe(404);
+      const large = await frameCall(created, "POST", "x".repeat(5 * 1024 * 1024 + 1));
+      expect(large.status).toBe(413);
+      // Under the cap of the route, over the cap of an event.
+      expect((await frameCall(created, "POST", JSON.stringify({ note: "x".repeat(70 * 1024) }))).status).toBe(413);
+      expect(google.calendarWrites).toEqual([]);
+
+      const answer = await frameCall(created, "POST", event, { "content-type": "application/json" });
+      const answerText = await answer.text();
+      expect(answer.status).toBe(201);
+      expect(JSON.parse(answerText)).toMatchObject({ id: "created-1", title: "Planning with the team", project: null });
+      expect(answerText).not.toContain("the-access-token");
+      expect(google.calendarWrites[0]?.query.get("sendUpdates")).toBe("none");
+      // The widget shows its own event at once.
+      const read = await frameCall(`${writer}eva/google-calendar/events.json?from=2026-10-15&to=2026-10-15`);
+      expect(((await read.json()) as { id: string }[]).map((each) => each.id)).toEqual(["created-1"]);
+
+      const changed = await frameCall(
+        `${writer}eva/google-calendar/events/created-1.json`,
+        "PUT",
+        JSON.stringify({ calendarId: "work", title: "Planning", sendInvitations: true }),
+      );
+      expect(changed.status).toBe(200);
+      expect(google.calendarWrites[1]?.query.get("sendUpdates")).toBe("all");
+      const removed = await frameCall(
+        `${writer}eva/google-calendar/events/created-1.json?calendarId=work&sendInvitations=true`,
+        "DELETE",
+      );
+      expect(removed.status).toBe(204);
+      expect(google.calendarWrites.map((write) => write.method)).toEqual(["POST", "PATCH", "DELETE"]);
+
+      // Google fails: the widget gets 502, and Eva logs nothing, so no event text and no token.
+      google.calendarWriteStatus = { status: 500, reason: "backendError", message: "Planning with the team" };
+      const failed = await frameCall(created, "POST", event);
+      expect(failed.status).toBe(502);
+      expect(await failed.text()).toBe("");
+      expect(logged).toEqual([]);
     } finally {
       google.stop();
     }

@@ -36,10 +36,18 @@ export interface OutboxTimers {
   clear(timer: unknown): void;
 }
 
+/** The part of the browser's `Storage` that the outbox uses. */
+export type OutboxStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
 export interface OutboxOptions {
   /** `repeat`: a turn already holds the message, from a try whose answer got lost. */
   readonly send: (sessionId: string, text: string, id: string) => Promise<{ readonly repeat: boolean }>;
   readonly timers: OutboxTimers;
+  /**
+   * The tab's storage, so a reload keeps the messages (#946). A function, because the browser can
+   * throw at the access itself. Without it, the outbox lives in memory only.
+   */
+  readonly storage?: () => OutboxStorage;
 }
 
 /** The wait before each new try. A phone often gets its network back within a minute. */
@@ -47,6 +55,41 @@ export const retryWaitsMs: readonly number[] = [2_000, 5_000, 15_000, 30_000, 60
 
 /** Why a message failed that waited behind a message that Eva refused. Its own connection was fine. */
 export const earlierRefused = "An earlier message was not sent.";
+
+/** The key of the outbox in the tab's storage. */
+const storageKey = "eva-outbox";
+
+const states: readonly string[] = ["sending", "waiting", "failed", "sent"] satisfies OutboxState[];
+
+/** One stored entry, or null when the tab holds something else, such as a value of a broken write. */
+function storedEntry(value: unknown): OutboxEntry | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { sessionId, text, id, turnCount, state, reason, retried } = value as Record<string, unknown>;
+  if (typeof sessionId !== "string" || typeof text !== "string" || typeof id !== "string") return null;
+  if (typeof turnCount !== "number" || !Number.isSafeInteger(turnCount)) return null;
+  if (typeof state !== "string" || !states.includes(state)) return null;
+  if (reason !== null && typeof reason !== "string") return null;
+  if (typeof retried !== "boolean") return null;
+  return { sessionId, text, id, turnCount, state: state as OutboxState, reason, retried };
+}
+
+/**
+ * The entries that the tab kept before a reload. A try that ran at the reload has no answer, so its
+ * message waits. The next connection sends it again with the same id, and Eva runs it once.
+ */
+function restoredEntries(storage: () => OutboxStorage): OutboxEntry[] {
+  let kept: unknown;
+  try {
+    kept = JSON.parse(storage().getItem(storageKey) ?? "[]");
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(kept)) return [];
+  return kept
+    .map(storedEntry)
+    .filter((entry) => entry !== null)
+    .map((entry) => (entry.state === "sending" ? { ...entry, state: "waiting" } : entry));
+}
 
 /** True for a failure that a later try can fix: no network, no answer in time, or a fault on Eva's side. */
 function canTryAgain(error: unknown): boolean {
@@ -77,6 +120,14 @@ export class Outbox {
 
   constructor(options: OutboxOptions) {
     this.options = options;
+    // Nothing sends here: the page may not be logged in yet. The first connection calls retryNow.
+    if (options.storage !== undefined)
+      this.slots = restoredEntries(options.storage).map((entry) => ({
+        entry,
+        tries: 0,
+        inFlight: false,
+        timer: null,
+      }));
   }
 
   add(message: {
@@ -275,12 +326,31 @@ export class Outbox {
     slot.timer = null;
   }
 
+  /** Writes the entries to the tab at each change, so a reload at any moment keeps them. */
+  private store(): void {
+    const { storage } = this.options;
+    if (storage === undefined) return;
+    try {
+      if (this.slots.length === 0) storage().removeItem(storageKey);
+      else storage().setItem(storageKey, JSON.stringify(this.slots.map((slot) => slot.entry)));
+    } catch {
+      // The memory keeps the messages. An older list must not come back at a reload: it can hold a
+      // message that the person took out for an edit, and Eva would run it as well as the edit.
+      try {
+        storage().removeItem(storageKey);
+      } catch {
+        // A blocked storage holds no list.
+      }
+    }
+  }
+
   private set(slot: Slot, change: Partial<OutboxEntry>): void {
     const failed = change.state === "waiting" || change.state === "failed";
     slot.entry = { ...slot.entry, ...change, ...(failed ? { retried: true } : {}) };
   }
 
   private changed(): void {
+    this.store();
     this.lists.clear();
     for (const listener of this.listeners) listener();
   }

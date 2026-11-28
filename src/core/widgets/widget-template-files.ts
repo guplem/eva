@@ -1,7 +1,7 @@
 /**
  * A Bun macro: it runs when Bun builds or loads `widget-template.ts`, and puts every file of
- * `templates/widget/` into the code as text. So the single executable carries the template, and
- * a new file of the template needs no import of its own.
+ * `templates/widget/` and of Eva's `.agents/skills/` into the code as text. So the single executable
+ * carries the template, and a new file of the template needs no import of its own.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +25,12 @@ export function readWidgetTemplate(
       else if (entry.isFile()) files[`${prefix}${entry.name}`] = readFileSync(path, "utf8");
     }
   };
-  walk(root, "", ignorePatterns(join(repository, ".gitignore")));
+  const ignored = ignorePatterns(join(repository, ".gitignore"));
+  walk(root, "", ignored);
+  // The setup report wants each skill of Eva as an exact copy (#983). A copy inside the template
+  // would go stale, so the macro reads the one source. The `.claude/skills/` copy is git-ignored.
+  const skills = join(repository, ".agents", "skills");
+  if (existsSync(skills)) walk(skills, ".agents/skills/", ignored);
   return files;
 }
 

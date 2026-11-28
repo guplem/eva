@@ -1,10 +1,10 @@
 # Widgets
 
-A widget is a small web page that Eva shows on her home page. This document is the widget contract: the rules that each widget follows, so that Eva can show it, give it data, and keep the person's data safe. It is contract `4`. Eva still reads widgets of contracts `1`, `2` and `3`: see [Contract versions](#contract-versions).
+A widget is a small web page that Eva shows on her home page. This document is the widget contract: the rules that each widget follows, so that Eva can show it, give it data, and keep the person's data safe. It is contract `5`. Eva still reads widgets of contracts `1` to `4`: see [Contract versions](#contract-versions).
 
 A widget is plain, standard web code: HTML, JavaScript and CSS, with no framework of Eva and no build step. The same files work inside Eva and on any static web server, such as GitHub Pages.
 
-The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. Each Eva release updates the template and this document together.
+The template of a new widget is [`templates/widget/`](../templates/widget/). Eva copies it to each new widget repository. She adds exact copies of her skills from [`.agents/skills/`](../.agents/skills/). Each Eva release updates the template and this document together.
 
 The five widgets that ship with Eva are full examples: [`guplem/eva-widget-summary`](https://github.com/guplem/eva-widget-summary) is a `header` widget that reads the Google Calendar and the location, and asks Eva to act, [`guplem/eva-widget-calendar`](https://github.com/guplem/eva-widget-calendar) reads the Google Calendar and calls a host, [`guplem/eva-widget-habits`](https://github.com/guplem/eva-widget-habits) writes vault data, [`guplem/eva-widget-cases`](https://github.com/guplem/eva-widget-cases) reads the cases, and [`guplem/eva-widget-weather`](https://github.com/guplem/eva-widget-weather) reads the location and calls a host.
 
@@ -45,7 +45,7 @@ Each widget has its own public GitHub repository. The repository holds no data o
 
 ## The manifest: `eva-widget.json`
 
-The manifest says what the widget is and what it needs. [`widgets/manifest-v4.json`](widgets/manifest-v4.json) is its JSON Schema. A key that the schema does not name is an error.
+The manifest says what the widget is and what it needs. [`widgets/manifest-v5.json`](widgets/manifest-v5.json) is its JSON Schema. A key that the schema does not name is an error.
 
 | Key        | Required | What it is                                                                                       |
 | ---------- | -------- | ------------------------------------------------------------------------------------------------ |
@@ -89,7 +89,8 @@ Each input has these keys:
 | `eva-cases`           | The permission to read the person's open cases.    | No `default` and no `access`.                |
 
 - `access` is `read` or `write`. A write also allows a read.
-- Eva serves no write of the calendar or the tasks yet. A later contract path adds it. Ask for `read`.
+- With `write`, the calendar input lets the widget add, change and delete events. It can also send invitations to other people. See [Calendar writes](#calendar-writes). Ask for `write` only when the widget writes.
+- Eva serves no write of the tasks yet. Ask for `read` for the tasks.
 - `schema` is the path of the JSON Schema of each file that the widget writes, such as `schemas/habits.json`.
 - `files` is a glob pattern of the file names of a folder, such as `*.json` or `????-??-??.json`. `*` matches any text, and `?` matches one character. Neither matches a `/`.
 
@@ -119,6 +120,8 @@ A widget reads and writes data only through `fetch` to relative paths. It asks E
 | `eva/location.json`                                             | `GET`                  | The last location, or `null` when Eva has none yet.                                   |
 | `eva/google-calendar/calendars.json`                            | `GET`                  | The person's calendars, or `null`. See [The calendar](#the-calendar).                 |
 | `eva/google-calendar/events.json?from=YYYY-MM-DD&to=YYYY-MM-DD` | `GET`                  | The events of each shown calendar in the window, or `null`.                           |
+| `eva/google-calendar/events.json`                               | `POST`                 | Adds an event. See [Calendar writes](#calendar-writes).                               |
+| `eva/google-calendar/events/<id>.json`                          | `PUT`, `DELETE`        | `PUT` changes the event. `DELETE` deletes it.                                         |
 | `eva/google-tasks/lists.json`                                   | `GET`                  | The person's task lists, or `null`. See [The tasks](#the-tasks).                      |
 | `eva/google-tasks/tasks.json?from=YYYY-MM-DD&to=YYYY-MM-DD`     | `GET`                  | The tasks of each list with a due day in the window, or `null`.                       |
 | `eva/cases.json`                                                | `GET`                  | The person's open cases, or `null`. See [The cases](#the-cases).                      |
@@ -133,7 +136,7 @@ A widget reads and writes data only through `fetch` to relative paths. It asks E
 - `eva/location.json` holds `{ "latitude": 37.77, "longitude": -122.42, "accuracy": 30, "at": "2026-01-01T09:30:00Z" }`. `accuracy` is in meters. `at` is the time of the newest stored point.
 - A `PUT` or a `DELETE` fails outside Eva. Handle the failure. See [Outside Eva: the demo](#outside-eva-the-demo).
 - A data file is JSON or YAML.
-- Eva answers a refused request with a status code. Handle each one: `400` for a body that is not valid JSON or YAML, `403` for a write that the approval does not allow, `404` for a file or a token that is gone, `405` for another method, `409` for a file on disk that Eva cannot read, so she does not overwrite it, `413` for a write over 5 MB or a read over 50 MB, and `422` for data that does not fit the schema or that holds a secret.
+- Eva answers a refused request with a status code. Handle each one: `400` for a body that is not valid JSON or YAML, `403` for a write that the approval does not allow, `404` for a file or a token that is gone, `405` for another method, `409` for a file on disk that Eva cannot read, so she does not overwrite it, `413` for a write over 5 MB or a read over 50 MB, and `422` for data that does not fit the schema or that holds a secret. The calendar writes have their own codes: see [Calendar writes](#calendar-writes).
 
 Eva gives the size in the address, as `?size=small`, `medium`, `large`, `tall`, `xlarge`, `header` or `full`. A new size from the layout loads the widget again with the new address.
 
@@ -141,16 +144,65 @@ Eva gives the size in the address, as `?size=small`, `medium`, `large`, `tall`, 
 
 An `eva-google-calendar` input gives the widget the person's Google Calendar. Eva calls Google with her own login. The widget never sees a token.
 
-- `eva/google-calendar/calendars.json` answers `null` when Eva has no working Google login or Calendar is off in Settings. Otherwise it answers a list of the calendars that the person shows in Google Calendar: `[{ "id": "…", "name": "Work", "color": "#3f51b5", "primary": true }]`.
+- `eva/google-calendar/calendars.json` answers `null` when Eva has no working Google login or Calendar is off in Settings. Otherwise it answers a list of the calendars that the person shows in Google Calendar: `[{ "id": "…", "name": "Work", "color": "#3f51b5", "primary": true, "writable": true }]`.
+- `writable` is `true` when the person owns the calendar or may change its events. Offer a write only on such a calendar. An older Eva gives no `writable`: read a missing key as `false`.
 - `eva/google-calendar/events.json?from=2026-11-16&to=2026-11-22` answers `null` for the same reasons, or the events of each of these calendars, sorted by start. `to` is inclusive. The days are in the time zone of the person's main calendar. Eva refuses a window over 62 days, a missing day, or a day that is not `YYYY-MM-DD`, with `400`.
 - A timed event: `{ "id", "calendarId", "title", "startAt": "2026-11-18T09:00:00+01:00", "endAt", "place": "Room B", "link": "https://…", "description", "project" }`.
 - An all-day event: `{ "id", "calendarId", "title", "date": "2026-11-21", "endDate": "2026-11-21", "place", "link", "description", "project" }`. `endDate` is inclusive.
 - `description` is the event's description as plain text, with no HTML tags, 2000 characters at most. It is `null` for an event with no description. Show it as text, never as HTML. An older Eva gives no `description` and no `project`: read a missing key as `null`.
 - `project` is the project of the event, or `null`: `{ "id": "2026-11-02-1030-example-app", "title": "Example app", "path": "Projects/2026-11-02-1030-example-app" }`. An event belongs to a project when its description has a line `[eva-project:<id>]`. `<id>` is the folder name of the project, or its name with no date when exactly one project has it. Eva removes that line from `description`. An unknown project, or a project outside the vault, gives `null`.
 - `place` and `link` can be `null`. `title` is `""` for an event with no title. Eva leaves out an event that the person declined, a cancelled event, and the place where the person works each day.
-- Eva keeps each answer for 1 minute, so a new event can take a minute to show.
+- Eva keeps each answer for 1 minute, so a change in Google Calendar can take a minute to show. A write of the widget clears the kept answers, so the widget shows its own change at once.
 - Eva answers `502` when Google fails or refuses. Show that the calendar is not available now, and try again later.
-- The calendar is read only in this version: each other method answers `405`.
+- A widget with `read` access gets `405` on each write.
+
+### Calendar writes
+
+A widget of contract 5 with an `eva-google-calendar` input of access `write` adds, changes and deletes the person's events. Eva calls Google with her own login. The widget never sees a token.
+
+- `POST eva/google-calendar/events.json` adds an event. The body is a JSON event, below. Eva answers `201` with the new event, in the shape of the reads, or `null` when she cannot read Google's answer.
+- `PUT eva/google-calendar/events/<id>.json` changes the event. The body names `calendarId`. Eva changes only the fields that the body gives. She answers `200` with the event, or `null` when she cannot read Google's answer.
+- `DELETE eva/google-calendar/events/<id>.json?calendarId=…` deletes the event. Eva answers `204`.
+- `<id>` is the `id` of an event of the reads, 1024 characters at most. A widget with `write` access gets `404` for an id with characters other than letters, digits, `_` and `-`.
+- The event of a body has these fields. Eva ignores each other field, such as `id`, `link` and `project`.
+
+| Field              | What it holds                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `calendarId`       | Required. The `id` of a calendar of `calendars.json`, 1024 characters at most.                                      |
+| `title`            | A text of 1024 characters at most.                                                                                  |
+| `startAt`, `endAt` | A timed event, both in RFC 3339 with seconds and an offset, such as `2026-11-18T09:00:00+01:00`.                    |
+| `date`, `endDate`  | An all-day event, both as `YYYY-MM-DD`. `endDate` is the last day, as in the reads.                                 |
+| `place`            | A text of 1024 characters at most, or `null` to clear it.                                                           |
+| `description`      | Plain text of 8192 characters at most, or `null` to clear it.                                                       |
+| `guests`           | The emails of the guests, 100 at most. Each is one plain address of 254 characters at most. Only a `POST` takes it. |
+| `sendInvitations`  | `true` sends an email to each guest. `false`, or no value, sends none. Any other value answers `400`.               |
+
+- A new event needs a time: `startAt` and `endAt`, or `date` and `endDate`. A body never holds both forms.
+- The end is not before the start. Each day must exist: Eva answers `400` for 30 February.
+- **Invitations.** Ask the person before you send them. Set `sendInvitations` to `true` only when the person chose it. Eva sends no email to a guest without it. For a `DELETE`, put `sendInvitations=true` in the query to tell the guests. `false`, or no value, tells none. Any other value answers `400`.
+- The reads give no guests. So a `PUT` with `guests` answers `400`: it would drop the guests that the widget never saw.
+- A `PUT` with `description` replaces the whole description, including the line `[eva-project:<id>]`. To keep the project, leave out `description`, or write the line again.
+- The reads cut `description` at 2000 characters. A `PUT` that sends a read description back writes the cut text.
+- A `PUT` cannot move an event to another calendar.
+- The event that a write answers can give its times with another offset than the reads. Compare two times by their moment, never as text.
+- The reads give each instance of a repeated event with its own `id`. A write changes or deletes only that instance.
+- Eva does not refuse a secret in an event, as she does in `data/`. Never put one in an event.
+
+Eva answers a refused write with a status code. A `403` has a body with the reason: `{ "reason": "readOnly" }`. Show a message for each one:
+
+| Answer | Reason        | What it means, and what to show                                                                                        |
+| ------ | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `400`  |               | The body or the query is not valid, or Google refused the event, such as for a bad guest email.                        |
+| `403`  | `calendarOff` | Eva has no Google account, or Calendar is off in Settings. Say how to turn it on.                                      |
+| `403`  | `readOnly`    | The Calendar level in Settings is read only. Say: in Settings > Connections > Google, set Calendar to Read and change. |
+| `403`  | `logIn`       | The Google login does not allow the write, such as after a change of level. Say: log in to Google again.               |
+| `403`  | `notAllowed`  | Google refused: the person may only read this calendar.                                                                |
+| `404`  |               | The event or the calendar is not there, or the widget has no calendar input.                                           |
+| `405`  |               | The widget has `read` access, or the path does not take this method.                                                   |
+| `413`  |               | The body is over 64 KB.                                                                                                |
+| `502`  |               | Google failed. Try again later.                                                                                        |
+
+A write fails outside Eva, and the **Example data** preview answers `405`: show a note. **My data** writes the person's real calendar with the grant of the preview.
 
 ### The tasks
 
@@ -411,7 +463,7 @@ The field names of a data schema follow strict rules, so that people, agents and
 
 A machine checks two of these rules: camelCase, and a list of refused abbreviations, such as `loc`, `temp`, `qty` and `desc`. "Full words" and "the unit in the name" stay rules for people and agents.
 
-The machine check is a meta-schema: [`widgets/meta-schema-v4.json`](widgets/meta-schema-v4.json), a JSON Schema that checks the schemas of a widget. It also refuses a closed object. A standard validator, such as `ajv`, runs it:
+The machine check is a meta-schema: [`widgets/meta-schema-v5.json`](widgets/meta-schema-v5.json), a JSON Schema that checks the schemas of a widget. It also refuses a closed object. A standard validator, such as `ajv`, runs it:
 
 - in the CI of each widget, with `npm run check:widget`;
 - in Eva's setup report of a widget repository;
@@ -488,8 +540,11 @@ A browser blocks `fetch` on `file://`, so a double-click on `index.html` does no
 | `2`      | The sizes `tall` and `xlarge`, the inputs `eva-google-calendar` and `eva-cases`, and their paths under `eva/`. The data rules stay the same.                |
 | `3`      | The size `header`, the key `asks` with its messages, the path `eva/state.json`, and new fields of the calendar and the cases. The data rules stay the same. |
 | `4`      | The input `eva-google-tasks` and its paths under `eva/google-tasks/`. The data rules stay the same.                                                         |
+| `5`      | The calendar writes, with `writable` in `calendars.json`. The manifest keys and the data rules stay the same.                                               |
 
-A widget of contract 1, 2 or 3 works with no change. To use a new size, input, key or path, set `contract` to the contract that adds it.
+A widget of contract 1 to 4 works with no change. To use a new size, input, key or path, set `contract` to the contract that adds it.
+
+Eva serves a path by the approval of the widget, not by its contract number. So a widget of contract 2 to 4 can write the calendar too. Its calendar input needs `write` access. The person approved "Read and change" for it.
 
 ## Example: a habits widget
 

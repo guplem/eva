@@ -67,6 +67,13 @@ export function moveFavorites(vaultPath: string, from: string, to: string): void
   writeFavorites(vaultPath, [...new Set(moved)]);
 }
 
+/** Removes the deleted path and each path inside a deleted folder, so no favorite shows as missing. */
+export function dropFavorites(vaultPath: string, deleted: string): void {
+  const stored = storedPaths(vaultPath);
+  const kept = stored.filter((path) => path !== deleted && !path.startsWith(`${deleted}/`));
+  if (kept.length !== stored.length) writeFavorites(vaultPath, kept);
+}
+
 function writeFavorites(vaultPath: string, paths: readonly string[]): void {
   assertVaultWritable(vaultPath);
   const file: StoredFavorites = { version: favoritesFormatVersion, paths };

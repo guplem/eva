@@ -89,11 +89,14 @@ export function grantChange(
   }
   if (grant.location && approved?.location !== true) added.push("Read your last location.");
   const oldCalendar = approved?.googleCalendar ?? null;
+  // A write can invite other people to an event (#974): the person must know it before they approve.
   if (grant.googleCalendar === "write" && oldCalendar === "read")
-    added.push("Change your Google Calendar, not only read it.");
+    added.push("Change your Google Calendar and send invitations to other people, not only read it.");
   else if (grant.googleCalendar !== null && oldCalendar === null)
     added.push(
-      grant.googleCalendar === "write" ? "Read and change your Google Calendar." : "Read your Google Calendar.",
+      grant.googleCalendar === "write"
+        ? "Read and change your Google Calendar, and send invitations to other people."
+        : "Read your Google Calendar.",
     );
   const oldTasks = approved?.googleTasks ?? null;
   if (grant.googleTasks === "write" && oldTasks === "read") added.push("Change your Google Tasks, not only read them.");

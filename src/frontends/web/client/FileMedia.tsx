@@ -7,7 +7,9 @@ import { useEffect, useRef, useState, type ReactElement } from "react";
 import { api } from "./api.ts";
 import { DownloadWait, saveBlob, useDownload } from "./DownloadButton.tsx";
 import { FileBar } from "./FileBar.tsx";
+import type { OpenFileItems } from "./file-actions.ts";
 import type { Media } from "./file-kinds.ts";
+import type { MenuItem } from "./Menu.tsx";
 import { Icon } from "./icons.tsx";
 import { ProgressBar } from "./Loading.tsx";
 
@@ -22,12 +24,15 @@ export function MediaPreview({
   media,
   large,
   onLarge,
+  menu,
 }: {
   readonly path: string;
   readonly size: number;
   readonly media: Media;
   readonly large: boolean;
   readonly onLarge: (large: boolean) => void;
+  /** Builds the whole menu of the file from its own Download item (#1117). */
+  readonly menu: (open: OpenFileItems) => MenuItem[];
 }): ReactElement {
   const [bytes, setBytes] = useState<Bytes>({ state: "loading", share: null });
   const [unplayable, setUnplayable] = useState(false);
@@ -79,15 +84,10 @@ export function MediaPreview({
         size={size}
         large={large}
         onLarge={onLarge}
-        items={[
-          {
-            label: "Download",
-            icon: "download",
-            onChoose: () =>
-              // The page holds the bytes already, so a phone does not read them twice.
-              bytes.state === "shown" ? saveBlob(name, bytes.blob) : void download.start(),
-          },
-        ]}
+        items={menu({
+          // The page holds the bytes already, so a phone does not read them twice.
+          download: () => (bytes.state === "shown" ? saveBlob(name, bytes.blob) : void download.start()),
+        })}
         copy={canCopy ? copy : null}
       >
         {/* Only a PDF: an SVG that opens as a page of Eva's address could run its scripts. */}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { menuMargin, placeMenu } from "../../../../../src/frontends/web/client/menu-place.ts";
+import { menuMargin, placeMenu, roomBelow } from "../../../../../src/frontends/web/client/menu-place.ts";
 
 const viewport = { width: 1000, height: 800 };
 const menu = { width: 200, height: 150 };
@@ -30,5 +30,16 @@ describe("placeMenu", () => {
       left: menuMargin,
       top: menuMargin,
     });
+  });
+});
+
+describe("roomBelow (#1117)", () => {
+  test("a menu that fits keeps its height, and a long one stops at the edge that the person sees", () => {
+    expect(roomBelow(100, 300, 800)).toBeNull();
+    expect(roomBelow(100, 900, 800)).toBe(800 - menuMargin - 100);
+  });
+
+  test("a menu near the bottom edge still shows a few items", () => {
+    expect(roomBelow(750, 400, 800)).toBe(120);
   });
 });

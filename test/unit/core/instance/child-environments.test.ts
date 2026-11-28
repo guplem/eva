@@ -71,7 +71,8 @@ describe("projectWallRoots (#711)", () => {
     expect(readable(environment["GIT_CONFIG_GLOBAL"] ?? "")).toBe(true);
     expect(readable(join(environment["GH_CONFIG_DIR"] ?? "", "hosts.yml"))).toBe(true);
     expect(readable(join((environment["PATH"] ?? "").split(delimiter)[0] ?? "", "eva"))).toBe(true);
-    expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "shell-snapshots", "s.sh"))).toBe(true);
+    // Each engine opens its own folders: the core names none of them (#759).
+    expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "shell-snapshots", "s.sh"))).toBe(false);
     // Claude Code's login and every chat's history stay closed.
     expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", ".credentials.json"))).toBe(false);
     expect(readable(join(environment["CLAUDE_CONFIG_DIR"] ?? "", "projects"))).toBe(false);

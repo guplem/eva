@@ -496,8 +496,15 @@ export const api = {
   setPushKinds: (endpoint: string, kinds: readonly NotificationKind[]): Promise<{ devices: readonly PushDevice[] }> =>
     request("PATCH", "/api/push/devices", { endpoint, kinds }),
   removePushDevice: (endpoint: string): Promise<unknown> => request("DELETE", "/api/push/devices", { endpoint }),
-  setPushInView: (endpoint: string, pageId: string, inView: boolean, chats: readonly string[]): Promise<void> =>
-    request("POST", "/api/push/in-view", { endpoint, pageId, inView, chats }, { keepalive: true }),
+  /** `endpoint` null: this device gets no notifications. `active`: the person used the page a short time ago. */
+  setPushInView: (
+    endpoint: string | null,
+    pageId: string,
+    inView: boolean,
+    chats: readonly string[],
+    active: boolean,
+  ): Promise<void> =>
+    request("POST", "/api/push/in-view", { endpoint, pageId, inView, chats, active }, { keepalive: true }),
   testPush: (): Promise<void> => request("POST", "/api/push/test"),
   /** The text actions and saved prompts of the message box. Answers 409 when no vault is configured. */
   composerMenu: (): Promise<ComposerMenuItems> => request("GET", "/api/composer-menu"),

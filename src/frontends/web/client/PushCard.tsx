@@ -25,10 +25,12 @@ export function announceShownChats(): void {
 
 /** The browser's side of the claims that this page is in view (`push-presence.ts`). */
 export function browserPresencePage(shownChats: () => readonly string[]): PresencePage {
+  // Capture: a scroll of a box inside the page does not bubble up to the document.
+  const options = { capture: true, passive: true };
   const listen = (target: EventTarget, names: readonly string[], listener: () => void): (() => void) => {
-    for (const name of names) target.addEventListener(name, listener);
+    for (const name of names) target.addEventListener(name, listener, options);
     return () => {
-      for (const name of names) target.removeEventListener(name, listener);
+      for (const name of names) target.removeEventListener(name, listener, options);
     };
   };
   return {
@@ -40,7 +42,7 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
       return subscription?.endpoint ?? null;
     },
     shownChats,
-    send: (endpoint, pageId, inView, chats) => api.setPushInView(endpoint, pageId, inView, chats),
+    send: (endpoint, pageId, inView, chats, active) => api.setPushInView(endpoint, pageId, inView, chats, active),
     onViewChange: (listener) => {
       const stopDocument = listen(document, ["visibilitychange"], listener);
       const stopWindow = listen(window, ["focus", "blur"], listener);
@@ -52,6 +54,8 @@ export function browserPresencePage(shownChats: () => readonly string[]): Presen
     onChatsChange: (listener) => listen(window, [shownChatsEvent], listener),
     onLeave: (listener) => listen(window, ["pagehide"], listener),
     onDeviceChange: (listener) => listen(window, [deviceChangeEvent], listener),
+    onInput: (listener) => listen(document, ["keydown", "pointerdown", "pointermove", "wheel", "scroll"], listener),
+    now: () => Date.now(),
     setInterval: (callback, ms) => {
       const timer = window.setInterval(callback, ms);
       return () => window.clearInterval(timer);

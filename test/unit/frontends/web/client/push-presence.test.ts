@@ -1,15 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { startPushPresence, type PresencePage } from "../../../../../src/frontends/web/client/push-presence.ts";
+import {
+  activeMs,
+  startPushPresence,
+  type PresencePage,
+} from "../../../../../src/frontends/web/client/push-presence.ts";
 
 type Listener = () => void;
 
 interface FakePage {
   readonly page: PresencePage;
-  readonly sent: [string, string, boolean, readonly string[]][];
+  readonly sent: [string | null, string, boolean, readonly string[]][];
+  /** Whether each claim said that the person is active. */
+  readonly actives: boolean[];
+  now: number;
   inView: boolean;
   chats: readonly string[];
   endpoint: string | null;
-  readonly fire: (name: "view" | "chats" | "leave" | "device" | "timer") => void;
+  readonly fire: (name: "view" | "chats" | "leave" | "device" | "input" | "timer") => void;
   readonly listening: () => number;
 }
 
@@ -23,6 +30,8 @@ function fakePage(): FakePage {
     };
   const fake: FakePage = {
     sent: [],
+    actives: [],
+    now: 0,
     inView: true,
     chats: [],
     endpoint: "https://fcm.googleapis.com/fcm/send/phone",
@@ -32,14 +41,17 @@ function fakePage(): FakePage {
       isInView: () => fake.inView,
       readEndpoint: () => Promise.resolve(fake.endpoint),
       shownChats: () => fake.chats,
-      send: (endpoint, pageId, inView, chats) => {
+      send: (endpoint, pageId, inView, chats, active) => {
         fake.sent.push([endpoint, pageId, inView, chats]);
+        fake.actives.push(active);
         return Promise.resolve();
       },
       onViewChange: on("view"),
       onChatsChange: on("chats"),
       onLeave: on("leave"),
       onDeviceChange: on("device"),
+      onInput: on("input"),
+      now: () => fake.now,
       setInterval: (callback) => on("timer")(callback),
       pageId: "tab-1",
     },
@@ -122,24 +134,51 @@ describe("the page's claim that it is in view", () => {
     expect(fake.sent).toHaveLength(1);
   });
 
-  test("starts when the device turns notifications on, while the page is in view", async () => {
+  test("goes out with no push address on a device with no notifications, and moves when they turn on (#1136)", async () => {
     const fake = fakePage();
     fake.endpoint = null;
     startPushPresence(fake.page);
-    await settle();
-    fake.fire("timer");
+    // Before the read of the address ends, a claim could go out under the wrong address.
+    fake.fire("view");
     expect(fake.sent).toEqual([]);
+    await settle();
     fake.endpoint = "https://fcm.googleapis.com/fcm/send/new";
     fake.fire("device");
     await settle();
-    expect(fake.sent).toEqual([[fake.endpoint, "tab-1", true, []]]);
+    expect(fake.sent).toEqual([
+      [null, "tab-1", true, []],
+      [null, "tab-1", false, []],
+      [fake.endpoint, "tab-1", true, []],
+    ]);
   });
 
-  test("a failed claim or a failed read stays quiet", async () => {
+  test("says that the person is active until 5 minutes pass with no input (#1136)", async () => {
+    const fake = fakePage();
+    startPushPresence(fake.page);
+    await settle();
+    fake.now = activeMs - 1;
+    fake.fire("timer");
+    fake.now = activeMs;
+    // The renewal finds that the person went away.
+    fake.fire("timer");
+    // The first input after the quiet time goes out at once, and the next ones send nothing.
+    fake.fire("input");
+    fake.fire("input");
+    fake.inView = false;
+    fake.fire("view");
+    expect(fake.actives).toEqual([true, true, false, true, false]);
+    // Out of view, an input changes nothing.
+    fake.fire("input");
+    expect(fake.sent).toHaveLength(5);
+  });
+
+  test("a failed claim stays quiet, and a failed read claims with no push address", async () => {
     const fake = fakePage();
     startPushPresence({ ...fake.page, send: () => Promise.reject(new Error("offline")) });
-    startPushPresence({ ...fake.page, readEndpoint: () => Promise.reject(new Error("no worker")) });
     await settle();
     expect(fake.sent).toEqual([]);
+    startPushPresence({ ...fake.page, readEndpoint: () => Promise.reject(new Error("no worker")) });
+    await settle();
+    expect(fake.sent).toEqual([[null, "tab-1", true, []]]);
   });
 });

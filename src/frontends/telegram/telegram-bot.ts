@@ -56,6 +56,7 @@ import { TelegramChats } from "./telegram-chats.ts";
 import { TelegramConflicts } from "./telegram-conflicts.ts";
 import { TelegramQuestions } from "./telegram-questions.ts";
 import { TelegramRemoteAccess } from "./telegram-remote-access.ts";
+import { goneReplyText, TelegramReplies } from "./telegram-replies.ts";
 import { TelegramSchedules } from "./telegram-schedules.ts";
 import { TelegramUpdates } from "./telegram-updates.ts";
 import { pageLine } from "./telegram-pages.ts";
@@ -154,6 +155,7 @@ export class TelegramBot {
   private readonly schedules: TelegramSchedules;
   private readonly conflicts: TelegramConflicts;
   private readonly questions: TelegramQuestions;
+  private readonly replies: TelegramReplies;
   private readonly chats: TelegramChats;
   private readonly remoteAccess: TelegramRemoteAccess;
   private readonly updates: TelegramUpdates;
@@ -216,6 +218,7 @@ export class TelegramBot {
       offersPath: join(dirname(options.statePath), "telegram-conflicts.json"),
     });
     this.questions = new TelegramQuestions({ eva: options.eva, sender: this.sender });
+    this.replies = new TelegramReplies(this.sender);
     this.remoteAccess = new TelegramRemoteAccess({
       eva: options.eva,
       sender: this.sender,
@@ -819,7 +822,7 @@ export class TelegramBot {
     }
   }
 
-  private async forward(chatId: number, topicId: number | null, text: string): Promise<void> {
+  private async forward(chatId: number, topicId: number | null, text: string): Promise<boolean> {
     const key = keyOf(chatId, topicId);
     let entry = this.state.topics[key];
     if (entry === undefined || !this.sessionExists(entry.sessionId)) {
@@ -843,23 +846,28 @@ export class TelegramBot {
     // Eva reused the clone of a closed chat (issue 521): the core refuses the message, so the phone hears why.
     if (this.options.eva.sessions.get(entry.sessionId).closed) {
       await this.send(chatId, topicId, closedChatText);
-      return;
+      return false;
     }
     // A gone or refused file stops the message, and the phone hears why (#706).
     try {
       this.options.eva.checkMessage(entry.sessionId, text);
     } catch (error) {
       await this.send(chatId, topicId, `The message was not sent: ${this.describeError(error)}`);
-      return;
+      return false;
     }
     this.startTyping(chatId, topicId, entry.sessionId);
     void this.options.eva.sessions.send(entry.sessionId, text, "telegram");
+    return true;
   }
 
   private async handleButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
     const chatId = query.message?.chat.id;
     const isAllowed = chatId !== undefined && chatId === this.allowedChatId && this.isAllowedSender(query.from?.id);
     const [kind, first, second, third] = (query.data ?? "").split(":");
+    if (kind === "p" && first !== undefined) {
+      await this.pressReply(query, isAllowed, first);
+      return;
+    }
     if (kind === "q" && first !== undefined) {
       // The note depends on the press, so the answer to the press waits for it. A throw still stops the spinner.
       let note: string | null = null;
@@ -944,14 +952,55 @@ export class TelegramBot {
     }
   }
 
+  /** A suggested reply goes as a typed message of that topic, so it waits in line as one (#1128). */
+  private async pressReply(
+    query: NonNullable<TelegramUpdate["callback_query"]>,
+    isAllowed: boolean,
+    buttonId: string,
+  ): Promise<void> {
+    const message = query.message;
+    const topicId = topicOf(message);
+    const reply =
+      isAllowed && message !== undefined
+        ? this.replies.press(buttonId, {
+            chatId: message.chat.id,
+            topicId,
+            sessionId: this.state.topics[keyOf(message.chat.id, topicId)]?.sessionId,
+          })
+        : null;
+    await this.sender.quietCall("answerCallbackQuery", {
+      callback_query_id: query.id,
+      ...(isAllowed && reply === null ? { text: goneReplyText } : {}),
+    });
+    if (reply === null || message === undefined) return;
+    // The edit follows the send, so the topic never claims a reply that Eva refused.
+    const sent = await this.forward(message.chat.id, topicId, reply.text);
+    const messageId = reply.messageId ?? message.message_id;
+    if (messageId !== undefined) await this.replies.showChosen(message.chat.id, messageId, reply.text, sent);
+  }
+
+  /** Registers the suggested replies of a finished answer at once, and returns their send for the turn end (#1128). */
+  private offerReplies(
+    event: Extract<SessionEvent, { kind: "turn_finished" | "turn_failed" }>,
+    target: { readonly chatId: number; readonly topicId: number | null },
+    answer: string | null,
+  ): () => Promise<void> {
+    const offers = event.kind === "turn_finished" && answer !== null && this.isAssistantChat(event.sessionId);
+    const replies = offers ? extractFileMarkers(answer).replies : [];
+    return this.replies.offer(event.sessionId, target.chatId, target.topicId, replies);
+  }
+
+  /** A Project chat stays a plain harness (AGENTS.md), so it offers no suggested replies. */
+  private isAssistantChat(sessionId: string): boolean {
+    return this.sessionExists(sessionId) && chatKind(this.options.eva.sessions.get(sessionId)) === "assistant";
+  }
+
   private async onEvent(event: SessionEvent): Promise<void> {
     // Telegram sends finished blocks only. A growing message would hit the edit limits and show
     // half-written Markdown. A piece must also never release a held block (issue 117).
     if (event.kind === "text_delta") return;
     // Only the web app shows unread and archived chats, and fork names. A mark can come during a turn, and must not release a held block.
     if (event.kind === "session_seen" || event.kind === "session_archived" || event.kind === "fork_named") return;
-    // The topic shows each message from `message_received`, so the whole message of the turn adds nothing here.
-    if (event.kind === "turn_started") return;
     if (event.kind === "approval_resolved") {
       // After the card, which can still wait in the chat's order.
       await this.inOrder(event.sessionId, () =>
@@ -980,6 +1029,14 @@ export class TelegramBot {
     // it never releases a held block early, and the answer still rings the phone (issue #40).
     if (event.kind === "usage_limit") {
       this.holdUsageLine(event);
+      return;
+    }
+    // The topic shows each message from `message_received`, so the whole message of the turn adds nothing.
+    // A turn start must never release a held block. It waits with the other events while a topic
+    // opens, so it ends the offer of the turn before it (#1128).
+    if (event.kind === "turn_started") {
+      // Only the newest answer offers replies, and none while a turn runs, as in the web app.
+      void this.inOrder(event.sessionId, this.replies.withdraw(event.sessionId));
       return;
     }
     const target = targetOf(this.state, event.sessionId);
@@ -1065,6 +1122,7 @@ export class TelegramBot {
             event.kind === "turn_finished" ? (waitedAnswer ?? this.chats.lastAnswerOf(event.sessionId)) : null;
           const answer = recorded ?? (this.pendingText.get(event.sessionId) ?? []).join("\n\n");
           this.pendingText.delete(event.sessionId);
+          const sendReplies = this.offerReplies(event, target, answer);
           await this.inOrder(event.sessionId, async () => {
             const markers = extractFileMarkers(answer);
             if (markers.text.length > 0) await this.sender.sendAnswer(target.chatId, target.topicId, markers.text);
@@ -1072,20 +1130,24 @@ export class TelegramBot {
             for (const path of markers.attach) await this.files.sendVaultFile(target.chatId, target.topicId, path);
             if (markers.offer.length > 0) await this.files.offerFiles(target.chatId, target.topicId, markers.offer);
             await this.sendUsageLines(usage, target.chatId, target.topicId);
+            await sendReplies();
             if (event.kind === "turn_failed")
               await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
           });
           return;
         }
+        // The record holds the whole answer before the end event, as the web app reads it.
+        const sendReplies = this.offerReplies(event, target, waitedAnswer ?? this.chats.lastAnswerOf(event.sessionId));
         await this.inOrder(event.sessionId, async () => {
           const answer = this.answers.get(event.sessionId);
           this.answers.delete(event.sessionId);
           // A file named twice goes once, and attach wins over offer, also across blocks.
           const offers = [...(answer?.offered ?? [])].filter((path) => answer?.attached.has(path) !== true);
-          if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
-          // Quiet: the last block of the answer already rang the phone.
+          // Quiet: the last block of the answer already rang the phone. The line belongs to the answer, so it comes first.
           if (answer?.shown === true) await this.sendPageLine(target.chatId, target.topicId, event.sessionId, true);
+          if (offers.length > 0) await this.files.offerFiles(target.chatId, target.topicId, offers);
           await this.sendUsageLines(usage, target.chatId, target.topicId);
+          await sendReplies();
           if (event.kind === "turn_failed")
             await this.send(target.chatId, target.topicId, stopped ? "Stopped." : `The turn failed: ${event.reason}`);
         });

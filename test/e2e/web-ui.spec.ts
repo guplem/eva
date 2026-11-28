@@ -1895,6 +1895,51 @@ test("a file that an answer sends shows as a download button, not as a marker (#
   expect((await download).suggestedFilename()).toBe("2027-trips.md");
 });
 
+test("an answer that suggests replies offers the first one, and Tab sends it (#1127)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("make a weekend plan");
+  await composer.press("Control+Enter");
+  const answer = page.locator(".message.answer").first();
+  await expect(answer).toContainText("Shall I add them to the calendar?");
+  await expect(answer).not.toContainText("[[");
+  const suggestion = page.locator(".composer-suggestion-text");
+  await expect(suggestion).toHaveText("Yes, add them");
+  await expect(composer).toHaveAttribute("placeholder", "");
+  await expect(composer).toHaveAccessibleDescription("Suggested reply: Yes, add them. Press Tab to send it.");
+  await expect(page.getByRole("button", { name: /voice note/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "2 more suggested replies" })).toBeVisible();
+
+  // A typed character hides the suggestion, and Tab then leaves the box as before.
+  await composer.fill("x");
+  await expect(suggestion).toBeHidden();
+  await composer.fill("");
+  await expect(suggestion).toHaveText("Yes, add them");
+
+  await composer.focus();
+  await composer.press("Tab");
+  await expect(page.locator(".message.user").last()).toHaveText("YouYes, add them");
+  await expect(page.locator(".message.answer").last()).toContainText("Echo");
+  // The newer answer suggests nothing, so the old replies are gone.
+  await expect(suggestion).toBeHidden();
+  await expect(composer).toHaveAttribute("placeholder", "Message Eva");
+});
+
+test("the list of suggested replies sends the one that the person picks (#1127)", async ({ page }) => {
+  await logIn(page);
+  await clickNewChat(page);
+  const composer = page.getByLabel("Message").first();
+  await composer.fill("one more weekend plan");
+  await composer.press("Control+Enter");
+  await page.getByRole("button", { name: "2 more suggested replies" }).click();
+  const menu = page.getByRole("menu", { name: "Suggested replies" });
+  await expect(menu.getByRole("menuitem")).toHaveText(["Yes, add them", "Only the first one", "Maybe later"]);
+  await menu.getByRole("menuitem", { name: "Maybe later" }).click();
+  await expect(page.locator(".message.user").last()).toHaveText("YouMaybe later");
+  await expect(page.locator(".composer-suggestion")).toBeHidden();
+});
+
 test("an answer links a vault path that exists, and leaves a missing one as code (#932)", async ({ page }) => {
   await logIn(page);
   await clickNewChat(page);
@@ -7227,6 +7272,19 @@ test.describe("on a touch screen", () => {
     await expect(page.locator(".message.user")).toHaveCount(0);
     await page.getByRole("button", { name: "Send" }).first().click();
     await expect(page.locator(".message.answer").first()).toContainText("second line");
+  });
+
+  test("a tap on the arrow sends the suggested reply, and the keyboard stays up (#1127)", async ({ page }) => {
+    await logIn(page);
+    await newChat(page);
+    const composer = page.getByLabel("Message").first();
+    await composer.fill("a weekend plan, please");
+    await page.getByRole("button", { name: "Send" }).first().click();
+    await expect(page.locator(".composer-suggestion-text")).toHaveText("Yes, add them");
+    await composer.focus();
+    await page.getByRole("button", { name: "Send the suggested reply: Yes, add them" }).tap();
+    await expect(page.locator(".message.user").last()).toHaveText("YouYes, add them");
+    await expect(composer).toBeFocused();
   });
 
   test("a chat that opens leaves the message box without the focus, so the keyboard stays down", async ({ page }) => {

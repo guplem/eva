@@ -445,6 +445,17 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
     return;
   }
+  // An answer that ends with a question and suggests replies (#1127). No reply holds the name of a button.
+  if (lastLine.includes("weekend plan")) {
+    const replies = ["Yes, add them", "Only the first one", "Maybe later"].map((reply) => `[[reply: ${reply}]]`);
+    yield* FakeEngine.answer(
+      request,
+      ["Two things for the weekend:\n- water the plants\n- call the plumber", "Shall I add them to the calendar?"]
+        .concat(replies.join("\n"))
+        .join("\n\n"),
+    );
+    return;
+  }
   if (lastLine.includes("list")) {
     yield* FakeEngine.answer(request, "Two steps:\n- first\n- second\n\nDone.");
     return;

@@ -15,6 +15,9 @@ import { locateVoiceProgram, ownVoicePrograms } from "./core/engine-install/voic
 import { Eva } from "./core/eva.ts";
 import { vaultSearchIndex } from "./core/files/windows-search.ts";
 import { leftoverBwrapProfile, nestedSandboxWorks, shellWallGap, type ShellWallMachine } from "./core/shell-wall.ts";
+import { sandboxRuntimeLibrary } from "./core/shell-sandbox/sandbox-runtime.ts";
+import { runShellSandbox } from "./core/shell-sandbox/shell-sandbox.ts";
+import { systemSandboxedCommandStarter } from "./shared/sandboxed-command.ts";
 import { acquireInstanceLock, isProcessAlive, readBootId } from "./core/instance/instance-lock.ts";
 import { newCopyLaunch, waitForOldCopy } from "./core/instance/new-copy.ts";
 import { clearRunMarker, startRunMarker } from "./core/instance/run-marker.ts";
@@ -360,6 +363,20 @@ runCli(process.argv.slice(2), host, {
   serve,
   startLongProcess: systemLongProcessStarter,
   startLineProcess: systemLineProcessStarter,
+  shellSandbox: (wallFile, command) =>
+    runShellSandbox({
+      wallFile,
+      command,
+      cwd: process.cwd(),
+      // pi's own environment, which Eva built with buildChildEnvironment.
+      environment: Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+      ),
+      library: sandboxRuntimeLibrary,
+      start: systemSandboxedCommandStarter,
+      readText: readTextTolerant,
+      writeError: (text) => process.stderr.write(text),
+    }),
 })
   .then((code) => process.exit(code))
   .catch((error: unknown) => {

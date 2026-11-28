@@ -54,6 +54,7 @@ const noWiring: CliWiring = {
   startLineProcess: () => {
     throw new Error("no line process in this test");
   },
+  shellSandbox: () => Promise.reject(new Error("no shell sandbox in this test")),
 };
 
 function run(host: FakeHost, ...argv: string[]): Promise<number> {
@@ -994,3 +995,21 @@ function heldEva(exits: number[] = []): {
   };
   return { start, exit: (code) => exit(code), starts: () => starts };
 }
+
+describe("eva shell-sandbox (#759)", () => {
+  test("runs the wrapper with no instance and no question, and exits with the command's code", async () => {
+    const host = fakeHost();
+    const calls: [string, string][] = [];
+    const code = await runCli(["shell-sandbox", "/srv/eva/wall.json", "ls -v"], inRoot(host), {
+      ...noWiring,
+      shellSandbox: (wallFile, command) => {
+        calls.push([wallFile, command]);
+        return Promise.resolve(42);
+      },
+    });
+    expect(code).toBe(42);
+    expect(calls).toEqual([["/srv/eva/wall.json", "ls -v"]]);
+    // The command's own output is all that pi reads.
+    expect(printed(host)).toBe("");
+  });
+});

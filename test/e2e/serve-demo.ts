@@ -2,9 +2,9 @@
  * Starts Eva for the Playwright tests: a neutral demo vault in a temporary folder, a local bare
  * remote, a scripted engine, and the local API on the ports of `e2e-ports.ts`. No real login is used.
  */
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Eva } from "../../src/core/eva.ts";
 import { defaultConfig, homePaths } from "../../src/core/settings/home.ts";
 import { assistantBasePrompt } from "../../src/core/modes/assistant-base-prompt.ts";
@@ -446,16 +446,30 @@ const engine = new FakeEngine(async function* (request, turnNumber) {
     yield* FakeEngine.answer(request, "Here are the trips.\n[[attach: Journal/2027-trips.md]]");
     return;
   }
-  // A page inside the answer (#1129): Eva writes the file in the scratch folder, then shows it.
+  // A page inside the answer (#1129): Eva writes the file in the scratch folder, then shows it. "sketch the stroll
+  // <name>" gives each test of Save and Pin (#1130) a page of its own, because a saved page outlives its test.
+  const stroll = /sketch the stroll ([a-z0-9-]+)/.exec(lastLine)?.[1];
   const shownPage = lastLine.includes("draw my walking")
     ? { name: "steps-this-week", html: demoChartPage, text: "Here are your steps of this week." }
     : lastLine.includes("probe the wire")
       ? { name: "network-probe", html: networkProbePage, text: "The probe ran." }
-      : null;
+      : stroll !== undefined
+        ? { name: stroll, html: demoChartPage, text: "Here is the stroll." }
+        : null;
   if (shownPage !== null) {
     mkdirSync(join(vault, ".eva", "scratch"), { recursive: true });
     writeFileSync(join(vault, ".eva", "scratch", `${shownPage.name}.html`), shownPage.html);
     yield* FakeEngine.answer(request, `${shownPage.text}\n[[show: .eva/scratch/${shownPage.name}.html]]`);
+    return;
+  }
+  // Eva changes a page that the person saved or pinned (#1130): she edits the file in .eva/pages/, as the prompt says.
+  const raised = /raise the stroll goal of ([a-z0-9-]+)/.exec(lastLine)?.[1];
+  if (raised !== undefined) {
+    const saved = join(vault, ".eva", "pages", `${raised}.html`);
+    const target = existsSync(saved) ? saved : join(vault, ".eva", "scratch", `${raised}.html`);
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, demoChartPage.replace("const goal = 8000;", "const goal = 10000;"));
+    yield* FakeEngine.answer(request, "The goal is now 10,000 steps.");
     return;
   }
   if (lastLine.includes("the lost drawing")) {

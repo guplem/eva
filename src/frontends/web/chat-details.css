@@ -285,6 +285,128 @@
   }
 }
 
+/*
+ * The pinned page of a chat (#1130). A wide window gives it a column between the chat and the
+ * inspector. `PinnedPage.tsx` picks the place, so the chat keeps at least 480 px.
+ */
+.layout.has-pinned {
+  grid-template-columns: 300px minmax(0, 1fr) auto auto;
+}
+
+.pinned-page {
+  position: relative;
+  width: var(--pinned-width, 400px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  background: var(--side);
+  box-shadow: inset 1px 0 0 var(--line);
+}
+
+.pinned-page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+}
+
+.pinned-page-header > .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--accent-ink);
+}
+
+.pinned-page-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-frame.in-column {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-frame.in-column .page-box {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  box-shadow: var(--shadow);
+  border-color: transparent;
+}
+
+/* Where the chat and both columns do not fit, the details open over the pinned page, as a sheet from the edge. */
+.layout.details-over-pin > .chat-panel-frame {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  box-shadow: var(--dialog-shadow);
+}
+
+/* The pinned page on a phone and in a narrow window: one bar above the message box. */
+.pinned-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 var(--space-2) var(--space-2);
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+.pinned-bar-open {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 700;
+  text-align: left;
+}
+
+.pinned-bar-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pinned-bar .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.pinned-bar .icon-button {
+  color: inherit;
+}
+
+@media (pointer: coarse) {
+  .pinned-bar-open,
+  .pinned-bar .icon-button {
+    min-height: var(--touch-target);
+  }
+}
+
 /* The context of the chat: one small label for each group, then one row for each part. */
 .context-group {
   display: flex;

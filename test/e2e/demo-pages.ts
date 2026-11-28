@@ -102,7 +102,7 @@ export const demoChartPage = `<!doctype html>
     });
     chart.append(node("line", { class: "goal", x1: left, x2: width, y1: y(goal), y2: y(goal) }));
     const goalLabel = node("text", { class: "goal-label", x: width, y: y(goal) - 5, "text-anchor": "end" });
-    goalLabel.textContent = "Goal 8k";
+    goalLabel.textContent = "Goal " + goal / 1000 + "k";
     chart.append(goalLabel);
   }
   resting();

@@ -1834,10 +1834,13 @@ button.ghost .icon {
   }
 }
 
-.page-frame {
+.page-frame.in-answer {
+  margin-top: var(--space-3);
+}
+
+.page-box {
   position: relative;
   height: 320px;
-  margin-top: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-input);
   overflow: hidden;
@@ -1845,8 +1848,74 @@ button.ghost .icon {
 }
 
 .page-frame.is-note {
-  height: auto;
+  border-radius: var(--radius-input);
   background: var(--chip);
+}
+
+/* A new version of the page loads behind the old one, which stays in view until then (#1130). */
+.page-box .widget-frame {
+  position: absolute;
+  inset: 0;
+}
+
+.page-box .widget-frame.is-loading {
+  opacity: 0;
+}
+
+/*
+ * The row under a page: how it is kept, Save and Pin (#1130). It sits outside the frame, so the
+ * buttons never cover the page, and the page keeps its corner for full screen only.
+ */
+.page-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.page-action,
+.page-kept {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.page-action .icon,
+.page-kept .icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page-action:hover {
+    background: var(--chip);
+    color: var(--ink);
+  }
+}
+
+/* Pinned and saved are states: a word and a shape, and the soft fill of a selected item. */
+.page-action.is-on {
+  background: var(--soft);
+  color: var(--soft-ink);
+}
+
+/* `button.ghost` gives its own colour, so the state needs two classes. */
+.page-caption .page-kept {
+  color: var(--ok);
+}
+
+/* On a phone, each button keeps the touch target. */
+@media (pointer: coarse) {
+  .page-action {
+    min-height: var(--touch-target);
+  }
 }
 
 .page-wait {

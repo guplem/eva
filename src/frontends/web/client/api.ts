@@ -691,6 +691,13 @@ export const api = {
   /** Ends the tokens of page frames that closed; keepalive, so it goes out as the page goes. */
   releasePageFrames: (tokens: readonly string[]): Promise<void> =>
     request("POST", "/api/pages/release", { tokens }, { keepalive: true }),
+  /** Keeps a page in `.eva/pages/` (#1130), and answers its saved path. */
+  savePage: (path: string): Promise<{ readonly path: string }> => request("POST", "/api/pages/save", { path }),
+  /** Deletes a saved page. Each chat that pins it loses the pin. */
+  removePage: (path: string): Promise<{ readonly path: string }> => request("POST", "/api/pages/remove", { path }),
+  /** Saves a page and pins it beside one branch of a chat, or unpins with null. */
+  pinPage: (sessionId: string, path: string | null): Promise<SessionRecord> =>
+    request("POST", `/api/sessions/${encodeURIComponent(sessionId)}/pin`, { path }),
 };
 
 /** The browser's socket to Eva's event route, and its timers. */
